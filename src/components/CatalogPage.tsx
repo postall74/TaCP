@@ -176,8 +176,8 @@ export default function CatalogPage() {
         setEditTarget(null);
       }} />
 
-      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} onImport={(items) => {
-        const n = importEquipment(items);
+      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} onImport={(items, csv) => {
+        const n = importEquipment(items, csv);
         toast(`Импортировано ${n} ${plural(n, "позиция", "позиции", "позиций")}`);
         setImportOpen(false);
       }} />
@@ -318,7 +318,7 @@ function ImportModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onImport: (items: Omit<Equipment, "id">[]) => void;
+  onImport: (items: Omit<Equipment, "id">[], csv: string) => void;
 }) {
   const [text, setText] = useState("");
   const parsed = useMemo(() => parseCatalogCsv(text), [text]);
@@ -335,7 +335,7 @@ function ImportModal({
             <IcDatabase size={14} /> Вставить пример
           </Btn>
           <Btn variant="outline" onClick={onClose}>Отмена</Btn>
-          <Btn disabled={parsed.items.length === 0} onClick={() => { onImport(parsed.items); setText(""); }}>
+          <Btn disabled={parsed.items.length === 0} onClick={() => { onImport(parsed.items, text); setText(""); }}>
             <IcUpload size={14} /> Импортировать {parsed.items.length > 0 ? `(${parsed.items.length})` : ""}
           </Btn>
         </>

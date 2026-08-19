@@ -1,61 +1,96 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using TkpApi;
 
 /* ============================================================
    TKP·PRO BACKEND — ASP.NET Core 8, Minimal API + EF Core + PostgreSQL.
 
-   Запуск:
-     1) appsettings.json → ConnectionStrings:Tkp = "Host=localhost;Database=tkp;Username=postgres;Password=…"
-     2) dotnet ef migrations add Init && dotnet ef database update
-     3) dotnet run  →  http://localhost:5085
+   Запуск (см. ../README.md):
+     1) appsettings.json → ConnectionStrings:Tkp
+     2) dotnet run  →  http://localhost:5085 (Swagger: /swagger)
+   При пустой БД каталог автоматически наполняется из seed-catalog.csv.
 
-   Фронтенд подключается заменой action'ов src/store.ts на fetch-вызовы
-   этих эндпоинтов (контракты совпадают с моделью src/types.ts).
+   Фронтенд подключается заменой action'ов src/store.ts на вызовы этих
+   эндпоинтов — контракты совпадают с моделью src/types.ts.
    ============================================================ */
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<TkpDbContext>(o =>
     o.UseNpgsql(builder.Configuration.GetConnectionString("Tkp")));
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+// enum'ы Direction/ProjectStatus в JSON как "nku"/"draft" — ровно как у фронтенда
+builder.Services.ConfigureHttpJsonOptions(o =>
+    o.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
 
 var app = builder.Build();
 app.UseCors();
+app.UseSwagger();
+app.UseSwaggerUI();
+
+/* ---------------- запуск: схема + сид каталога ---------------- */
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<TkpDbContext>();
+    db.Database.EnsureCreated(); // для разработки; в проде — EF-миграции (README)
+    if (!db.Equipment.Any())
+    {
+        var seedPath = Path.Combine(app.Environment.ContentRootPath, "seed-catalog.csv");
+        if (File.Exists(seedPath))
+        {
+            var (a, _, _) = CatalogCsv.Import(db, File.ReadAllText(seedPath));
+            db.SaveChanges();
+            app.Logger.LogInformation("Каталог наполнен из seed-catalog.csv: {Count} позиций", a);
+        }
+    }
+}
 
 /* ---------------- Projects ---------------- */
 
 app.MapGet("/api/projects", async (TkpDbContext db) =>
     await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
+                     .Include(p => p.Versions)
                      .OrderByDescending(p => p.UpdatedAt).ToListAsync());
 
 app.MapPost("/api/projects", async (Project p, TkpDbContext db) =>
 {
-    p.Id = Guid.NewGuid();
+    if (string.IsNullOrEmpty(p.Id)) p.Id = Guid.NewGuid().ToString();
     db.Projects.Add(p);
     await db.SaveChangesAsync();
     return Results.Created($"/api/projects/{p.Id}", p);
 });
 
-app.MapGet("/api/projects/{id:guid}", async (Guid id, TkpDbContext db) =>
+app.MapGet("/api/projects/{id}", async (string id, TkpDbContext db) =>
     await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
                      .Include(p => p.Versions)
                      .FirstOrDefaultAsync(p => p.Id == id) is { } p
         ? Results.Ok(p)
         : Results.NotFound());
 
-app.MapPut("/api/projects/{id:guid}", async (Guid id, Project patch, TkpDbContext db) =>
+/* Полная синхронизация: скаляры проекта + замена состава шкафов одним пакетом.
+   Именно этот эндпоинт использует фронтенд после каждой локальной мутации. */
+app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext db) =>
 {
     var p = await db.Projects.Include(x => x.Cabinets).ThenInclude(c => c.Items)
                              .FirstOrDefaultAsync(x => x.Id == id);
     if (p is null) return Results.NotFound();
-    // переносим редактируемые поля; Id/CreatedAt не трогаем
+
+    var created = p.CreatedAt;
     db.Entry(p).CurrentValues.SetValues(patch);
     p.Id = id;
+    p.CreatedAt = created;
     p.UpdatedAt = DateTime.UtcNow;
+
+    db.Cabinets.RemoveRange(p.Cabinets);          // cascade удалит позиции
+    p.Cabinets = patch.Cabinets ?? new List<Cabinet>();
     await db.SaveChangesAsync();
     return Results.Ok(p);
 });
 
-app.MapDelete("/api/projects/{id:guid}", async (Guid id, TkpDbContext db) =>
+app.MapDelete("/api/projects/{id}", async (string id, TkpDbContext db) =>
 {
     var p = await db.Projects.FindAsync(id);
     if (p is null) return Results.NotFound();
@@ -64,10 +99,11 @@ app.MapDelete("/api/projects/{id:guid}", async (Guid id, TkpDbContext db) =>
     return Results.NoContent();
 });
 
-/* Шкафы: одиночное добавление и пакетное (результат мастера подбора). */
-app.MapPost("/api/projects/{id:guid}/cabinets", async (Guid id, List<Cabinet> cabs, TkpDbContext db) =>
+/* Шкафы: пакетное добавление (результат мастера подбора). */
+app.MapPost("/api/projects/{id}/cabinets", async (string id, List<Cabinet> cabs, TkpDbContext db) =>
 {
-    var p = await db.Projects.FindAsync(id);
+    var p = await db.Projects.Include(x => x.Cabinets).ThenInclude(c => c.Items)
+                             .FirstOrDefaultAsync(x => x.Id == id);
     if (p is null) return Results.NotFound();
     p.Cabinets.AddRange(cabs);
     p.UpdatedAt = DateTime.UtcNow;
@@ -75,7 +111,7 @@ app.MapPost("/api/projects/{id:guid}/cabinets", async (Guid id, List<Cabinet> ca
     return Results.Ok(p.Cabinets);
 });
 
-app.MapDelete("/api/cabinets/{id:guid}", async (Guid id, TkpDbContext db) =>
+app.MapDelete("/api/cabinets/{id}", async (string id, TkpDbContext db) =>
 {
     var c = await db.Cabinets.FindAsync(id);
     if (c is null) return Results.NotFound();
@@ -85,17 +121,17 @@ app.MapDelete("/api/cabinets/{id:guid}", async (Guid id, TkpDbContext db) =>
 });
 
 /* Позиция в шкаф — цена фиксируется снимком из справочника на сервере. */
-app.MapPost("/api/cabinets/{id:guid}/items", async (Guid id, Guid equipmentId, decimal qty, TkpDbContext db) =>
+app.MapPost("/api/cabinets/{id}/items", async (string id, string equipmentId, decimal qty, TkpDbContext db) =>
 {
     var cab = await db.Cabinets.Include(c => c.Items).FirstOrDefaultAsync(c => c.Id == id);
     var eq = await db.Equipment.FindAsync(equipmentId);
     if (cab is null || eq is null) return Results.NotFound();
 
-    var ex = cab.Items.FirstOrDefault(i => i.EquipmentId == equipmentId);
+    var ex = cab.Items.FirstOrDefault(i => i.EqId == equipmentId);
     if (ex is not null) ex.Qty += qty;
     else cab.Items.Add(new LineItem
     {
-        EquipmentId = eq.Id, Sku = eq.Sku, Name = eq.Name, Brand = eq.Brand,
+        EqId = eq.Id, Sku = eq.Sku, Name = eq.Name, Brand = eq.Brand,
         Unit = eq.Unit, Qty = qty, Price = eq.Price, Purchase = eq.Purchase
     });
     await db.SaveChangesAsync();
@@ -104,28 +140,37 @@ app.MapPost("/api/cabinets/{id:guid}/items", async (Guid id, Guid equipmentId, d
 
 /* ---------------- Версии ---------------- */
 
-app.MapPost("/api/projects/{id:guid}/versions", async (Guid id, string? label, TkpDbContext db) =>
+app.MapPost("/api/projects/{id}/versions", async (string id, string? label, TkpDbContext db) =>
 {
     var p = await db.Projects.Include(x => x.Cabinets).ThenInclude(c => c.Items)
                              .Include(x => x.Versions).FirstOrDefaultAsync(x => x.Id == id);
     if (p is null) return Results.NotFound();
-    p.Versions.Insert(0, new ProjectVersion { Label = label ?? $"Версия {p.Versions.Count + 1}" });
+
+    var eqBase = p.Cabinets.Sum(c => c.Items.Sum(i => i.Price * i.Qty));
+    var snapshot = JsonSerializer.SerializeToElement(new
+    {
+        cabinets = p.Cabinets,
+        calc = new { eqBase, total = eqBase * (1 + p.Markup / 100m) } // ориентир; полный расчёт — на клиенте
+    });
+    p.Versions.Insert(0, new ProjectVersion { Label = label ?? $"Версия {p.Versions.Count + 1}", Snapshot = snapshot });
     await db.SaveChangesAsync();
     return Results.Ok(p.Versions);
 });
 
 /* ---------------- Каталог ---------------- */
 
-app.MapGet("/api/catalog", async (TkpDbContext db) => await db.Equipment.OrderBy(e => e.Category).ToListAsync());
+app.MapGet("/api/catalog", async (TkpDbContext db) =>
+    await db.Equipment.OrderBy(e => e.Category).ThenBy(e => e.Sku).ToListAsync());
 
 app.MapPost("/api/catalog", async (Equipment e, TkpDbContext db) =>
 {
+    if (string.IsNullOrEmpty(e.Id)) e.Id = Guid.NewGuid().ToString();
     db.Equipment.Add(e);
     await db.SaveChangesAsync();
-    return Results.Created($"/api/catalog", e);
+    return Results.Created("/api/catalog", e);
 });
 
-app.MapPut("/api/catalog/{id:guid}", async (Guid id, Equipment e, TkpDbContext db) =>
+app.MapPut("/api/catalog/{id}", async (string id, Equipment e, TkpDbContext db) =>
 {
     e.Id = id;
     db.Equipment.Update(e);
@@ -133,7 +178,7 @@ app.MapPut("/api/catalog/{id:guid}", async (Guid id, Equipment e, TkpDbContext d
     return Results.Ok(e);
 });
 
-app.MapDelete("/api/catalog/{id:guid}", async (Guid id, TkpDbContext db) =>
+app.MapDelete("/api/catalog/{id}", async (string id, TkpDbContext db) =>
 {
     var e = await db.Equipment.FindAsync(id);
     if (e is null) return Results.NotFound();
@@ -142,47 +187,19 @@ app.MapDelete("/api/catalog/{id:guid}", async (Guid id, TkpDbContext db) =>
     return Results.NoContent();
 });
 
-/* Импорт прайса: CSV «артикул;наименование;бренд;категория;направление;ед;закупка;цена;характеристики».
-   Дубликаты по артикулу обновляются, новое — добавляется. */
+/* Импорт прайса: CSV «артикул;наименование;бренд;категория;направление;ед;закупка;цена;характеристики». */
 app.MapPost("/api/catalog/import", async (HttpRequest req, TkpDbContext db) =>
 {
     using var reader = new StreamReader(req.Body);
-    var lines = (await reader.ReadToEndAsync()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
-    var bySku = (await db.Equipment.ToListAsync()).ToDictionary(e => e.Sku.ToLowerInvariant());
-    int added = 0, updated = 0, skipped = 0;
-
-    foreach (var line in lines.Skip(1))
-    {
-        var c = line.Split(';');
-        if (c.Length < 8 || !decimal.TryParse(c[7], out var price)) { skipped++; continue; }
-        decimal.TryParse(c[6], out var purchase);
-        if (bySku.TryGetValue(c[0].Trim().ToLowerInvariant(), out var ex))
-        {
-            ex.Name = c[1].Trim(); ex.Brand = c[2].Trim(); ex.Category = c[3].Trim();
-            ex.Unit = c[5].Trim(); ex.Purchase = purchase; ex.Price = price;
-            ex.Attrs = c.Length > 8 ? c[8].Trim() : null;
-            updated++;
-        }
-        else
-        {
-            var ne = new Equipment
-            {
-                Sku = c[0].Trim(), Name = c[1].Trim(), Brand = c[2].Trim(), Category = c[3].Trim(),
-                Unit = c[5].Trim(), Purchase = purchase, Price = price,
-                Attrs = c.Length > 8 ? c[8].Trim() : null
-            };
-            db.Equipment.Add(ne);
-            bySku[ne.Sku.ToLowerInvariant()] = ne;
-            added++;
-        }
-    }
+    var text = await reader.ReadToEndAsync();
+    var (added, updated, skipped) = CatalogCsv.Import(db, text);
     await db.SaveChangesAsync();
     return Results.Ok(new { added, updated, skipped });
 });
 
 /* ---------------- Тарифы и настройки ---------------- */
 
-// В боевой схеме — таблицы rate_cards / settings; здесь для краткости in-memory singleton.
+// Боевая схема — таблицы rate_cards / settings; здесь singleton для краткости.
 var rates = new Rates();
 var company = new CompanySettings();
 app.MapGet("/api/rates", () => rates);
@@ -191,3 +208,55 @@ app.MapGet("/api/settings", () => company);
 app.MapPut("/api/settings", (CompanySettings c) => { company = c; return Results.Ok(company); });
 
 app.Run();
+
+/* ============================================================
+   Разбор CSV прайс-листа (общий для импорта и сида).
+   ============================================================ */
+
+public static class CatalogCsv
+{
+    public static (int added, int updated, int skipped) Import(TkpDbContext db, string text)
+    {
+        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var bySku = db.Equipment.ToList().ToDictionary(e => e.Sku.ToLowerInvariant());
+        int added = 0, updated = 0, skipped = 0;
+
+        foreach (var line in lines)
+        {
+            var c = line.Trim().Split(';');
+            if (c.Length < 8 || System.Text.RegularExpressions.Regex.IsMatch(c[0], "артикул", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) continue; // заголовок
+            if (!decimal.TryParse(c[7].Trim(), out var price)) { skipped++; continue; }
+            decimal.TryParse(c[6].Trim(), out var purchase);
+
+            if (bySku.TryGetValue(c[0].Trim().ToLowerInvariant(), out var ex))
+            {
+                ex.Name = c[1].Trim(); ex.Brand = c[2].Trim(); ex.Category = c[3].Trim();
+                ex.Direction = ParseDir(c[4]); ex.Unit = c[5].Trim();
+                ex.Purchase = purchase; ex.Price = price;
+                ex.Attrs = c.Length > 8 ? c[8].Trim() : null;
+                updated++;
+            }
+            else
+            {
+                var ne = new Equipment
+                {
+                    Sku = c[0].Trim(), Name = c[1].Trim(), Brand = c[2].Trim(),
+                    Category = c[3].Trim(), Direction = ParseDir(c[4]), Unit = c[5].Trim(),
+                    Purchase = purchase, Price = price, Attrs = c.Length > 8 ? c[8].Trim() : null
+                };
+                db.Equipment.Add(ne);
+                bySku[ne.Sku.ToLowerInvariant()] = ne;
+                added++;
+            }
+        }
+        return (added, updated, skipped);
+    }
+
+    private static Direction ParseDir(string s) => s.Trim().ToLowerInvariant() switch
+    {
+        "nku" or "нку" => Direction.Nku,
+        "asu" or "асу" => Direction.Asu,
+        "heat" or "обогрев" or "электрообогрев" => Direction.Heat,
+        _ => Direction.Uni
+    };
+}

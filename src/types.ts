@@ -118,6 +118,10 @@ export interface Settings {
   executor: string; // исполнитель — выводится в подпись документа
   theme: Theme;
   rates: Rates;
+  /** URL C#-бэкенда (ASP.NET Core). Пустая строка = локальный режим (localStorage). */
+  apiBaseUrl: string;
+  /** Результат последней проверки подключения: null — не проверялось. */
+  apiOnline: boolean | null;
 }
 
 export const CATEGORIES = [

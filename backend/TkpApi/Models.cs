@@ -5,6 +5,8 @@ namespace TkpApi;
 /* ============================================================
    ДОМЕННАЯ МОДЕЛЬ (зеркало src/types.ts фронтенда).
    EF Core мапит эти классы в таблицы PostgreSQL (TkpDbContext).
+   Идентификаторы — строки: фронтенд генерирует их сам,
+   поэтому контракты JSON совпадают без преобразований.
    ============================================================ */
 
 public enum Direction { Nku, Asu, Heat, Uni }
@@ -13,7 +15,7 @@ public enum ProjectStatus { Draft, Calc, Sent, Won, Lost }
 /// <summary>Справочник оборудования (equipment_catalog).</summary>
 public class Equipment
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Sku { get; set; } = "";
     public string Name { get; set; } = "";
     public string Brand { get; set; } = "";
@@ -28,8 +30,8 @@ public class Equipment
 /// <summary>Позиция шкафа со снимком цены на момент добавления (project_items).</summary>
 public class LineItem
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid? EquipmentId { get; set; }
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string? EqId { get; set; }       // ссылка на справочник (может отсутствовать у импортированных)
     public string Sku { get; set; } = "";
     public string Name { get; set; } = "";
     public string Brand { get; set; } = "";
@@ -42,20 +44,20 @@ public class LineItem
 /// <summary>Шкаф / секция / линейка (project_cabinets).</summary>
 public class Cabinet
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Kind { get; set; } = "";            // ГРЩ, АВР, Шкаф ПЛК, ЗИП…
     public string Name { get; set; } = "";
     public decimal Hours { get; set; }                // сборка, чел·ч
     public decimal DesignHours { get; set; }
     public decimal SoftwareHours { get; set; }
-    public int SortOrder { get; set; }
+    public string? Note { get; set; }
     public List<LineItem> Items { get; set; } = new();
 }
 
 /// <summary>Проект ТКП (projects) — мета-данные + вся экономика.</summary>
 public class Project
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Number { get; set; } = "";
     public string Title { get; set; } = "";
     public string Client { get; set; } = "";
@@ -93,10 +95,10 @@ public class Project
 /// <summary>Снимок версии ТКП (project_versions, snapshot — jsonb).</summary>
 public class ProjectVersion
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Id { get; set; } = Guid.NewGuid().ToString();
     public DateTime Ts { get; set; } = DateTime.UtcNow;
     public string Label { get; set; } = "";
-    public JsonElement Snapshot { get; set; }          // cabinets + {eqBase,total}
+    public JsonElement? Snapshot { get; set; }          // cabinets + {eqBase,total}
 }
 
 /// <summary>Ставки чел·часов по ролям (rate_cards).</summary>

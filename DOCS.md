@@ -200,10 +200,21 @@ CREATE TABLE settings (company jsonb NOT NULL);    -- реквизиты для 
 
 ---
 
-## 7. C#-бэкенд (каталог `backend/`)
+## 7. C#-бэкенд (каталог `backend/`) — запускаемый проект
 
-Референс: `backend/TkpApi/Program.cs` (Minimal API), `Models.cs`, `TkpDbContext.cs`.
-Запуск: `dotnet run` (нужны PostgreSQL и строка подключения в `appsettings.json`).
+`backend/TkpApi/`: `Program.cs` (Minimal API + Swagger), `Models.cs` (строковые Id —
+контракт совпадает с фронтендом без преобразований), `TkpDbContext.cs` (EF Core → PostgreSQL),
+`seed-catalog.csv` (стартовый справочник, подхватывается при пустой БД).
+
+Запуск: `createdb tkp && cd backend/TkpApi && dotnet run` → `http://localhost:5085`,
+Swagger — `/swagger`. Подробности и дорожная карта — `backend/README.md`.
+
+**Фронтенд подключён к API**: `src/api/client.ts` — типизированный REST-клиент;
+`src/store.ts` работает в двух режимах. Пустой `apiBaseUrl` — локальный (localStorage);
+иначе каждая мутация применяется оптимистично и с дебаунсом 700 мс уходит
+`PUT /api/projects/{id}`, справочник/тарифы/реквизиты — своими эндпоинтами,
+при старте состояние гидрируется с сервера. Режим и статус соединения видны в сайдбаре;
+URL задаётся в «Реквизитах компании» → «Подключение к C#-бэкенду» с кнопкой «Проверить».
 
 | Метод | Эндпоинт | Назначение |
 |---|---|---|

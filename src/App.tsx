@@ -43,6 +43,13 @@ export default function App() {
     document.documentElement.classList.toggle("dark", settings.theme === "dark");
   }, [settings.theme]);
 
+  /* при заданном URL бэкенда — грузим проекты/каталог/тарифы с сервера */
+  const hydrateFromApi = useStore((s) => s.hydrateFromApi);
+  const apiBase = settings.apiBaseUrl.trim();
+  useEffect(() => {
+    if (apiBase) hydrateFromApi();
+  }, [apiBase, hydrateFromApi]);
+
   const openProject = (id: string) => {
     setEditorId(id);
     setRoute("editor");
@@ -74,6 +81,31 @@ export default function App() {
             <div className="font-display text-[15px] leading-none font-bold tracking-tight text-white">ТКП·Про</div>
             <div className="mt-1 text-[9px] font-semibold tracking-[0.22em] text-darkmute uppercase">НКУ · АСУ · Обогрев</div>
           </div>
+        </div>
+
+        {/* индикатор режима хранения: локально / C#-бэкенд */}
+        <div className="mx-4 mb-4 flex items-center gap-2 rounded-md border border-darkline bg-dark2 px-2.5 py-1.5">
+          <span
+            className={cx(
+              "h-1.5 w-1.5 shrink-0 rounded-full",
+              settings.apiBaseUrl.trim()
+                ? settings.apiOnline
+                  ? "blink-dot bg-ok"
+                  : settings.apiOnline === false
+                    ? "bg-heat"
+                    : "bg-warn"
+                : "bg-darkmute"
+            )}
+          />
+          <span className="truncate text-[9.5px] font-bold tracking-[0.14em] text-darkmute uppercase">
+            {settings.apiBaseUrl.trim()
+              ? settings.apiOnline
+                ? "API · онлайн"
+                : settings.apiOnline === false
+                  ? "API · офлайн"
+                  : "API · проверка"
+              : "локальный режим"}
+          </span>
         </div>
 
         <nav className="mt-1 flex flex-col gap-1 px-3">
@@ -228,6 +260,51 @@ function SettingsModal({
           <Input value={f.executor} onChange={(v) => set({ executor: v })} />
         </Field>
       </div>
+
+      <ApiBlock f={f} set={set} />
     </Modal>
+  );
+}
+
+/* ---------------- подключение к C#-бэкенду ---------------- */
+
+function ApiBlock({ f, set }: { f: Settings; set: (p: Partial<Settings>) => void }) {
+  const pingApi = useStore((s) => s.pingApi);
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <div className="mt-4 rounded-lg border border-line bg-paper/60 p-3.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[10.5px] font-bold tracking-[0.14em] text-mute uppercase">Подключение к C#-бэкенду</span>
+        <span
+          className={cx(
+            "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold",
+            f.apiOnline ? "bg-ok-soft text-ok" : f.apiOnline === false ? "bg-heat-soft text-heat" : "bg-line/70 text-mute"
+          )}
+        >
+          <span className={cx("h-1.5 w-1.5 rounded-full", f.apiOnline ? "blink-dot bg-ok" : f.apiOnline === false ? "bg-heat" : "bg-mute")} />
+          {f.apiOnline ? "онлайн" : f.apiOnline === false ? "офлайн" : "не проверялось"}
+        </span>
+      </div>
+      <p className="mt-1.5 text-[11.5px] leading-relaxed text-mute">
+        Сервер: <span className="font-mono text-[10.5px]">backend/TkpApi</span> (ASP.NET Core + PostgreSQL). Пустой URL —
+        локальный режим, данные в браузере.
+      </p>
+      <div className="mt-2 flex gap-2">
+        <Input value={f.apiBaseUrl ?? ""} onChange={(v) => set({ apiBaseUrl: v })} placeholder="http://localhost:5085" className="font-mono text-[12px]" />
+        <button
+          type="button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            await pingApi(f.apiBaseUrl);
+            setBusy(false);
+          }}
+          className="shrink-0 cursor-pointer rounded-md border border-line bg-card px-3 text-[12.5px] font-bold text-ink2 transition-all hover:border-accent hover:text-accent-deep active:scale-95 disabled:opacity-50"
+        >
+          {busy ? "Проверка…" : "Проверить"}
+        </button>
+      </div>
+    </div>
   );
 }
