@@ -1,33 +1,31 @@
 import type { Cabinet, Direction, LineItem } from "../types";
 import { findEq } from "./catalog";
 
+/* ============================================================
+   ТИПОВЫЕ ШАБЛОНЫ ТКП — стартовые конфигурации для мастера
+   создания проекта. Цены берутся снимком из справочника.
+   ============================================================ */
+
 let seq = 0;
 const nid = (p: string) => `${p}-${Date.now().toString(36)}-${(seq++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-/** Снимок позиции из справочника — цена фиксируется в момент добавления в ТКП. */
 const li = (eqId: string, qty: number): LineItem => {
   const e = findEq(eqId);
   if (!e) throw new Error(`Нет позиции ${eqId} в справочнике`);
   return {
-    id: nid("li"),
-    eqId,
-    sku: e.sku,
-    name: e.name,
-    brand: e.brand,
-    unit: e.unit,
-    qty,
-    price: e.price,
-    purchase: e.purchase,
+    id: nid("li"), eqId, sku: e.sku, name: e.name, brand: e.brand, unit: e.unit,
+    qty, price: e.price, purchase: e.purchase,
   };
 };
 
-const cab = (kind: string, name: string, hours: number, items: LineItem[], note?: string): Cabinet => ({
-  id: nid("cab"),
-  kind,
-  name,
-  hours,
-  items,
-  note,
+const cab = (
+  kind: string, name: string,
+  hours: { prod: number; design: number; soft: number },
+  items: LineItem[], note?: string
+): Cabinet => ({
+  id: nid("cab"), kind, name,
+  hours: hours.prod, designHours: hours.design, softwareHours: hours.soft,
+  items, note,
 });
 
 export interface Tpl {
@@ -47,7 +45,7 @@ export const TEMPLATES: Tpl[] = [
     desc: "ГРЩ/ЩР на вводе 100 А: учёт, УЗИП, 6 отходящих групп, УЗО на мокрые группы.",
     summary: "1 шкаф · 14 позиций",
     build: () => [
-      cab("ЩР", "ЩР-1 — Распределительный щит", 10, [
+      cab("ЩР", "ЩР-1 — Распределительный щит", { prod: 10, design: 4, soft: 0 }, [
         li("brk-nsx100", 1),
         li("sw-load63", 1),
         li("uzp-t2", 1),
@@ -72,7 +70,7 @@ export const TEMPLATES: Tpl[] = [
     desc: "Автоматическое переключение двух вводов по схеме 1-0-2 с контролем фаз.",
     summary: "1 шкаф · 13 позиций",
     build: () => [
-      cab("Щит АВР", "АВР-2 — Автоматический ввод резерва", 14, [
+      cab("АВР", "АВР-2 — Автоматический ввод резерва", { prod: 14, design: 6, soft: 0 }, [
         li("brk-nsx100", 2),
         li("sw-rev100", 1),
         li("rp-time", 2),
@@ -96,7 +94,7 @@ export const TEMPLATES: Tpl[] = [
     desc: "Шкаф ПЛК с модулями ввода-вывода и панелью оператора + шкаф связи с промышленным Ethernet.",
     summary: "2 шкафа · 21 позиция",
     build: () => [
-      cab("Шкаф ПЛК", "Шкаф ПЛК-1 — Контроллерный", 16, [
+      cab("Шкаф ПЛК", "Шкаф ПЛК-1 — Контроллерный", { prod: 16, design: 12, soft: 24 }, [
         li("box-asu", 1),
         li("plc-110", 1),
         li("di-16", 2),
@@ -110,7 +108,7 @@ export const TEMPLATES: Tpl[] = [
         li("wire-pv", 30),
         li("giland", 2),
       ]),
-      cab("Шкаф связи", "Шкаф СВ-1 — Коммуникационный", 6, [
+      cab("Шкаф связи", "Шкаф СВ-1 — Коммуникационный", { prod: 6, design: 4, soft: 0 }, [
         li("box-shmp", 1),
         li("sw-ind", 1),
         li("mc-1", 2),
@@ -130,7 +128,7 @@ export const TEMPLATES: Tpl[] = [
     desc: "Щит управления обогревом на 2 зоны + кабельная секция: саморегулирующийся кабель 30 Вт/м.",
     summary: "2 секции · 17 позиций",
     build: () => [
-      cab("ЩУО", "ЩУО-1 — Щит управления обогревом", 6, [
+      cab("ЩУО", "ЩУО-1 — Щит управления обогревом", { prod: 6, design: 3, soft: 0 }, [
         li("box-heat", 1),
         li("thermo-din", 2),
         li("sens-heat", 2),
@@ -141,7 +139,7 @@ export const TEMPLATES: Tpl[] = [
         li("din-rail", 1),
         li("wire-pv", 10),
       ]),
-      cab("Секция обогрева", "Секция Н-1 — Кабельная трасса, 120 м", 12, [
+      cab("Секция обогрева", "Секция Н-1 — Кабельная трасса, 120 м", { prod: 12, design: 2, soft: 0 }, [
         li("hc-30", 120),
         li("splice-kit", 6),
         li("tape", 4),

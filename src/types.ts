@@ -1,61 +1,66 @@
-/* ------------------------------------------------------------------ */
-/*  Доменная модель «ТКП Про».                                        */
-/*  Соответствие будущей схеме PostgreSQL:                             */
-/*    Users          -> Settings (менеджер) [до внедрения auth]        */
-/*    Projects       -> Project                                     */
-/*    EquipmentCatalog -> Equipment                                  */
-/*    ProjectStructure -> Cabinet + LineItem                          */
-/* ------------------------------------------------------------------ */
+/* ============================================================
+   ДОМЕННАЯ МОДЕЛЬ
+   Повторяет будущую схему PostgreSQL (см. DOCS.md и backend/):
+   Projects (1) -> ProjectStructure/Cabinets (N) -> LineItems (N)
+   EquipmentCatalog — справочник, Versions — снимки ТКП.
+   ============================================================ */
 
 export type Direction = "nku" | "asu" | "heat";
+export type ProjectStatus = "draft" | "calc" | "sent" | "won" | "lost";
+export type Theme = "light" | "dark";
 
+/** Справочник оборудования (EquipmentCatalog). */
 export interface Equipment {
   id: string;
-  sku: string; // артикул
-  name: string; // наименование
-  brand: string; // производитель
-  category: string; // категория (type: circuit_breaker, plc, ...)
-  direction: Direction | "uni"; // направление применения
-  unit: string; // ед. изм.
-  purchase: number; // цена закупки (внутренняя)
-  price: number; // цена продажи (базовая)
-  attrs?: string; // характеристики
+  sku: string;
+  name: string;
+  brand: string;
+  category: string;
+  direction: Direction | "uni";
+  unit: string;
+  purchase: number; // закупочная цена — для себестоимости
+  price: number; // цена продажи
+  attrs?: string; // характеристики: "напольный, IP54", "4-20 мА"…
 }
 
+/** Позиция в составе шкафа — снимок цены из справочника на момент добавления. */
 export interface LineItem {
   id: string;
-  eqId: string; // ссылка на справочник
+  eqId: string;
   sku: string;
   name: string;
   brand: string;
   unit: string;
   qty: number;
-  price: number; // зафиксированная цена за ед.
-  purchase: number; // закупочная для расчёта маржи
+  price: number;
+  purchase: number;
 }
 
+/** Шкаф / секция / линейка (ProjectStructure). hours — сборка (производство). */
 export interface Cabinet {
   id: string;
-  kind: string; // ГРЩ, АВР, Шкаф ПЛК...
-  name: string; // «Шкаф №1 — Ввод»
-  note?: string;
-  hours: number; // нормо-часы сборки/монтажа
+  kind: string; // ГРЩ, АВР, Шкаф ПЛК, ЩУО, ЗИП…
+  name: string;
   items: LineItem[];
+  hours: number; // чел·ч производства (сборка)
+  designHours: number; // чел·ч проектирования
+  softwareHours: number; // чел·ч разработки ПО
+  note?: string;
 }
 
-export type ProjectStatus = "draft" | "sent" | "approved";
-
-export interface CalcFields {
-  markup: number; // наценка на оборудование, %
-  hourRate: number; // ставка нормо-часа, ₽
-  complexity: number; // коэффициент сложности сборки
-  discount: number; // скидка, %
-  vat: boolean; // НДС 20 % сверху
-}
-
-export interface Project extends CalcFields {
+/** Снимок версии ТКП. */
+export interface ProjectVersion {
   id: string;
-  number: string; // ТКП-2026-001
+  ts: number;
+  label: string;
+  cabinets: Cabinet[];
+  calc: { eqBase: number; total: number };
+}
+
+/** Метаданные ТКП + все расчётные параметры проекта. */
+export interface Project {
+  id: string;
+  number: string;
   title: string;
   client: string;
   contact: string;
@@ -63,80 +68,70 @@ export interface Project extends CalcFields {
   status: ProjectStatus;
   createdAt: number;
   updatedAt: number;
-  validDays: number; // срок действия предложения
-  notes: string; // условия оплаты/поставки
+
   cabinets: Cabinet[];
+
+  // Наценки и скидки
+  markup: number; // % на оборудование
+  workMarkup: number; // % на работы (ФОТ -> стоимость работ в продаже)
+  discount: number; // % от суммы предложения
+  vatRate: number; // % НДС (0 = без НДС)
+  showWorkLines: boolean; // показывать работы отдельной строкой в ТКП
+
+  // Себестоимость (плановая)
+  tzzPct: number; // транспортно-заготовительные, % от стоимости оборудования
+  thirdParty: number; // услуги сторонних организаций, ₽
+  extraCosts: number; // дополнительные затраты, ₽
+  unforeseenPct: number; // непредвиденные, % от плановой себестоимости
+  tripCosts: number; // командировочные, ₽
+
+  // Услуги и доставка
+  smrCost: number; // шеф-монтаж: себестоимость
+  smrSell: number; // шеф-монтаж: стоимость продажи
+  pnrCost: number; // пусконаладка: себестоимость
+  pnrSell: number; // пусконаладка: стоимость продажи
+  transportPct: number; // доставка до заказчика, % от оборудования
+
+  validDays: number; // срок действия предложения
+  notes: string; // условия предложения
   versions: ProjectVersion[];
 }
 
-export interface ProjectVersion {
-  id: string;
-  label: string;
-  createdAt: number;
-  total: number;
-  cabinets: Cabinet[];
-  calc: CalcFields;
+/** Ставки чел·часов по ролям (для себестоимости и расчёта по производству). */
+export interface Rates {
+  design: number;
+  production: number;
+  software: number;
+  smr: number;
+  pnr: number;
 }
 
+/** Реквизиты компании для документов + настройки интерфейса. */
 export interface Settings {
   companyName: string;
   tagline: string;
-  requisites: string;
-  manager: string;
+  address: string;
   phone: string;
   email: string;
-  address: string;
+  requisites: string;
+  manager: string;
+  executor: string; // исполнитель — выводится в подпись документа
+  theme: Theme;
+  rates: Rates;
 }
 
-export interface Toast {
-  id: string;
-  msg: string;
-  tone: "ok" | "err" | "info";
-}
-
-/* ------------------- справочные константы ------------------- */
-
-export const DIRECTIONS: Record<
-  Direction,
-  { label: string; full: string; badge: string; dot: string }
-> = {
-  nku: {
-    label: "НКУ",
-    full: "Низковольтные комплектные устройства",
-    badge: "bg-accent-soft text-accent-deep",
-    dot: "bg-accent",
-  },
-  asu: {
-    label: "АСУ ТП / АСУ Э",
-    full: "Автоматизированные системы управления",
-    badge: "bg-steel-soft text-steel",
-    dot: "bg-steel",
-  },
-  heat: {
-    label: "Электрообогрев",
-    full: "Системы электрического обогрева",
-    badge: "bg-heat-soft text-heat",
-    dot: "bg-heat",
-  },
-};
-
-export const CABINET_KINDS: Record<Direction, string[]> = {
-  nku: ["ГРЩ", "ВРУ", "ЩР", "ЩУ", "ЩО", "Щит АВР"],
-  asu: ["Шкаф ПЛК", "Шкаф ПТК", "Шкаф связи", "IT-шкаф", "ЩУ", "Шкаф питания"],
-  heat: ["ЩУО", "Щит питания обогрева", "Секция обогрева"],
-};
-
-export const CATEGORIES: string[] = [
+export const CATEGORIES = [
   "Автоматические выключатели",
   "УЗО и дифавтоматы",
-  "Контакторы и реле",
   "Рубильники и переключатели",
+  "Контакторы и реле",
   "УЗИП и защита",
   "Измерения и учёт",
   "Блоки питания",
   "Корпуса и щиты",
   "Шины и клеммы",
   "Кабель и монтаж",
+  "Кнопки и индикация",
   "ПЛК и модули",
   "Панели оператора",
   "Датчики",
@@ -148,8 +143,45 @@ export const CATEGORIES: string[] = [
   "Монтаж обогрева",
 ];
 
-export const STATUS_META: Record<ProjectStatus, { label: string; cls: string }> = {
-  draft: { label: "Черновик", cls: "bg-line/60 text-ink2" },
-  sent: { label: "Отправлено", cls: "bg-warn-soft text-warn" },
-  approved: { label: "Согласовано", cls: "bg-ok-soft text-ok" },
+export const CABINET_KINDS: Record<Direction, string[]> = {
+  nku: ["ГРЩ", "ВРУ", "ЩР", "АВР", "ЩУ", "Щит освещения", "Щит учёта", "ЗИП"],
+  asu: ["Шкаф ПЛК", "Шкаф связи", "Шкаф IT", "Шкаф питания", "Пульт управления", "ЗИП"],
+  heat: ["ЩУО", "Шкаф обогрева", "Секция обогрева", "Кабельная трасса", "ЗИП"],
+};
+
+export const STATUS_META: Record<ProjectStatus, { label: string; cls: string; dot: string }> = {
+  draft: { label: "Черновик", cls: "bg-line/70 text-ink2", dot: "bg-mute" },
+  calc: { label: "На расчёте", cls: "bg-warn-soft text-warn", dot: "bg-warn" },
+  sent: { label: "Отправлено", cls: "bg-steel-soft text-steel", dot: "bg-steel" },
+  won: { label: "Выиграно", cls: "bg-ok-soft text-ok", dot: "bg-ok" },
+  lost: { label: "Проиграно", cls: "bg-heat-soft text-heat", dot: "bg-heat" },
+};
+
+export const NEXT_STATUS: Record<ProjectStatus, ProjectStatus> = {
+  draft: "calc",
+  calc: "sent",
+  sent: "won",
+  won: "draft",
+  lost: "draft",
+};
+
+export const DIRECTIONS: Record<Direction, { label: string; full: string; badge: string; chip: string }> = {
+  nku: {
+    label: "НКУ",
+    full: "Низковольтные комплектные устройства",
+    badge: "bg-steel-soft text-steel",
+    chip: "bg-steel text-white",
+  },
+  asu: {
+    label: "АСУ ТП / АСУ Э",
+    full: "Автоматизированные системы управления",
+    badge: "bg-ok-soft text-ok",
+    chip: "bg-ok text-white",
+  },
+  heat: {
+    label: "Электрообогрев",
+    full: "Системы электрообогрева",
+    badge: "bg-heat-soft text-heat",
+    chip: "bg-heat text-white",
+  },
 };

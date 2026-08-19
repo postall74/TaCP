@@ -335,15 +335,15 @@ export const ToastHost = () => {
           key={t.id}
           className={cx(
             "anim-toast pointer-events-auto flex items-center gap-2.5 rounded-lg border px-3.5 py-2.5 text-[13px] font-semibold shadow-lg",
-            t.tone === "ok" && "border-ok/30 bg-dark text-white",
-            t.tone === "err" && "border-heat/40 bg-heat text-white",
-            t.tone === "info" && "border-steel/40 bg-dark text-white"
+            t.kind === "ok" && "border-ok/30 bg-dark text-white",
+            t.kind === "err" && "border-heat/40 bg-heat text-white",
+            t.kind === "info" && "border-steel/40 bg-dark text-white"
           )}
         >
-          <span className={cx("shrink-0", t.tone === "ok" ? "text-ok" : t.tone === "err" ? "text-heat-soft" : "text-steel-soft")}>
-            {t.tone === "ok" ? <IcCheck size={15} /> : t.tone === "err" ? <IcAlert size={15} /> : <IcInfo size={15} />}
+          <span className={cx("shrink-0", t.kind === "ok" ? "text-ok" : t.kind === "err" ? "text-heat-soft" : "text-steel-soft")}>
+            {t.kind === "ok" ? <IcCheck size={15} /> : t.kind === "err" ? <IcAlert size={15} /> : <IcInfo size={15} />}
           </span>
-          <span className="flex-1">{t.msg}</span>
+          <span className="flex-1">{t.text}</span>
           <button className="cursor-pointer opacity-50 transition-opacity hover:opacity-100" onClick={() => dismiss(t.id)}>
             <IcX size={13} />
           </button>

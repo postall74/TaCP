@@ -185,3 +185,37 @@ export const IcGear = (p: P) => (
     <path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7" />
   </Base>
 );
+export const IcSun = (p: P) => (
+  <Base {...p}>
+    <circle cx={12} cy={12} r={4} />
+    <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19" />
+  </Base>
+);
+export const IcMoon = (p: P) => (
+  <Base {...p}>
+    <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" />
+  </Base>
+);
+export const IcTruck = (p: P) => (
+  <Base {...p}>
+    <path d="M1.5 6h13v10h-13zM14.5 9h4l3 3v4h-7" />
+    <circle cx={6} cy={17.5} r={1.8} />
+    <circle cx={17.5} cy={17.5} r={1.8} />
+  </Base>
+);
+export const IcWand = (p: P) => (
+  <Base {...p}>
+    <path d="m5 19 9-9M17 3l.7 2.3L20 6l-2.3.7L17 9l-.7-2.3L14 6l2.3-.7L17 3ZM7 3l.5 1.5L9 5l-1.5.5L7 7l-.5-1.5L5 5l1.5-.5L7 3ZM19 13l.5 1.5L21 15l-1.5.5L19 17l-.5-1.5L17 15l1.5-.5L19 13Z" />
+  </Base>
+);
+export const IcWrench = (p: P) => (
+  <Base {...p}>
+    <path d="M14.5 6.5a4 4 0 0 0 5 5L13 18l-3 3a2.1 2.1 0 0 1-3-3l3-3 6.5-6.5a4 4 0 0 0-5-5l2.5 2.5-1.5 1.5-2.5-2.5Z" />
+  </Base>
+);
+export const IcTable = (p: P) => (
+  <Base {...p}>
+    <rect x={3} y={4} width={18} height={16} rx={1.5} />
+    <path d="M3 9.5h18M3 15h18M9.5 9.5V20M16 9.5V20" />
+  </Base>
+);
