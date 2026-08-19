@@ -1,1 +1,256 @@
 @import "tailwindcss";
+
+@theme {
+  --font-display: "Unbounded", "Manrope", sans-serif;
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+
+  --color-paper: #eceef1;
+  --color-card: #ffffff;
+  --color-ink: #141b24;
+  --color-ink2: #3d4a59;
+  --color-mute: #6f7b8b;
+  --color-line: #d7dce3;
+  --color-line2: #c2cad4;
+
+  --color-accent: #f04d14;
+  --color-accent-deep: #c43d0c;
+  --color-accent-soft: #fce9e0;
+
+  --color-steel: #2e5fa3;
+  --color-steel-soft: #e4ecf7;
+  --color-heat: #ce4432;
+  --color-heat-soft: #f9e6e1;
+  --color-ok: #1f8a5b;
+  --color-ok-soft: #e2f1e8;
+  --color-warn: #a8770e;
+  --color-warn-soft: #f7edd8;
+
+  --color-dark: #10161e;
+  --color-dark2: #18202b;
+  --color-darkline: #27313f;
+  --color-darkmute: #8b98a9;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-paper text-ink font-sans antialiased;
+  font-feature-settings: "ss01";
+}
+
+::selection {
+  background: #f04d14;
+  color: #fff;
+}
+
+/* ---- тонкие скроллбары ---- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c2cad4 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #c2cad4;
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* ---- чертёжная сетка фона ---- */
+.bg-blueprint {
+  background-image: linear-gradient(to right, rgba(20, 27, 36, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(20, 27, 36, 0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* ---- анимации ---- */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.anim-up {
+  animation: fadeUp 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.anim-scale {
+  animation: scaleIn 0.22s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes backdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.anim-backdrop {
+  animation: backdropIn 0.2s ease both;
+}
+
+@keyframes rowFlash {
+  0% {
+    background-color: #fce9e0;
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.row-flash {
+  animation: rowFlash 1.1s ease-out both;
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.anim-toast {
+  animation: toastIn 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes blinkDot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+.blink-dot {
+  animation: blinkDot 1.6s ease-in-out infinite;
+}
+
+@keyframes tickPulse {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.tick-pulse {
+  animation: tickPulse 0.35s ease both;
+}
+
+/* ---- плавное раскрытие аккордеона ---- */
+.collapse-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.32s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.collapse-grid.open {
+  grid-template-rows: 1fr;
+}
+.collapse-grid > div {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ---- документ ТКП ---- */
+.doc-paper {
+  font-family: "PT Serif", Georgia, "Times New Roman", serif;
+  width: 210mm;
+  min-height: 296mm;
+  background: #fff;
+  color: #171717;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+/* ---- печать ---- */
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm 9mm;
+  }
+  * {
+    overflow: visible !important;
+  }
+  html,
+  body,
+  #root,
+  #root > div,
+  main {
+    height: auto !important;
+    display: block;
+  }
+  aside,
+  .no-print {
+    display: none !important;
+  }
+  main > div {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  #doc-print-area,
+  #doc-print-area * {
+    visibility: visible;
+  }
+  #doc-print-area {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  .doc-paper {
+    width: 100% !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
