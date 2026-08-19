@@ -15,7 +15,7 @@
 
 | Что | Версия | Откуда | Проверка в терминале |
 |---|---|---|---|
-| Node.js | 18 LTS (лучше 20) | https://nodejs.org | `node -v` |
+| Node.js | **≥ 20 LTS (рекомендуется 22 LTS)** — на Node 18 не соберётся Tailwind v4 | https://nodejs.org | `node -v` |
 | .NET SDK | **8.0** | https://dotnet.microsoft.com/download/dotnet/8.0 | `dotnet --version` |
 | PostgreSQL | 14+ | https://www.postgresql.org/download/ | служба запущена / pgAdmin открывается |
 | VS Code | любая свежая | https://code.visualstudio.com | расширения **C# Dev Kit** и **C#** |
@@ -40,6 +40,37 @@ npm run dev      # запуск dev-сервера Vite
 Продакшен-сборка (если нужна): `npm run build` → папка `dist/`.
 
 ---
+
+### 1.0. Если `node -v` показывает 18.x — сначала обновите Node (до `npm install`)
+
+Node 18 снят с поддержки; Tailwind v4 (движок `@tailwindcss/oxide`) требует **Node ≥ 20**.
+Предупреждения `WARN EBADENGINE` при установке — сигнал именно об этом.
+
+**Windows (PowerShell):**
+
+```powershell
+winget install OpenJS.NodeJS.LTS      # поставит свежий LTS (22.x)
+```
+
+либо скачайте MSI с https://nodejs.org (кнопка **LTS**) — он аккуратно заменит старую версию.
+После установки **закройте и откройте заново терминал / VS Code** и проверьте:
+
+```powershell
+node -v    # должно быть v20+ (v22.x — отлично)
+npm -v     # 10.x
+```
+
+Затем переустановите зависимости начисто (старые собраны под Node 18):
+
+```powershell
+Remove-Item -Recurse -Force node_modules, package-lock.json
+npm install
+npm run dev      # → http://localhost:5173
+```
+
+> Остальные `WARN` (deprecated uuid/recharts, supabase) — безвредны: эти пакеты
+> достались от шаблона песочницы и в коде приложения не используются.
+> `npm audit fix --force` запускать **не нужно** — может сломать версии.
 
 ## 2. C#-бэкенд
 
@@ -132,7 +163,9 @@ dotnet run
 | Ошибки NuGet при первом запуске | Нет интернета / прокси | Проверить сеть, повторить `dotnet restore` |
 | Фронтенд: «Бэкенд недоступен» | API не запущен или URL со слэшем на конце | Запустить API; URL без `/` на конце |
 | F5 не запускает C#-проект | Нет расширения C# Dev Kit | Установить C# Dev Kit + C#, перезапустить папку |
-| `npm install` падает | Старый Node или кэш | Node 18+, затем `npm cache clean --force` и повторить |
+| `npm install` падает | Старый Node или кэш | Node ≥ 20, затем `npm cache clean --force` и повторить |
+| При `npm install` сыплются `WARN EBADENGINE` (oxide, supabase…) | Node 18 (устарел) | Предупреждения не блокируют установку, но **обновите Node до 22 LTS** и переустановите `node_modules` начисто |
+| `npm run dev` падает с ошибкой oxide / native binding | Node < 20 | Обновить Node, затем `Remove-Item -Recurse -Force node_modules, package-lock.json; npm install` |
 
 ---
 
