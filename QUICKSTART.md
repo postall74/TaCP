@@ -165,7 +165,7 @@ dotnet run
 | F5 не запускает C#-проект | Нет расширения C# Dev Kit | Установить C# Dev Kit + C#, перезапустить папку |
 | `npm install` падает | Старый Node или кэш | Node ≥ 20, затем `npm cache clean --force` и повторить |
 | При `npm install` сыплются `WARN EBADENGINE` (oxide, supabase…) | Node 18 (устарел) | Предупреждения не блокируют установку, но **обновите Node до 22 LTS** и переустановите `node_modules` начисто |
-| `npm run dev` падает с ошибкой oxide / native binding | Node < 20 | Обновить Node, затем `Remove-Item -Recurse -Force node_modules, package-lock.json; npm install` |
+| `createdb: Имя не распознано…` | Утилиты PostgreSQL не в PATH | Полный путь: `& "C:\Program Files\PostgreSQL\16\bin\createdb.exe" -U postgres tkp` (подставьте свою версию) или создать базу в pgAdmin: Databases → Create → Database → `tkp` |
 
 ---
 
