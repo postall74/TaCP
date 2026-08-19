@@ -19,6 +19,10 @@ dotnet run
 - Swagger: `http://localhost:5085/swagger` — все эндпоинты с примерами (удобно для реверс-инжиниринга контрактов)
 - Строка подключения: `TkpApi/appsettings.json → ConnectionStrings:Tkp`
 
+**Из VS Code:** откройте корень проекта, поставьте расширения C# Dev Kit + C#,
+в Run and Debug выберите **«C# API (backend/TkpApi)»** и нажмите **F5**
+(конфигурации лежат в `.vscode/`). Полная инструкция с troubleshooting — `QUICKSTART.md` в корне.
+
 Для продакшена вместо `EnsureCreated()` используйте EF-миграции:
 
 ```bash
