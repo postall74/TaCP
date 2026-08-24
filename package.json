@@ -21,6 +21,7 @@
     "react-router-dom": "^6.8.0",
     "recharts": "^2.10.0",
     "uuid": "^9.0.1",
+    "vitest": "^4.1.11",
     "xlsx": "^0.18.5",
     "zustand": "^5.0.15"
   },
