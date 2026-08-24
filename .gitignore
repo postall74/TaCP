@@ -1,5 +1,34 @@
+# ---------- Frontend (Node / Vite) ----------
 node_modules/
-.next/
 dist/
 build/
+.next/
 *.log
+npm-debug.log*
+.env
+.env.local
+
+# ---------- C# / .NET ----------
+backend/**/bin/
+backend/**/obj/
+*.user
+*.suo
+*.cache
+*.dll
+*.pdb
+*.exe
+[Dd]ebug/
+[Rr]elease/
+packages/
+project.lock.json
+
+# ---------- IDE: VS Code / Rider / Visual Studio ----------
+.vs/
+.idea/
+*.swp
+.vscode/*.local.json
+
+# ---------- ОС ----------
+.DS_Store
+Thumbs.db
+desktop.ini
