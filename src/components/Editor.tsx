@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useStore } from "../store";
 import type { Project } from "../types";
 import { DIRECTIONS, NEXT_STATUS, STATUS_META } from "../types";
 import { calcProject, downloadText, fmtDateTime, fmtMoney, fmtMoney2 } from "../utils";
+import { summarize, validateProject } from "../utils/rules";
 import { exportProjectXlsx } from "../utils/excel";
 import StructureTab from "./StructureTab";
 import DocumentTab from "./DocumentTab";
@@ -22,6 +23,7 @@ type Tab = "structure" | "doc" | "versions";
 export default function Editor({ id, onBack }: { id: string; onBack: () => void }) {
   const project = useStore((s) => s.projects.find((p) => p.id === id));
   const rates = useStore((s) => s.settings.rates);
+  const catalog = useStore((s) => s.catalog);
   const [tab, setTab] = useState<Tab>("structure");
   const [wizardOpen, setWizardOpen] = useState(false);
 
@@ -38,6 +40,8 @@ export default function Editor({ id, onBack }: { id: string; onBack: () => void 
 
   const calc = calcProject(project, rates);
   const dir = DIRECTIONS[project.direction];
+  const issueSum = summarize(validateProject({ catalog, project }));
+  const structureProblems = issueSum.error + issueSum.warn;
 
   return (
     <div className="pb-10">
@@ -78,10 +82,25 @@ export default function Editor({ id, onBack }: { id: string; onBack: () => void 
       {/* -------- вкладки -------- */}
       <div className="anim-up mt-4 flex gap-1.5" style={{ animationDelay: "60ms" }}>
         {([
-          ["structure", "Структура и состав", <IcLayers size={13} key="i" />],
+          ["structure", (
+            <span key="l" className="flex items-center gap-1.5">
+              Структура и состав
+              {structureProblems > 0 && (
+                <span
+                  className={cx(
+                    "rounded-full px-1.5 py-px font-mono text-[10px] font-bold leading-tight",
+                    tab === "structure" ? "bg-white/20 text-white" : issueSum.error ? "bg-heat text-white" : "bg-warn text-white"
+                  )}
+                  title={issueSum.error ? "Есть ошибки совместимости" : "Есть предупреждения"}
+                >
+                  {structureProblems}
+                </span>
+              )}
+            </span>
+          ), <IcLayers size={13} key="i" />],
           ["doc", "Документ ТКП", <IcDoc size={13} key="i" />],
           ["versions", `Версии · ${project.versions.length}`, <IcClock size={13} key="i" />],
-        ] as [Tab, string, JSX.Element][]).map(([k, label, icon]) => (
+        ] as [Tab, ReactNode, JSX.Element][]).map(([k, label, icon]) => (
           <button
             key={k}
             onClick={() => setTab(k)}
