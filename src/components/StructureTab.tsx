@@ -3,8 +3,11 @@ import { useStore } from "../store";
 import type { Direction, Equipment, Project } from "../types";
 import { DIRECTIONS } from "../types";
 import { calcProject, fmtMoney, plural } from "../utils";
+import {
+  SEVERITY_META, summarize, validateCabinet, validateProject, type Issue, type ValidateCtx,
+} from "../utils/rules";
 import { Badge, Btn, EmptyState, Field, IconBtn, Input, Modal, NumInput, Select, Stepper, cx } from "./ui";
-import { IcCheck, IcChevronDown, IcLayers, IcPlus, IcSearch, IcTrash, IcWand } from "./icons";
+import { IcAlert, IcCheck, IcChevronDown, IcLayers, IcPlus, IcSearch, IcTrash, IcWand } from "./icons";
 
 /* ============================================================
    ВКЛАДКА «СТРУКТУРА»: дерево шкафов (аккордеон), inline-правка
@@ -29,6 +32,12 @@ export default function StructureTab({ project, onOpenWizard }: { project: Proje
   const [lastAdded, setLastAdded] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
+  // проверка совместимости: контекст + замечания по всему проекту
+  const catalog = useStore((s) => s.catalog);
+  const ctx: ValidateCtx = useMemo(() => ({ catalog, project }), [catalog, project]);
+  const issues = useMemo(() => validateProject(ctx), [ctx]);
+  const issueSum = summarize(issues);
+
   const selId = project.cabinets.some((c) => c.id === selected) ? selected : project.cabinets[0]?.id ?? "";
   const selCab = project.cabinets.find((c) => c.id === selId);
 
@@ -45,6 +54,7 @@ export default function StructureTab({ project, onOpenWizard }: { project: Proje
       toast("Сначала добавьте шкаф в проект", "err");
       return;
     }
+    const errsBefore = validateCabinet(selCab, ctx).filter((i) => i.severity === "error").length;
     const res = addEquipment(project.id, selCab.id, eq);
     setLastAdded(eq.id + ":" + selCab.id);
     setTimeout(() => setLastAdded(null), 1200);
@@ -52,6 +62,17 @@ export default function StructureTab({ project, onOpenWizard }: { project: Proje
       res === "added" ? `${name.slice(0, 42)} — в «${selCab.name}»` : `+1: ${name.slice(0, 42)}`,
       res === "added" ? "ok" : "info"
     );
+
+    // мгновенная обратная связь: если позиция создала конфликт — предупреждаем
+    const fresh = useStore.getState().projects.find((p) => p.id === project.id);
+    const freshCab = fresh?.cabinets.find((c) => c.id === selCab.id);
+    if (fresh && freshCab) {
+      const errsAfter = validateCabinet(freshCab, { catalog, project: fresh }).filter(
+        (i) => i.severity === "error"
+      ).length;
+      if (errsAfter > errsBefore)
+        toast("Проверка: в шкафу появился конфликт — загляните в панель «Проверки»", "err");
+    }
   };
 
   return (
@@ -66,6 +87,18 @@ export default function StructureTab({ project, onOpenWizard }: { project: Proje
             <IcPlus size={14} /> Шкаф вручную
           </Btn>
         </div>
+
+        <ValidationPanel
+          issues={issues}
+          sum={issueSum}
+          onJump={(cid) => {
+            setSelected(cid);
+            setOpenSet((p) => new Set(p).add(cid));
+            requestAnimationFrame(() =>
+              document.getElementById(`cab-${cid}`)?.scrollIntoView({ behavior: "smooth", block: "start" })
+            );
+          }}
+        />
 
         {project.cabinets.length === 0 && (
           <EmptyState
@@ -86,8 +119,9 @@ export default function StructureTab({ project, onOpenWizard }: { project: Proje
           return (
             <div
               key={c.id}
+              id={`cab-${c.id}`}
               className={cx(
-                "anim-up overflow-hidden rounded-xl border bg-card transition-all duration-200",
+                "anim-up scroll-mt-4 overflow-hidden rounded-xl border bg-card transition-all duration-200",
                 isSel ? "border-accent shadow-md shadow-accent/10" : "border-line hover:border-line2 hover:shadow-md hover:shadow-dark/5"
               )}
               style={{ animationDelay: `${ci * 50}ms` }}
@@ -251,6 +285,106 @@ function HourInput({ title, value, onChange, suffix }: { title: string; value: n
       />
       <span className="text-mute">ч {suffix}</span>
     </label>
+  );
+}
+
+/* ---------------- панель проверки совместимости ---------------- */
+
+function ValidationPanel({
+  issues,
+  sum,
+  onJump,
+}: {
+  issues: Issue[];
+  sum: ReturnType<typeof summarize>;
+  onJump: (cid: string) => void;
+}) {
+  const [open, setOpen] = useState(sum.error + sum.warn > 0);
+
+  return (
+    <div
+      className={cx(
+        "anim-up overflow-hidden rounded-xl border bg-card",
+        sum.error ? "border-heat/50" : sum.warn ? "border-warn/50" : sum.total ? "border-line" : "border-ok/40"
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full cursor-pointer flex-wrap items-center gap-2 px-4 py-2.5 text-left"
+      >
+        <span
+          className={cx(
+            "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-white",
+            sum.error ? "bg-heat" : sum.warn ? "bg-warn" : "bg-ok"
+          )}
+        >
+          {sum.error || sum.warn ? <IcAlert size={15} /> : <IcCheck size={15} />}
+        </span>
+        <span className="text-[13px] font-bold text-ink">Проверка совместимости</span>
+        {sum.total === 0 ? (
+          <span className="rounded bg-ok-soft px-2 py-0.5 text-[11px] font-bold text-ok">замечаний нет</span>
+        ) : (
+          <>
+            {sum.error > 0 && (
+              <span className="rounded bg-heat-soft px-2 py-0.5 font-mono text-[11px] font-bold text-heat">
+                {sum.error} {plural(sum.error, "ошибка", "ошибки", "ошибок")}
+              </span>
+            )}
+            {sum.warn > 0 && (
+              <span className="rounded bg-warn-soft px-2 py-0.5 font-mono text-[11px] font-bold text-warn">
+                {sum.warn} {plural(sum.warn, "предупреждение", "предупреждения", "предупреждений")}
+              </span>
+            )}
+            {sum.info > 0 && (
+              <span className="rounded bg-steel-soft px-2 py-0.5 font-mono text-[11px] font-bold text-steel">
+                {sum.info} {plural(sum.info, "подсказка", "подсказки", "подсказок")}
+              </span>
+            )}
+          </>
+        )}
+        <span
+          className="ml-auto text-mute transition-transform duration-200"
+          style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)" }}
+        >
+          <IcChevronDown size={16} />
+        </span>
+      </button>
+
+      {open && sum.total > 0 && (
+        <ul className="border-t border-line/70">
+          {issues.map((i) => (
+            <li key={i.id} className="flex items-start gap-2.5 border-b border-line/50 px-4 py-2.5 last:border-b-0">
+              <span className={cx("mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase", SEVERITY_META[i.severity].badge)}>
+                {SEVERITY_META[i.severity].label}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[12.5px] leading-snug font-semibold text-ink">
+                  {i.cabinetName && i.cabinetId && (
+                    <button
+                      type="button"
+                      onClick={() => onJump(i.cabinetId!)}
+                      className="mr-1.5 cursor-pointer rounded bg-dark px-1.5 py-0.5 align-middle font-mono text-[10px] font-bold text-white transition-colors hover:bg-accent"
+                      title="Перейти к шкафу"
+                    >
+                      {i.cabinetName}
+                    </button>
+                  )}
+                  {i.text}
+                </div>
+                {i.hint && <div className="mt-0.5 text-[11.5px] leading-snug text-mute">{i.hint}</div>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {open && sum.total === 0 && (
+        <div className="border-t border-line/70 px-4 py-3 text-[12px] text-mute">
+          Конфликтов не найдено: номиналы аппаратов согласованы с шинами, защиты на месте.
+        </div>
+      )}
+    </div>
   );
 }
 
