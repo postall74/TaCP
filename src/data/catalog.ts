@@ -16,7 +16,9 @@ const eq = (
   attrs?: string
 ): Equipment => ({ id, sku, name, brand, category, direction, unit, purchase, price, attrs });
 
-export const CATALOG: Equipment[] = [
+/* Сырые позиции. Номинальные токи (для проверки совместимости)
+   накатываются ниже из таблицы CURRENT — см. utils/rules.ts. */
+const RAW: Equipment[] = [
   /* ---- Автоматические выключатели ---- */
   eq("brk-c16", "iK60N C16 1P", "Автоматический выключатель 1P C16, 6 кА", "Schneider Electric", "Автоматические выключатели", "nku", "шт", 290, 460, "230 В, характеристика C"),
   eq("brk-c25", "iK60N C25 1P", "Автоматический выключатель 1P C25, 6 кА", "Schneider Electric", "Автоматические выключатели", "nku", "шт", 290, 460, "230 В, характеристика C"),
@@ -139,6 +141,27 @@ export const CATALOG: Equipment[] = [
   eq("tape", "ALU-50", "Лента монтажная алюминиевая, 50 мм × 45 м", "ССТ", "Монтаж обогрева", "heat", "рул.", 290, 440),
   eq("box-heat", "ЩУО-6", "Корпус щита управления обогревом, IP54", "КЭАЗ", "Монтаж обогрева", "heat", "шт", 2900, 4250),
 ];
+
+/** Номинальные токи, А. Источник — datasheet аппаратов.
+    Используется правилами совместимости (utils/rules.ts):
+    автомат/рубильник/контактор ↔ шина. */
+const CURRENT: Record<string, number> = {
+  // автоматические выключатели
+  "brk-c16": 16, "brk-c25": 25, "brk-2p32": 32, "brk-3p40": 40, "brk-3p63": 63,
+  "brk-nsx100": 100, "brk-nsx250": 250, "brk-iek16": 16, "brk-iek80": 80,
+  // УЗО и дифавтоматы
+  "rcd-4030": 40, "dif-1630": 16,
+  // рубильники / выключатели нагрузки
+  "sw-rev100": 100, "sw-load63": 63,
+  // контакторы
+  "km-25": 25, "km-40": 40,
+  // шины
+  "bus-n": 63, "bus-3p": 63, "bus-cu25": 160, "bus-cu40": 250,
+};
+
+export const CATALOG: Equipment[] = RAW.map((e) =>
+  CURRENT[e.id] !== undefined ? { ...e, ratedCurrent: CURRENT[e.id] } : e
+);
 
 export const findEq = (id: string): Equipment | undefined =>
   CATALOG.find((e) => e.id === id);
