@@ -1,0 +1,52 @@
+# ============================================================
+# TKP·PRO — непрерывная интеграция.
+#   • frontend: установка зависимостей → Vitest → production-сборка;
+#   • backend:  xUnit-тесты → сборка API в Release.
+# Запускается на каждый push в main и на каждый Pull Request.
+# ============================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  frontend:
+    name: Frontend — тесты + сборка
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Зависимости
+        run: npm ci
+
+      - name: Модульные тесты (Vitest)
+        run: npx vitest run
+
+      - name: Production-сборка
+        run: npm run build
+
+  backend:
+    name: Backend — тесты + сборка
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Модульные тесты (xUnit)
+        run: dotnet test backend/TkpApi.Tests --verbosity normal
+
+      - name: Сборка API (Release)
+        run: dotnet build backend/TkpApi --configuration Release
