@@ -331,7 +331,7 @@ export const useStore = create<StoreState>()(
                       ...c.items,
                       {
                         id: genId("li"), eqId: eq.id, sku: eq.sku, name: eq.name, brand: eq.brand,
-                        unit: eq.unit, qty, price: eq.price, purchase: eq.purchase,
+                        unit: eq.unit, qty, purchase: eq.purchase,
                       },
                     ],
                   };

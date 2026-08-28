@@ -187,7 +187,7 @@ export default function StructureTab({ project, onOpenWizard }: { project: Proje
                             <th className="w-9 py-2 pl-4">№</th>
                             <th className="py-2">Наименование</th>
                             <th className="w-[118px] py-2">Кол-во</th>
-                            <th className="hidden w-24 py-2 md:table-cell">Цена, ₽</th>
+                            <th className="hidden w-24 py-2 md:table-cell">Закупка, ₽</th>
                             <th className="w-28 py-2 text-right">Сумма</th>
                             <th className="w-10 py-2 pr-3"></th>
                           </tr>
@@ -209,12 +209,12 @@ export default function StructureTab({ project, onOpenWizard }: { project: Proje
                                 <td className="hidden py-2 pr-2 align-top md:table-cell">
                                   <NumInput
                                     className="h-7 w-[86px] px-1.5 text-[12px]"
-                                    value={it.price}
+                                    value={it.purchase}
                                     step={10}
-                                    onChange={(v) => updateItem(project.id, c.id, it.id, { price: Math.max(0, v) })}
+                                    onChange={(v) => updateItem(project.id, c.id, it.id, { purchase: Math.max(0, v) })}
                                   />
                                 </td>
-                                <td className="py-2 pr-1 text-right align-top font-mono text-[12.5px] font-bold text-ink tabular-nums">{fmtMoney(it.price * it.qty)}</td>
+                                <td className="py-2 pr-1 text-right align-top font-mono text-[12.5px] font-bold text-ink tabular-nums">{fmtMoney(it.purchase * it.qty)}</td>
                                 <td className="py-2 pr-2 text-right align-top">
                                   <span className="opacity-0 transition-opacity group-hover:opacity-100">
                                     <IconBtn title="Убрать позицию" danger onClick={() => removeItem(project.id, c.id, it.id)}>
@@ -495,7 +495,10 @@ function CatalogPanel({
                 )}
               </div>
             </div>
-            <span className="shrink-0 font-mono text-[12px] font-bold text-ink tabular-nums">{fmtMoney(e.price)}</span>
+            <span className="shrink-0 text-right">
+              <span className="block font-mono text-[12px] font-bold text-ink tabular-nums">{fmtMoney(e.purchase)}</span>
+              <span className="block text-[9px] font-semibold text-mute uppercase">закупка</span>
+            </span>
             <button
               type="button"
               title="Добавить в выбранный шкаф"

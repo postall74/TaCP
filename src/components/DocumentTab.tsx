@@ -25,6 +25,8 @@ export default function DocumentTab({ project }: { project: Project }) {
   const toast = useStore((s) => s.toast);
   const calc = calcProject(project, useStore.getState().settings.rates);
   const dir = DIRECTIONS[project.direction];
+  // Цена для заказчика = закупка × (1 + наценка%). Наценка применяется один раз.
+  const sellUnit = (purchase: number) => purchase * (1 + project.markup / 100);
 
   const autoItems = useMemo(() => {
     const map = new Map<string, (typeof catalog)[number]>();
@@ -158,8 +160,8 @@ h1{font-size:19px}h3{font-size:13.5px}</style></head><body>${inner}</body></html
                       </td>
                       <td style={{ ...tdS, textAlign: "center" }}>{fmtNum(it.qty)}</td>
                       <td style={{ ...tdS, textAlign: "center" }}>{it.unit}</td>
-                      <td style={{ ...tdS, textAlign: "right" }}>{fmtMoney(it.price)}</td>
-                      <td style={{ ...tdS, textAlign: "right", fontWeight: 700 }}>{fmtMoney(it.price * it.qty)}</td>
+                      <td style={{ ...tdS, textAlign: "right" }}>{fmtMoney(sellUnit(it.purchase))}</td>
+                      <td style={{ ...tdS, textAlign: "right", fontWeight: 700 }}>{fmtMoney(sellUnit(it.purchase) * it.qty)}</td>
                     </tr>
                   ))}
                   <tr>

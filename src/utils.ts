@@ -93,8 +93,9 @@ export interface ProjCalc {
  */
 export function calcProject(p: Pick<Project, "cabinets"> & CalcFields, rates: Rates): ProjCalc {
   const cabs: CabCalc[] = p.cabinets.map((cab) => {
-    const eqBase = cab.items.reduce((s, i) => s + i.price * i.qty, 0);
+    // НОВАЯ МОДЕЛЬ ЦЕН: база наценки = закупочная стоимость (наценка применяется один раз).
     const eqCost = cab.items.reduce((s, i) => s + i.purchase * i.qty, 0);
+    const eqBase = eqCost;
     const markupSum = eqBase * (p.markup / 100);
     const laborCost = cab.hours * rates.production + cab.designHours * rates.design + cab.softwareHours * rates.software;
     const laborSell = laborCost * (1 + p.workMarkup / 100);
@@ -135,9 +136,10 @@ export function calcProject(p: Pick<Project, "cabinets"> & CalcFields, rates: Ra
 /* ------------------------- CSV (импорт/экспорт прайсов) ------------------------- */
 
 export function exportCatalogCsv(items: Equipment[]): string {
-  const head = "артикул;наименование;бренд;категория;направление;ед;закупка;цена;характеристики";
+  // 8 колонок: единственная цена — закупочная (наценка добавляется при расчёте)
+  const head = "артикул;наименование;бренд;категория;направление;ед;закупка;характеристики";
   const rows = items.map((e) =>
-    [e.sku, e.name, e.brand, e.category, e.direction, e.unit, e.purchase, e.price, e.attrs ?? ""].join(";")
+    [e.sku, e.name, e.brand, e.category, e.direction, e.unit, e.purchase, e.attrs ?? ""].join(";")
   );
   return "\uFEFF" + [head, ...rows].join("\r\n");
 }
@@ -161,14 +163,14 @@ export function parseCatalogCsv(text: string): CsvResult {
     const cells = lines[idx].split(delim).map((c) => c.trim().replace(/^"|"$/g, ""));
     if (idx === 0 && /артикул|sku|наименование/i.test(cells[0])) continue;
     if (cells.length < 6) { skipped++; continue; }
-    const [sku, name, brand, category, direction, unit, purchase, price, attrs] = cells;
+    // 8 колонок: закупка — c[6] (единственная цена, обязательна), характеристики — c[7]
+    const [sku, name, brand, category, direction, unit, purchase, attrs] = cells;
     const p = Number(String(purchase).replace(",", ".").replace(/\s/g, ""));
-    const s = Number(String(price).replace(",", ".").replace(/\s/g, ""));
-    if (!sku || !name || Number.isNaN(s)) { skipped++; continue; }
+    if (!sku || !name || Number.isNaN(p)) { skipped++; continue; }
     items.push({
       sku, name, brand: brand || "—", category: category || "Прочее",
       direction: dirMap[(direction || "uni").toLowerCase()] ?? "uni",
-      unit: unit || "шт", purchase: Number.isNaN(p) ? 0 : p, price: s, attrs: attrs || undefined,
+      unit: unit || "шт", purchase: p, attrs: attrs || undefined,
     });
   }
   return { items, skipped };

@@ -9,7 +9,9 @@ export type Direction = "nku" | "asu" | "heat";
 export type ProjectStatus = "draft" | "calc" | "sent" | "won" | "lost";
 export type Theme = "light" | "dark";
 
-/** Справочник оборудования (EquipmentCatalog). */
+/** Справочник оборудования (EquipmentCatalog).
+    НОВАЯ МОДЕЛЬ ЦЕН: единственная цена — закупочная (purchase).
+    Цена продажи = purchase × (1 + проект.markup/100) — считается один раз при расчёте. */
 export interface Equipment {
   id: string;
   sku: string;
@@ -18,14 +20,14 @@ export interface Equipment {
   category: string;
   direction: Direction | "uni";
   unit: string;
-  purchase: number; // закупочная цена — для себестоимости
-  price: number; // цена продажи
+  purchase: number; // закупочная цена — единственная цена справочника (наценка добавляется при расчёте)
   attrs?: string; // характеристики: "напольный, IP54", "4-20 мА"…
   /** Номинальный ток, А — для проверки совместимости (см. utils/rules.ts). Заполняется из таблицы токов в каталоге. */
   ratedCurrent?: number;
 }
 
-/** Позиция в составе шкафа — снимок цены из справочника на момент добавления. */
+/** Позиция в составе шкафа — снимок ЗАКУПОЧНОЙ цены из справочника на момент добавления.
+    Цена продажи не хранится — вычисляется от purchase и наценки проекта. */
 export interface LineItem {
   id: string;
   eqId: string;
@@ -34,8 +36,7 @@ export interface LineItem {
   brand: string;
   unit: string;
   qty: number;
-  price: number;
-  purchase: number;
+  purchase: number; // закупочная цена (снимок)
 }
 
 /** Шкаф / секция / линейка (ProjectStructure). hours — сборка (производство). */
