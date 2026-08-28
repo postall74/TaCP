@@ -25,16 +25,16 @@ public static class CatalogCsv
 
     /// <summary>
     /// Разбор одной строки формата
-    /// «артикул;наименование;бренд;категория;направление;ед;закупка;цена;характеристики».
+    /// «артикул;наименование;бренд;категория;направление;ед;закупка;характеристики»
+    /// (новая модель: единственная цена — закупочная, наценка добавляется при расчёте).
     /// Возвращает null для заголовка и некорректных строк.
     /// </summary>
     public static Equipment? ParseLine(string line)
     {
         if (IsHeader(line)) return null;
         var c = line.Trim().Split(';');
-        if (c.Length < 8) return null;                                   // слишком короткая
-        if (!Dec(c[7], out var price)) return null;                      // нет валидной цены
-        Dec(c[6], out var purchase);                                     // закупка может отсутствовать
+        if (c.Length < 7) return null;                                   // слишком короткая
+        if (!Dec(c[6], out var purchase)) return null;                   // закупка — единственная цена, обязательна
         return new Equipment
         {
             Sku = c[0].Trim(),
@@ -44,8 +44,7 @@ public static class CatalogCsv
             Direction = ParseDir(c[4]),
             Unit = string.IsNullOrWhiteSpace(c[5]) ? "шт" : c[5].Trim(),
             Purchase = purchase,
-            Price = price,
-            Attrs = c.Length > 8 && !string.IsNullOrWhiteSpace(c[8]) ? c[8].Trim() : null,
+            Attrs = c.Length > 7 && !string.IsNullOrWhiteSpace(c[7]) ? c[7].Trim() : null,
         };
     }
 
@@ -76,7 +75,7 @@ public static class CatalogCsv
             {
                 ex.Name = e.Name; ex.Brand = e.Brand; ex.Category = e.Category;
                 ex.Direction = e.Direction; ex.Unit = e.Unit;
-                ex.Purchase = e.Purchase; ex.Price = e.Price; ex.Attrs = e.Attrs;
+                ex.Purchase = e.Purchase; ex.Attrs = e.Attrs;
                 updated++;
             }
             else

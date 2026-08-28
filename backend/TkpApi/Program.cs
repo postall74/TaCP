@@ -132,7 +132,7 @@ app.MapPost("/api/cabinets/{id}/items", async (string id, string equipmentId, de
     else cab.Items.Add(new LineItem
     {
         EqId = eq.Id, Sku = eq.Sku, Name = eq.Name, Brand = eq.Brand,
-        Unit = eq.Unit, Qty = qty, Price = eq.Price, Purchase = eq.Purchase
+        Unit = eq.Unit, Qty = qty, Purchase = eq.Purchase
     });
     await db.SaveChangesAsync();
     return Results.Ok(cab.Items);
@@ -146,7 +146,7 @@ app.MapPost("/api/projects/{id}/versions", async (string id, string? label, TkpD
                              .Include(x => x.Versions).FirstOrDefaultAsync(x => x.Id == id);
     if (p is null) return Results.NotFound();
 
-    var eqBase = p.Cabinets.Sum(c => c.Items.Sum(i => i.Price * i.Qty));
+    var eqBase = p.Cabinets.Sum(c => c.Items.Sum(i => i.Purchase * i.Qty)); // база = закупочная
     var snapshot = JsonSerializer.SerializeToElement(new
     {
         cabinets = p.Cabinets,

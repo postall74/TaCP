@@ -20,6 +20,12 @@ public class CalcEngineTests
     {
         var p = new Project
         {
+            // Обнуляем все экономические поля: иначе дефолты (Markup=15, ТЗР=1,
+            // Непредвиденные=2, НДС=20) примешиваются к проверяемым значениям.
+            Markup = 0, WorkMarkup = 0, Discount = 0, VatRate = 0,
+            TzzPct = 0, ThirdParty = 0, ExtraCosts = 0, UnforeseenPct = 0,
+            TripCosts = 0, TransportPct = 0,
+            SmrCost = 0, SmrSell = 0, PnrCost = 0, PnrSell = 0,
             Cabinets = new List<Cabinet>
             {
                 new()
@@ -27,8 +33,8 @@ public class CalcEngineTests
                     Kind = "ЩР", Name = "Шкаф 1",
                     Items = new List<LineItem>
                     {
-                        new() { Qty = 2, Price = 1000, Purchase = 700 },
-                        new() { Qty = 1, Price = 500, Purchase = 300 },
+                        new() { Qty = 2, Purchase = 1000 },   // единственная цена — закупочная
+                        new() { Qty = 1, Purchase = 500 },
                     },
                 },
             },
@@ -43,8 +49,8 @@ public class CalcEngineTests
     public void Calc_BaseSums()
     {
         var c = CalcEngine.Calc(Make(), TestRates);
-        Assert.Equal(2500m, c.EqBase);   // 2×1000 + 1×500
-        Assert.Equal(1700m, c.EqCost);   // 2×700 + 1×300
+        Assert.Equal(2500m, c.EqBase);   // база наценки = 2×1000 + 1×500
+        Assert.Equal(2500m, c.EqCost);   // новая модель: EqBase == EqCost (закупочная)
         Assert.Equal(2, c.PosCount);
     }
 
@@ -95,17 +101,17 @@ public class CalcEngineTests
     public void Calc_ProfitMarginMarkup()
     {
         var c = CalcEngine.Calc(Make(p => p.Markup = 50), TestRates);
-        Assert.Equal(2050m, c.Profit);                        // 3750 − 1700
-        Assert.Equal(R2(2050m / 3750m * 100m), R2(c.MarginPct));
-        Assert.Equal(R2(2050m / 1700m * 100m), R2(c.MarkupPct));
+        Assert.Equal(1250m, c.Profit);                        // 3750 − 2500 (наценка один раз к закупке)
+        Assert.Equal(R2(1250m / 3750m * 100m), R2(c.MarginPct));
+        Assert.Equal(R2(1250m / 2500m * 100m), R2(c.MarkupPct));
     }
 
     [Fact]
     public void Calc_TzzAndUnforeseen()
     {
         var c = CalcEngine.Calc(Make(p => { p.TzzPct = 1; p.UnforeseenPct = 2; }), TestRates);
-        Assert.Equal(17m, c.TzzSum);                          // 1% от 1700
-        var basis = 1700m + 17m;                              // + сторонние/ФОТ/доп = 0
+        Assert.Equal(25m, c.TzzSum);                          // 1% от 2500 (закупочная)
+        var basis = 2500m + 25m;                              // + сторонние/ФОТ/доп = 0
         Assert.Equal(R2(basis * 0.02m), R2(c.UnforeseenSum));
         Assert.Equal(R2(basis * 1.02m), R2(c.PlannedCost));
     }
