@@ -24,7 +24,8 @@ namespace TkpApi;
 public record CabinetCalc(
     Cabinet Cab,
     decimal EqBase,       // база наценки = Σ закупка×кол-во (в новой модели равна EqCost)
-    decimal EqCost,       // Σ закупка×кол-во (себестоимость оборудования)    decimal MarkupSum,    // наценка на оборудование
+    decimal EqCost,       // Σ закупка×кол-во (себестоимость оборудования)
+    decimal MarkupSum,    // наценка на оборудование
     decimal LaborCost,    // ФОТ по ролям (себестоимость работ)
     decimal LaborSell,    // работы к продаже
     decimal Total,        // продажная стоимость шкафа

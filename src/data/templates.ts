@@ -14,7 +14,7 @@ const li = (eqId: string, qty: number): LineItem => {
   if (!e) throw new Error(`Нет позиции ${eqId} в справочнике`);
   return {
     id: nid("li"), eqId, sku: e.sku, name: e.name, brand: e.brand, unit: e.unit,
-    qty, price: e.price, purchase: e.purchase,
+    qty, purchase: e.purchase,
   };
 };
 

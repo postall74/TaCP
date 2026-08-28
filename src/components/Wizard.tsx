@@ -76,7 +76,7 @@ const STEP_META: { id: StepId; title: string; desc: string }[] = [
 const li = (eqId: string, qty: number): LineItem | null => {
   const e = findEq(eqId);
   if (!e || qty <= 0) return null;
-  return { id: genId("li"), eqId, sku: e.sku, name: e.name, brand: e.brand, unit: e.unit, qty, price: e.price, purchase: e.purchase };
+  return { id: genId("li"), eqId, sku: e.sku, name: e.name, brand: e.brand, unit: e.unit, qty, purchase: e.purchase };
 };
 
 /** Объединяет повторяющиеся позиции (например, реле из разных шагов). */
@@ -169,10 +169,10 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
     if (d.cabNeed) {
       if (d.cabId) items.push(li(d.cabId, 1));
       else if (d.manualOn && d.manualName.trim()) {
-        const price = Math.max(1, d.manualPrice);
+        const purchase = Math.max(1, d.manualPrice); // вводится закупочная цена
         items.push({
           id: genId("li"), eqId: "manual-enclosure", sku: "РУЧНОЙ-ВВОД", name: d.manualName.trim(),
-          brand: "—", unit: "шт", qty: 1, price, purchase: Math.round(price * 0.7),
+          brand: "—", unit: "шт", qty: 1, purchase,
         });
       }
     }
@@ -235,8 +235,8 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
       }
     }
 
-    const eqSum = main.reduce((s, i) => s + i.price * i.qty, 0);
-    const zipSum = zipItems.reduce((s, i) => s + i.price * i.qty, 0);
+    const eqSum = main.reduce((s, i) => s + i.purchase * i.qty, 0);
+    const zipSum = zipItems.reduce((s, i) => s + i.purchase * i.qty, 0);
     return { main, zipItems, eqSum, zipSum };
   }, [d]);
 
@@ -260,7 +260,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
       upsertEquipment({
         id: genId("eq"), sku: "РУЧНОЙ-ВВОД", name: d.manualName.trim(), brand: "—",
         category: "Корпуса и щиты", direction: project.direction, unit: "шт",
-        purchase: Math.round(d.manualPrice * 0.7), price: d.manualPrice,
+        purchase: Math.max(1, d.manualPrice),
         attrs: "добавлено вручную из мастера подбора",
       });
     }
@@ -562,7 +562,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                       {bundle.main.map((it) => (
                         <div key={it.id} className="flex items-center justify-between gap-3 border-b border-line/60 py-1 text-[12.5px] last:border-0">
                           <span className="truncate text-ink2">{it.name}</span>
-                          <span className="font-mono font-bold whitespace-nowrap text-ink">{it.qty} {it.unit} · {fmtMoney(it.price * it.qty)}</span>
+                          <span className="font-mono font-bold whitespace-nowrap text-ink">{it.qty} {it.unit} · {fmtMoney(it.purchase * it.qty)}</span>
                         </div>
                       ))}
                       {bundle.main.length === 0 && <div className="py-2 text-[12.5px] text-mute">Позиции не выбраны — вернитесь на предыдущие шаги.</div>}
@@ -718,7 +718,9 @@ function EncCard({ e, active, ip, note, onClick }: { e: Equipment; active: boole
         {note && <span className="rounded bg-warn-soft px-1.5 py-0.5 font-mono text-[9.5px] font-bold text-warn">{note}</span>}
       </div>
       <div className="mt-1 pl-6 text-[11px] text-mute">{e.attrs ?? e.brand}</div>
-      <div className="mt-1 pl-6 font-mono text-[13px] font-bold text-ink">{fmtMoney(e.price)}</div>
+      <div className="mt-1 pl-6 font-mono text-[13px] font-bold text-ink">
+        {fmtMoney(e.purchase)} <span className="text-[9px] font-semibold text-mute uppercase">закупка</span>
+      </div>
     </button>
   );
 }
@@ -758,5 +760,5 @@ function SumChip({ label, value }: { label: string; value: string }) {
 
 const idToOpt = (id: string) => {
   const e = findEq(id);
-  return { value: id, label: e ? `${e.sku} — ${e.name.slice(0, 42)} · ${fmtMoney(e.price)}` : id };
+  return { value: id, label: e ? `${e.sku} — ${e.name.slice(0, 42)} · ${fmtMoney(e.purchase)}` : id };
 };

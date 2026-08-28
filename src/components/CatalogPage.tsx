@@ -124,8 +124,7 @@ export default function CatalogPage() {
                 <th className="py-2.5">Категория</th>
                 <th className="py-2.5">Направление</th>
                 <th className="py-2.5">Ед.</th>
-                <th className="py-2.5 text-right">Закупка</th>
-                <th className="py-2.5 pr-2 text-right">Цена продажи</th>
+                <th className="py-2.5 pr-2 text-right">Закупка (ед. цена)</th>
                 <th className="w-20 py-2.5 pr-3"></th>
               </tr>
             </thead>
@@ -141,8 +140,7 @@ export default function CatalogPage() {
                   <td className="py-2.5 pr-3 text-[12px] whitespace-nowrap text-mute">{e.category}</td>
                   <td className="py-2.5 pr-3 whitespace-nowrap">{dirBadge(e.direction)}</td>
                   <td className="py-2.5 pr-3 font-mono text-[11.5px] text-mute">{e.unit}</td>
-                  <td className="py-2.5 text-right font-mono text-[12px] text-mute tabular-nums">{fmtMoney(e.purchase)}</td>
-                  <td className="py-2.5 pr-2 text-right font-mono text-[12.5px] font-bold text-ink tabular-nums">{fmtMoney(e.price)}</td>
+                  <td className="py-2.5 pr-2 text-right font-mono text-[12.5px] font-bold text-ink tabular-nums">{fmtMoney(e.purchase)}</td>
                   <td className="py-2.5 pr-2 text-right">
                     <span className="flex justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                       <IconBtn title="Редактировать" onClick={() => setEditTarget(e)}>
@@ -227,7 +225,7 @@ function EquipmentModal({
   const base: Equipment =
     target && target !== "new"
       ? target
-      : { id: genId("eq"), sku: "", name: "", brand: "", category: CATEGORIES[0], direction: "nku", unit: "шт", purchase: 0, price: 0, attrs: "" };
+      : { id: genId("eq"), sku: "", name: "", brand: "", category: CATEGORIES[0], direction: "nku", unit: "шт", purchase: 0, attrs: "" };
   const [f, setF] = useState<Equipment>(base);
 
   // синхронизация при смене target
@@ -239,7 +237,7 @@ function EquipmentModal({
 
   if (!target) return null;
 
-  const valid = f.sku.trim() && f.name.trim() && f.price > 0;
+  const valid = f.sku.trim() && f.name.trim() && f.purchase > 0;
 
   return (
     <Modal
@@ -254,7 +252,7 @@ function EquipmentModal({
             disabled={!valid}
             onClick={() => {
               if (!valid) {
-                toast("Заполните артикул, название и цену продажи", "err");
+                toast("Заполните артикул, название и закупочную цену", "err");
                 return;
               }
               onSave({ ...f, attrs: f.attrs?.trim() || undefined });
@@ -287,19 +285,14 @@ function EquipmentModal({
         <Field label="Характеристики">
           <Input value={f.attrs ?? ""} onChange={(v) => setF({ ...f, attrs: v })} placeholder="6 кА, 230 В" />
         </Field>
-        <Field label="Цена закупки, ₽">
+        <Field label="Закупочная цена, ₽" hint="Единственная цена. Цена продажи считается по наценке проекта.">
           <NumInput value={f.purchase} onChange={(v) => setF({ ...f, purchase: Math.max(0, v) })} step={10} />
         </Field>
-        <Field label="Цена продажи, ₽">
-          <NumInput value={f.price} onChange={(v) => setF({ ...f, price: Math.max(0, v) })} step={10} />
-        </Field>
       </div>
-      {f.purchase > 0 && f.price > 0 && (
-        <div className="mt-3 rounded-md bg-ok-soft px-3 py-2 font-mono text-[11.5px] text-ok">
-          Маржа позиции: {(((f.price - f.purchase) / f.price) * 100).toFixed(1)} % · наценка{" "}
-          {(((f.price - f.purchase) / f.purchase) * 100).toFixed(0)} %
-        </div>
-      )}
+      <div className="mt-3 rounded-md bg-paper px-3 py-2 text-[11.5px] leading-relaxed text-mute">
+        Цена продажи не хранится в справочнике — она вычисляется один раз при расчёте ТКП:
+        <b className="text-ink2"> закупка × (1 + наценка %)</b>, где наценка задаётся в проекте.
+      </div>
     </Modal>
   );
 }

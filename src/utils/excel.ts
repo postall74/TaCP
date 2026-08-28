@@ -19,11 +19,14 @@ const sheetName = (s: string) =>
 export function exportProjectXlsx(project: Project, calc: ProjCalc, settings: Settings) {
   const wb = XLSX.utils.book_new();
 
+  /* Цена продажи для заказчика = закупка × (1 + наценка%). Наценка применяется один раз. */
+  const sellUnit = (purchase: number) => purchase * (1 + project.markup / 100);
+
   /* ---------- вкладки шкафов ---------- */
   calc.cabs.forEach((cc, i) => {
     const rows: (string | number)[][] = [
       ["№", "Наименование", "Артикул", "Бренд", "Кол-во", "Ед.", "Цена за ед., ₽", "Сумма, ₽"],
-      ...cc.cab.items.map((it, ii) => [ii + 1, it.name, it.sku, it.brand, it.qty, it.unit, r2(it.price), r2(it.price * it.qty)]),
+      ...cc.cab.items.map((it, ii) => [ii + 1, it.name, it.sku, it.brand, it.qty, it.unit, r2(sellUnit(it.purchase)), r2(sellUnit(it.purchase) * it.qty)]),
       [],
       ["", "", "", "", "", "", "Оборудование (с наценкой):", r2(cc.eqBase + cc.markupSum)],
       ["", "", "", "", "", "", "Работы (сборка + проект + ПО):", r2(cc.laborSell)],
