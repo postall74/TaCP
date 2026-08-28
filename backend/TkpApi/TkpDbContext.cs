@@ -1,13 +1,18 @@
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace TkpApi;
 
 /* ============================================================
-   КОНТЕКСТ EF CORE: схема PostgreSQL (см. DOCS.md, раздел 3).
+   КОНТЕКСТ EF CORE: схема PostgreSQL (см. DOCS.md).
+   Наследуем IdentityDbContext<AppUser> — при EnsureCreated/миграциях
+   создаются и таблицы Identity (AspNetUsers, AspNetRoles, AspNetUserRoles…),
+   и наши доменные таблицы.
+
    Создание БД:  dotnet ef migrations add Init && dotnet ef database update
    ============================================================ */
 
-public class TkpDbContext(DbContextOptions<TkpDbContext> options) : DbContext(options)
+public class TkpDbContext(DbContextOptions<TkpDbContext> options) : IdentityDbContext<AppUser>(options)
 {
     public DbSet<Equipment> Equipment => Set<Equipment>();
     public DbSet<Project> Projects => Set<Project>();
@@ -17,19 +22,22 @@ public class TkpDbContext(DbContextOptions<TkpDbContext> options) : DbContext(op
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
+        // таблицы Identity (пользователи, роли, связи)
+        base.OnModelCreating(mb);
+
         mb.Entity<Equipment>(e =>
         {
             e.ToTable("equipment_catalog");
             e.HasIndex(x => x.Sku).IsUnique();
             e.Property(x => x.Purchase).HasColumnType("numeric(12,2)");
-            e.Property(x => x.Price).HasColumnType("numeric(12,2)");
+            e.Property(x => x.RatedCurrent).HasColumnType("numeric(8,2)");
         });
 
         mb.Entity<Project>(p =>
         {
             p.ToTable("projects");
             p.HasIndex(x => x.Number).IsUnique();
-            // cascade: проект удаляется вместе со шкафами и версиями
+            p.HasIndex(x => x.OwnerId); // фильтр «мои проекты»
             p.HasMany(x => x.Cabinets).WithOne().OnDelete(DeleteBehavior.Cascade);
             p.HasMany(x => x.Versions).WithOne().OnDelete(DeleteBehavior.Cascade);
         });
@@ -44,7 +52,6 @@ public class TkpDbContext(DbContextOptions<TkpDbContext> options) : DbContext(op
         {
             i.ToTable("project_items");
             i.Property(x => x.Qty).HasColumnType("numeric(12,3)");
-            i.Property(x => x.Price).HasColumnType("numeric(12,2)");
             i.Property(x => x.Purchase).HasColumnType("numeric(12,2)");
         });
 
