@@ -9,7 +9,7 @@ namespace TkpApi.Tests;
 
 public class CatalogCsvTests
 {
-    private const string Valid = "KM1-40;Контактор 40А;IEK;Контакторы и реле;нку;шт;1450;2290;AC-3";
+    private const string Valid = "KM1-40;Контактор 40А;IEK;Контакторы и реле;нку;шт;1450;AC-3";
 
     [Fact]
     public void ParseLine_ValidRow_FillsAllFields()
@@ -23,15 +23,14 @@ public class CatalogCsvTests
         Assert.Equal("Контакторы и реле", e.Category);
         Assert.Equal(Direction.Nku, e.Direction);
         Assert.Equal("шт", e.Unit);
-        Assert.Equal(1450m, e.Purchase);
-        Assert.Equal(2290m, e.Price);
+        Assert.Equal(1450m, e.Purchase);   // единственная цена — закупочная
         Assert.Equal("AC-3", e.Attrs);
     }
 
     [Fact]
     public void ParseLine_Header_ReturnsNull()
     {
-        var header = "артикул;наименование;бренд;категория;направление;ед;закупка;цена;характеристики";
+        var header = "артикул;наименование;бренд;категория;направление;ед;закупка;характеристики";
         Assert.Null(CatalogCsv.ParseLine(header));
         Assert.True(CatalogCsv.IsHeader(header));
     }
@@ -45,7 +44,7 @@ public class CatalogCsvTests
     [Fact]
     public void ParseLine_InvalidPrice_ReturnsNull()
     {
-        Assert.Null(CatalogCsv.ParseLine("X;N;B;C;нку;шт;100;НЕЧИСЛО;"));
+        Assert.Null(CatalogCsv.ParseLine("X;N;B;C;нку;шт;НЕЧИСЛО;")); // закупка (c[6]) не число
     }
 
     [Theory]
@@ -55,9 +54,9 @@ public class CatalogCsvTests
     [InlineData(" 2 290 ", 2290.0)]
     public void ParseLine_PriceFormats_ParsedInvariant(string raw, double expected)
     {
-        var e = CatalogCsv.ParseLine($"X;N;B;C;нку;шт;0;{raw};");
+        var e = CatalogCsv.ParseLine($"X;N;B;C;нку;шт;{raw};"); // закупка — c[6]
         Assert.NotNull(e);
-        Assert.Equal((decimal)expected, e!.Price);
+        Assert.Equal((decimal)expected, e!.Purchase);
     }
 
     [Theory]
@@ -79,10 +78,10 @@ public class CatalogCsvTests
     public void Parse_MultiLine_KeepsValidDropsHeaderAndBad()
     {
         var text = string.Join("\n",
-            "артикул;наименование;бренд;категория;направление;ед;закупка;цена;характеристики",
-            "A1;Поз. 1;B1;К1;нку;шт;10;20;",
+            "артикул;наименование;бренд;категория;направление;ед;закупка;характеристики",
+            "A1;Поз. 1;B1;К1;нку;шт;10;",
             "битая строка",
-            "A2;Поз. 2;B2;К2;асу;шт;30;40;");
+            "A2;Поз. 2;B2;К2;асу;шт;30;");
 
         var items = CatalogCsv.Parse(text);
 

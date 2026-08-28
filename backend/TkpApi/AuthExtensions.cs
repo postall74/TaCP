@@ -101,7 +101,7 @@ public static class AuthExtensions
             var user = new AppUser
             {
                 UserName = dto.Email, Email = dto.Email,
-                FullName = dto.FullName, Position = dto.Position,
+                FullName = dto.FullName, Position = dto.Position ?? "",
             };
             var res = await users.CreateAsync(user, dto.Password);
             if (!res.Succeeded)

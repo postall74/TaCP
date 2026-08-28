@@ -10,21 +10,21 @@ namespace TkpApi;
    • единые контракты CabinetCalc/ProjectCalc удобны для генерации
      документов (PDF/Word/Excel) на сервере (QuestPDF — дорожная карта).
 
-   Формулы — ровно те, что описаны в DOCS.md:
-     Шкаф:  eqBase = Σ цена×кол-во;
-            laborCost = Σ часы_роли × ставка_роли;
-            laborSell = laborCost × (1 + workMarkup/100);
-            sell = eqBase×(1+markup/100) + laborSell.
-     Проект: себестоимость = eqCost + ТЗР% + сторонние + ФОТ + доп.затраты
-             + непредвиденные% + командировки + СМР + ПНР.
-     Продажа = шкафы + СМР_sell + ПНР_sell + доставка% → скидка% → НДС%.
-   ============================================================ */
+    Формулы — ровно те, что описаны в DOCS.md (новая модель цен):
+      Шкаф:  eqCost = Σ закупка×кол-во (себестоимость оборудования);
+             наценка применяется ОДИН раз к закупке: markupSum = eqCost × markup/100;
+             laborCost = Σ часы_роли × ставка_роли;
+             laborSell = laborCost × (1 + workMarkup/100);
+             sell = eqCost + markupSum + laborSell.
+      Проект: себестоимость = eqCost + ТЗР% + сторонние + ФОТ + доп.затраты
+              + непредвиденные% + командировки + СМР + ПНР.
+      Продажа = шкафы + СМР_sell + ПНР_sell + доставка% → скидка% → НДС%.
+    ============================================================ */
 
 public record CabinetCalc(
     Cabinet Cab,
-    decimal EqBase,       // Σ цена×кол-во
-    decimal EqCost,       // Σ закупка×кол-во (себестоимость оборудования)
-    decimal MarkupSum,    // наценка на оборудование
+    decimal EqBase,       // база наценки = Σ закупка×кол-во (в новой модели равна EqCost)
+    decimal EqCost,       // Σ закупка×кол-во (себестоимость оборудования)    decimal MarkupSum,    // наценка на оборудование
     decimal LaborCost,    // ФОТ по ролям (себестоимость работ)
     decimal LaborSell,    // работы к продаже
     decimal Total,        // продажная стоимость шкафа
@@ -60,8 +60,8 @@ public static class CalcEngine
     {
         var cabs = p.Cabinets.Select(cab =>
         {
-            var eqBase = cab.Items.Sum(i => i.Price * i.Qty);
-            var eqCost = cab.Items.Sum(i => i.Purchase * i.Qty);
+            var eqCost = cab.Items.Sum(i => i.Purchase * i.Qty); // себестоимость = закупочная
+            var eqBase = eqCost;                                 // наценка один раз: база наценки = закупка
             var markupSum = eqBase * (p.Markup / 100m);
             var laborCost = cab.Hours * r.Production
                           + cab.DesignHours * r.Design
