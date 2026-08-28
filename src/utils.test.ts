@@ -3,12 +3,15 @@ import type { Project, Rates } from "./types";
 import { calcProject, parseCatalogCsv, exportCatalogCsv, plural, fmtMoney } from "./utils";
 
 /* ============================================================
-   ТЕСТЫ РАСЧЁТНОГО ЯДРА И УТИЛИТ (utils.ts):
-   формулы экономики проекта, разбор CSV-прайсов, форматирование.
+   ТЕСТЫ РАСЧЁТНОГО ЯДРА И УТИЛИТ (utils.ts).
+   НОВАЯ МОДЕЛЬ ЦЕН: у позиций только purchase (закупочная);
+   наценка проекта применяется к ней один раз.
    ============================================================ */
 
 const RATES: Rates = { design: 1000, production: 1000, software: 2000, smr: 1000, pnr: 1000 };
 
+/** Проект с «чистой» экономикой: все проценты и суммы в нуле.
+    Каждый тест переопределяет только то, что проверяет. */
 const baseProject = (over: Partial<Project> = {}): Project =>
   ({
     id: "p1", number: "ТКП-1", title: "Тест", client: "", contact: "", direction: "nku",
@@ -20,8 +23,8 @@ const baseProject = (over: Partial<Project> = {}): Project =>
       {
         id: "c1", kind: "ЩР", name: "Шкаф 1", hours: 0, designHours: 0, softwareHours: 0,
         items: [
-          { id: "i1", eqId: "e1", sku: "A", name: "Поз. А", brand: "B", unit: "шт", qty: 2, price: 1000, purchase: 700 },
-          { id: "i2", eqId: "e2", sku: "B", name: "Поз. Б", brand: "B", unit: "шт", qty: 1, price: 500, purchase: 300 },
+          { id: "i1", eqId: "e1", sku: "A", name: "Поз. А", brand: "B", unit: "шт", qty: 2, purchase: 1000 },
+          { id: "i2", eqId: "e2", sku: "B", name: "Поз. Б", brand: "B", unit: "шт", qty: 1, purchase: 500 },
         ],
       },
     ],
@@ -29,10 +32,10 @@ const baseProject = (over: Partial<Project> = {}): Project =>
   }) as Project;
 
 describe("calcProject: базовые суммы", () => {
-  it("считает стоимость оборудования по шкафу", () => {
+  it("база наценки равна закупочной стоимости (наценка применяется один раз)", () => {
     const c = calcProject(baseProject(), RATES);
-    expect(c.eqBase).toBe(2500); // 2×1000 + 1×500
-    expect(c.eqCost).toBe(1700); // 2×700 + 1×300
+    expect(c.eqBase).toBe(2500); // 2×1000 + 1×500 — закупочные цены
+    expect(c.eqCost).toBe(2500); // в новой модели eqBase === eqCost
     expect(c.posCount).toBe(2);
   });
 
@@ -56,7 +59,7 @@ describe("calcProject: базовые суммы", () => {
 
 describe("calcProject: скидки, НДС, маржа", () => {
   it("скидка применяется к базе продажи, НДС — после скидки", () => {
-    const c = calcProject(baseProject({ markup: 0, discount: 10, vatRate: 20 }), RATES);
+    const c = calcProject(baseProject({ discount: 10, vatRate: 20 }), RATES);
     expect(c.sellBase).toBeCloseTo(2500);
     expect(c.discountSum).toBeCloseTo(250);
     expect(c.afterDiscount).toBeCloseTo(2250);
@@ -70,42 +73,42 @@ describe("calcProject: скидки, НДС, маржа", () => {
     expect(c.total).toBeCloseTo(c.afterDiscount);
   });
 
-  it("маржа и наценка считаются от себестоимости", () => {
+  it("прибыль, рентабельность и наценка к себестоимости", () => {
     const c = calcProject(baseProject({ markup: 50 }), RATES);
-    // продажа 3750, себестоимость 1700 → прибыль 2050
-    expect(c.profit).toBeCloseTo(2050);
-    expect(c.marginPct).toBeCloseTo((2050 / 3750) * 100, 5);
-    expect(c.markupPct).toBeCloseTo((2050 / 1700) * 100, 5);
+    // продажа 3750, себестоимость 2500 → прибыль 1250
+    expect(c.profit).toBeCloseTo(1250);
+    expect(c.marginPct).toBeCloseTo((1250 / 3750) * 100, 5);
+    expect(c.markupPct).toBeCloseTo((1250 / 2500) * 100, 5);
   });
 
   it("ТЗР и непредвиденные входят в плановую себестоимость", () => {
     const c = calcProject(baseProject({ tzzPct: 1, unforeseenPct: 2 }), RATES);
-    expect(c.tzzSum).toBeCloseTo(17); // 1% от 1700
-    const base = 1700 + 17; // +0 сторонние/ФОТ/доп
+    expect(c.tzzSum).toBeCloseTo(25); // 1% от 2500
+    const base = 2500 + 25; // + сторонние/ФОТ/доп = 0
     expect(c.unforeseenSum).toBeCloseTo(base * 0.02);
     expect(c.plannedCost).toBeCloseTo(base * 1.02);
   });
 });
 
-describe("CSV: импорт прайсов", () => {
+describe("CSV: импорт прайсов (8 колонок, только закупка)", () => {
   const CSV = [
-    "артикул;наименование;бренд;категория;направление;ед;закупка;цена;характеристики",
-    "KM1-40;Контактор 40А;IEK;Контакторы и реле;нку;шт;1450;2290;AC-3",
-    "PLC-200;Контроллер;ОВЕН;ПЛК и модули;асу;шт;29800;39400;",
+    "артикул;наименование;бренд;категория;направление;ед;закупка;характеристики",
+    "KM1-40;Контактор 40А;IEK;Контакторы и реле;нку;шт;1450;AC-3",
+    "PLC-200;Контроллер;ОВЕН;ПЛК и модули;асу;шт;29800;",
     "битая строка без полей",
   ].join("\n");
 
-  it("разбирает валидные строки и пропускает заголовок и мусор", () => {
+  it("разбирает валидные строки, пропускает заголовок и мусор", () => {
     const r = parseCatalogCsv(CSV);
     expect(r.items).toHaveLength(2);
     expect(r.skipped).toBe(1);
     expect(r.items[0].sku).toBe("KM1-40");
-    expect(r.items[0].price).toBe(2290);
+    expect(r.items[0].purchase).toBe(1450);
     expect(r.items[1].direction).toBe("asu");
   });
 
   it("русские названия направлений мапятся в enum", () => {
-    const r = parseCatalogCsv("a;b;c;d;обогрев;м;1;2;\n");
+    const r = parseCatalogCsv("a;b;c;d;обогрев;м;1;\n");
     expect(r.items[0].direction).toBe("heat");
   });
 
@@ -115,6 +118,7 @@ describe("CSV: импорт прайсов", () => {
     const out = exportCatalogCsv(withId);
     const r2 = parseCatalogCsv(out);
     expect(r2.items.map((i) => i.sku)).toEqual(withId.map((i) => i.sku));
+    expect(r2.items.map((i) => i.purchase)).toEqual(withId.map((i) => i.purchase));
   });
 });
 
