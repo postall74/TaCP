@@ -120,7 +120,8 @@ export const useStore = create<StoreState>()(
       /* ---------- серверная синхронизация ---------- */
 
       const api = (): RestApi | null => {
-        const base = get().settings.apiBaseUrl.trim();
+        // защита от старых сохранённых настроек без apiBaseUrl
+        const base = (get().settings.apiBaseUrl ?? "").trim();
         return base ? restApi(base) : null;
       };
 
@@ -461,7 +462,9 @@ export const useStore = create<StoreState>()(
     },
     {
       name: "tkp-pro-v2",
-      version: 2,
+      // v3: у settings появились apiBaseUrl/apiOnline. Старые сохранённые настройки
+      // (без этих полей) приводили к краху при рендере — миграция дополняет их.
+      version: 3,
       // не сохраняем «летучие» поля: тосты, индикатор загрузки, статус соединения
       partialize: (s) =>
         ({
@@ -472,13 +475,14 @@ export const useStore = create<StoreState>()(
       // Миграция со старой структуры: дополняем проекты/настройки новыми полями.
       migrate: (persisted: unknown, version: number) => {
         const st = persisted as Partial<StoreState>;
-        if (version < 2 && st) {
+        if (version < 3 && st) {
           st.projects = (st.projects ?? []).map(normalizeProject) as Project[];
+          const old = (st.settings ?? {}) as Partial<Settings>;
           st.settings = {
             ...DEFAULT_SETTINGS,
-            ...(st.settings ?? {}),
-            rates: { ...DEFAULT_RATES, ...(st.settings?.rates ?? {}) },
-            apiBaseUrl: "",
+            ...old,
+            rates: { ...DEFAULT_RATES, ...(old.rates ?? {}) },
+            apiBaseUrl: typeof old.apiBaseUrl === "string" ? old.apiBaseUrl : "",
             apiOnline: null,
           };
         }

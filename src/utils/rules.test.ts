@@ -10,12 +10,12 @@ import { validateProject, validateCabinet, summarize, type ValidateCtx } from ".
 
 const eq = (p: Partial<Equipment> & { id: string }): Equipment => ({
   sku: "SKU", name: "Позиция", brand: "B", category: "Прочее", direction: "nku",
-  unit: "шт", purchase: 0, price: 0, ...p,
+  unit: "шт", purchase: 0, ...p,
 });
 
 const item = (e: Equipment, qty = 1): LineItem => ({
   id: `li-${e.id}`, eqId: e.id, sku: e.sku, name: e.name, brand: e.brand,
-  unit: e.unit, qty, price: e.price, purchase: e.purchase,
+  unit: e.unit, qty, purchase: e.purchase,
 });
 
 const cab = (items: LineItem[], id = "cab-1"): Cabinet => ({

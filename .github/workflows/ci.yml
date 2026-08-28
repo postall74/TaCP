@@ -29,8 +29,11 @@ jobs:
       - name: Зависимости
         run: npm ci
 
+      # npm test → vitest run (см. scripts.test в package.json).
+      # Именно локальная зависимость: npx без vitest в package.json
+      # ставил «левую» версию и падал на загрузке vitest.config.ts.
       - name: Модульные тесты (Vitest)
-        run: npx vitest run
+        run: npm test
 
       - name: Production-сборка
         run: npm run build
