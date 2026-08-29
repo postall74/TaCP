@@ -1,163 +1,116 @@
-# Git-воркфлоу проекта ТКП·Про
+# Регламент работы с Git и GitHub — ТКП·Про
 
-Правило проекта: **`main` — всегда рабочая, запускаемая версия**. Любое изменение
-(фича, фикс, рефакторинг) делается в отдельной ветке и попадает в `main` только
-через Pull Request. Это даёт точку отката на каждую решённую задачу.
+Цель: каждая задача — отдельная ветка и отдельный Pull Request, чтобы история была
+читаемой, а откат к любой рабочей версии — одной командой.
 
 ---
 
-## 1. Именование веток
+## 1. Ветки
 
-Формат: `<тип>/<короткое-описание-через-дефисы>`
+- **`main`** — всегда рабочая версия. Обновляется **только через PR** (включите защиту:
+  *Settings → Branches → Add rule → `main` → Require a pull request*).
+- Остальные ветки — под одну задачу:
 
-| Тип | Когда | Пример |
+| Префикс | Для чего | Пример |
 |---|---|---|
-| `feature/` | новая функциональность | `feature/wizard-ip67-fallback` |
-| `fix/` | исправление ошибки | `fix/excel-vat-rounding` |
-| `docs/` | документация | `docs/api-contracts` |
-| `refactor/` | перестройка без изменения поведения | `refactor/calc-to-server` |
-| `chore/` | обслуживание (зависимости, конфиги) | `chore/update-node-22` |
+| `feature/` | новая функциональность | `feature/compat-check`, `feature/auth-jwt-roles` |
+| `fix/` | исправление ошибки | `fix/db-schema-auth-wiring`, `fix/frontend-crash-tests-ci` |
+| `docs/` | документация | `docs/git-workflow` |
+| `refactor/` | перестройка без изменения поведения | `refactor/pricing-model` |
+| `chore/` | обвязка: CI, конфиги, зависимости | `chore/ci-vitest` |
 
-Если ведёте номера задач (GitHub Issues) — добавляйте: `feature/12-zip-min-qty`.
+## 2. Жизненный цикл задачи
 
-## 2. Жизненный цикл одной задачи (повторять для каждой)
-
-```bash
-# 0) Начинаем от свежего main
+```powershell
+# 1) начать от свежего main
 git checkout main
-git pull origin main
+git pull --rebase origin main
+git checkout -b feature/название
 
-# 1) Ветка под задачу
-git checkout -b feature/<описание>
+# 2) работать, коммитить (можно несколько коммитов)
+git add -A
+git commit -m "feat(модуль): что сделано" -m "Проблема: …" -m "Решение: …"
 
-# 2) Работаем… и коммитим небольшими порциями
-git add -A                     # или выборочно: git add src/store.ts
-git commit -m "feat(wizard): подсказка ближайшего IP, если IP67 нет в каталоге"
+# 3) опубликовать
+git push -u origin feature/название
 
-# 3) Публикуем ветку
-git push -u origin feature/<описание>
-
-# 4) На GitHub: New Pull Request → feature/… → main, заполняем шаблон
-# 5) После проверки — Squash and merge → ветку удалить (GitHub предложит сам)
-
-# 6) Возвращаемся к следующему циклу
+# 4) GitHub: Compare & pull request → заполнить шаблон (Проблема/Решение/Как проверить)
+# 5) Squash and merge → Confirm → Delete branch
+# 6) локально
 git checkout main
-git pull origin main
+git pull --rebase origin main
 ```
 
-**Почему squash merge:** вся ветка схлопывается в один коммит в `main` с текстом
-PR — история линейная, «одна задача = один коммит», откатываться `git revert`
-проще простого.
-
-## 3. Сообщения коммитов (Conventional Commits)
+## 3. Коммиты — Conventional Commits
 
 ```
-<тип>(<область>): <что сделано, повелительное наклонение, до 72 символов>
+<тип>(<область>): <кратко, что сделано>
 
-<зачем — контекст, проблема>
-
+Проблема: <почему это понадобилось>
 Решение: <как решили, ключевые файлы>
 ```
 
-Типы: `feat` (новое), `fix` (баг), `docs`, `refactor`, `style`, `test`, `chore`.
+Типы: `feat` · `fix` · `docs` · `refactor` · `test` · `chore` · `perf`.
+Области: `rules`, `calc`, `wizard`, `auth`, `db`, `ci`, `docs`…
 
-Примеры:
+## 4. Pull Request
 
-```
-feat(store): двухрежимное хранилище — localStorage и синхронизация с C# API
+Шаблон подставляется автоматически (`.github/pull_request_template.md`):
+**Что сделано → Проблема → Решение → Как проверить → Чек-лист** (сборки фронта и бэка).
+Мерж — **Squash and merge**: одна задача = один коммит в `main`, линейная история,
+откат = `git revert <хэш>`.
 
-Проблема: данные жили только в браузере, на сервере пусто.
-Решение: src/api/client.ts (REST-клиент) + src/store.ts (оптимистичные
-мутации с дебаунсом PUT /api/projects/{id}); при старте гидратация.
-```
+## 5. Тэги — точки отката
 
-```
-fix(excel): копейки терялись на вкладке «Расчёт»
+После крупных слияний:
 
-Округление до целых давало расхождение с итогом документа на ±1 ₽.
-Решение: fmtMoney2() вместо fmtMoney() в utils/excel.ts.
-```
-
-## 4. Тэги и релизы
-
-После каждого крупного слияния вешаем тэг — это «именованная точка отката»:
-
-```bash
-git tag -a v0.2.0 -m "Мастер подбора, экономика, Excel-выгрузка, C#-бэкенд"
-git push origin v0.2.0
+```powershell
+git tag -a v0.3.0 -m "Проверка совместимости"
+git tag -a v0.4.0 -m "Авторизация JWT, единая модель цен"
+git push origin --tags
 ```
 
-Схема версий: `v<мажор>.<минор>.<патч>` — мажор (несовместимые изменения модели
-данных), минор (новые возможности), патч (фиксы).
+Вернуться посмотреть: `git checkout v0.3.0`; собрать hotfix от старой версии:
+`git checkout -b fix/hotfix v0.3.0`.
 
-Откатиться к любой версии:
+## 6. Что коммитить обязательно
 
-```bash
-git checkout v0.2.0            # посмотреть (detached HEAD)
-git revert <хэш-коммита>       # отменить одну задачу, не ломая историю
-git checkout -b hotfix/… <tэг> # чинить старую версию
-```
+- `package.json` **и** `package-lock.json` — CI ставит через `npm ci` строго по локу;
+  без лока или без зависимости в манифесте CI упадёт (`vitest` не найдётся).
+- `.github/workflows/*.yml`, `.vscode/launch.json` (удобно всей команде),
+  `backend/TkpApi/seed-catalog.csv`.
+- **Не коммитить**: `node_modules/`, `dist/`, `bin/`, `obj/`, секреты
+  (`Jwt:Key` для прода выносить в переменные окружения / User Secrets).
 
-## 5. Защита main (настроить один раз на GitHub)
+## 7. Шпаргалка «что делает команда»
 
-Settings → Branches → **Add branch protection rule**:
-- Branch name pattern: `main`
-- ✅ Require a pull request before merging (+ «Require 1 approval», когда появится второй разработчик)
-- ✅ Require status checks: `build` (если подключите GitHub Actions — см. п. 6)
-- ✅ Do not allow force pushes
-
-## 6. Автопроверка сборки (GitHub Actions, по желанию)
-
-Файл `.github/workflows/build.yml`:
-
-```yaml
-name: build
-on: [pull_request]
-jobs:
-  frontend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - run: npm ci && npm run build
-  backend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with: { dotnet-version: '8.0.x' }
-      - run: dotnet build backend/TkpApi/TkpApi.csproj
-```
-
-Тогда каждый PR будет автоматически прогонять сборку фронта и бэкенда,
-а защищённый `main` не примет PR с упавшей сборкой.
-
-## 7. Шпаргалка «что делает каждая команда»
-
-| Команда | Смысл простыми словами |
+| Команда | Смысл |
 |---|---|
-| `git init` | создать репозиторий (папку `.git` с историей) в текущей директории |
-| `git status` | что изменено и ещё не закоммичено — смотреть **перед каждым коммитом** |
-| `git add -A` | положить все изменения в «корзину» следующего коммита (staging) |
-| `git commit -m "…"` | зафиксировать «корзину» как снимок состояния с комментарием |
-| `git log --oneline` | короткая история коммитов |
-| `git checkout -b x` | создать ветку `x` от текущего места и перейти в неё |
-| `git checkout main` | вернуться в ветку `main` |
-| `git pull origin main` | скачать чужие коммиты main и влить в локальный |
-| `git push -u origin x` | отправить ветку `x` на GitHub (`-u` — запомнить связку, дальше просто `git push`) |
-| `git merge x` | влить ветку `x` в текущую (на GitHub это делает кнопка merge) |
-| `git revert <хэш>` | создать коммит, отменяющий коммит `<хэш>` — безопасно для общей истории |
+| `git status` | что изменено, что в корзине (staging) |
+| `git add -A` | всё изменённое — в корзину |
+| `git reset -- <путь>` | вынуть файл из корзины (с диска не удаляется) |
+| `git commit -m …` | зафиксировать снимок |
+| `git checkout -b X` | создать ветку X и перейти в неё |
+| `git pull --rebase origin main` | подтянуть main и «переставить» ваши коммиты поверх |
+| `git push -u origin X` | опубликовать ветку X (первый раз — с `-u`) |
+| `git revert <хэш>` | создать коммит, отменяющий `<хэш>` (без переписывания истории) |
+| `git log --oneline --graph` | компактная история |
 
-## 8. Типичные ошибки новичка и спасение
+## 8. Спасение из типовых ситуаций
 
-| Ситуация | Команда |
+| Ситуация | Команды |
 |---|---|
-| Закоммитил не в ту ветку | `git checkout -b feature/x` (коммит уедет с вами), затем `git checkout main && git reset --hard origin/main` |
-| «Сломал всё, верните как было» | `git status` → `git restore .` (отменить правки) или `git reset --hard HEAD` (к последнему коммиту) |
-| Забыл закоммитить и переключил ветку | `git stash` → переключиться → `git stash pop` |
-| Конфликт при `git pull` | открыть файлы, найти `<<<<<<<`, выбрать нужное, `git add …`, `git commit` |
-| Не знаю, что я наделал | `git log --oneline` + `git diff HEAD` |
+| **`push` отклонён (non-fast-forward)** — на GitHub появились коммиты, которых нет локально (слитые PR) | `git pull --rebase origin main` → при конфликтах: правите файлы, `git add …`, `git rebase --continue` → `git push` |
+| Закоммитил не в ту ветку | `git reset --soft HEAD~1` (коммит отменится, файлы останутся) → `git checkout -b нужная` → `git commit` |
+| Сломал всё, хочу назад | `git status`/`git stash` — спрятать; `git checkout -- .` — отменить изменения в tracked-файлах; `git reset --hard <хэш>` — жёсткий откат (осторожно: потеряет незакоммиченное) |
+| Ветка слита, но осталась локально | `git branch -d feature/…` (удалить); `git fetch --prune` — почистить устаревшие remote-ссылки |
+| Конфликт в `package-lock.json` | принять любую сторону, затем `npm install` и закоммитить новый лок |
 
-**Главное правило:** `git reset --hard` и `git push --force` — только в своей
-ветке, никогда в `main`.
+---
+
+## Правила дома
+
+1. Не пушим в `main` напрямую — только PR.
+2. Одна задача — одна ветка; не чиним попутно «ещё три вещи» в той же ветке.
+3. Перед push: тесты зелёные (`npx vitest run`, `dotnet test backend/TkpApi.Tests`).
+4. Коммит-сообщение отвечает на вопрос «что и зачем», а не «поправил файлы».

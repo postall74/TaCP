@@ -1,193 +1,144 @@
-# TKP·PRO — локальный запуск (пошагово)
+# QUICKSTART — локальный запуск ТКП·Про
 
-Проект состоит из двух независимых частей:
-
-- **Фронтенд** (React + Vite) — корень проекта. Запускается `npm run dev`.
-  Работает и **без бэкенда** (локальный режим, данные в браузере).
-- **C#-бэкенд** (ASP.NET Core 8 + EF Core + PostgreSQL) — `backend/TkpApi`.
-  Запускается `dotnet run`.
-
-Можно запускать в любом порядке; для полной связки нужны обе части.
+Проверенная инструкция (Windows / PowerShell). Три части: фронтенд, бэкенд, связка.
+Если что-то пошло не так — раздел **4. Типовые проблемы** в конце.
 
 ---
 
-## 0. Что установить заранее
+## 1. Предварительные требования
 
-| Что | Версия | Откуда | Проверка в терминале |
+| Что | Версия | Откуда | Проверка |
 |---|---|---|---|
-| Node.js | **≥ 20 LTS (рекомендуется 22 LTS)** — на Node 18 не соберётся Tailwind v4 | https://nodejs.org | `node -v` |
+| Node.js | **22 LTS** (минимум 20; на 18 не соберётся Tailwind v4) | https://nodejs.org или `winget install OpenJS.NodeJS.LTS` | `node -v` |
+| npm | 10.x | вместе с Node | `npm -v` |
 | .NET SDK | **8.0** | https://dotnet.microsoft.com/download/dotnet/8.0 | `dotnet --version` |
-| PostgreSQL | 14+ | https://www.postgresql.org/download/ | служба запущена / pgAdmin открывается |
-| VS Code | любая свежая | https://code.visualstudio.com | расширения **C# Dev Kit** и **C#** |
+| PostgreSQL | 14+ | https://postgresql.org (запомните пароль `postgres`) | `psql --version` |
+| VS Code | любой | + расширения **C# Dev Kit**, **C#**, **Vitest** | — |
 
-> ⚠ После установки .NET SDK или Node **перезапустите VS Code и терминал** —
-> иначе команды `dotnet` / `npm` не найдутся.
-
----
-
-## 1. Фронтенд (запускается первым, работает без бэкенда)
-
-Откройте терминал в VS Code (`` Ctrl+` ``) в **корне проекта** (там, где `package.json`):
-
-```bash
-npm install      # только первый раз — скачивает зависимости (~1 мин)
-npm run dev      # запуск dev-сервера Vite
-```
-
-Откройте **http://localhost:5173** — приложение должно открыться.
-Остановить — `Ctrl+C`. Пока бэкенд не запущен, в сайдбаре горит «Локально».
-
-Продакшен-сборка (если нужна): `npm run build` → папка `dist/`.
+> После установки SDK/Node **перезапустите VS Code и терминалы** — иначе новые
+> `node`/`dotnet` не подхватятся из PATH.
 
 ---
 
-### 1.0. Если `node -v` показывает 18.x — сначала обновите Node (до `npm install`)
-
-Node 18 снят с поддержки; Tailwind v4 (движок `@tailwindcss/oxide`) требует **Node ≥ 20**.
-Предупреждения `WARN EBADENGINE` при установке — сигнал именно об этом.
-
-**Windows (PowerShell):**
+## 2. Фронтенд
 
 ```powershell
-winget install OpenJS.NodeJS.LTS      # поставит свежий LTS (22.x)
+cd E:\dev\TaCP
+npm install          # первый раз (или после pull с новыми зависимостями)
+npm run dev
 ```
 
-либо скачайте MSI с https://nodejs.org (кнопка **LTS**) — он аккуратно заменит старую версию.
-После установки **закройте и откройте заново терминал / VS Code** и проверьте:
+Откройте **http://localhost:3000**. Приложение работает в **локальном режиме**
+(данные в localStorage) — бэкенд не обязателен.
+
+Тесты: `npx vitest run`. Продакшен-сборка: `npm run build`.
+
+> `vitest` должен быть в `devDependencies` (если нет — `npm i -D vitest` и
+> закоммитьте `package.json` + `package-lock.json`): и для локального запуска,
+> и для CI.
+
+---
+
+## 3. Бэкенд (C#)
+
+### 3.1. Создать базу `tkp`
 
 ```powershell
-node -v    # должно быть v20+ (v22.x — отлично)
-npm -v     # 10.x
+# если createdb не распознаётся — укажите полный путь (замените 16 на вашу версию):
+& "C:\Program Files\PostgreSQL\16\bin\createdb.exe" -U postgres tkp
+# или:
+& "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres -c "CREATE DATABASE tkp;"
 ```
 
-Затем переустановите зависимости начисто (старые собраны под Node 18):
+Либо в **pgAdmin**: ПКМ по *Databases* → *Create → Database…* → имя `tkp` → *Save*.
 
-```powershell
-Remove-Item -Recurse -Force node_modules, package-lock.json
-npm install
-npm run dev      # → http://localhost:5173
-```
+### 3.2. Строка подключения
 
-> Остальные `WARN` (deprecated uuid/recharts, supabase) — безвредны: эти пакеты
-> достались от шаблона песочницы и в коде приложения не используются.
-> `npm audit fix --force` запускать **не нужно** — может сломать версии.
+`backend/TkpApi/appsettings.json`:
 
-## 2. C#-бэкенд
-
-### 2.1. PostgreSQL — создать базу `tkp`
-
-Сервер PostgreSQL должен быть запущен (на Windows установщик создаёт службу,
-она стартует вместе с системой; проверить можно в `services.msc` → `postgresql-x64-*`).
-
-Создать базу — любым из трёх способов:
-
-```bash
-# а) через createdb (если утилиты PostgreSQL в PATH)
-createdb -U postgres tkp
-
-# б) через psql
-psql -U postgres -c "CREATE DATABASE tkp;"
-```
-
-```text
-# в) через pgAdmin: правой кнопкой Databases → Create → Database… → имя: tkp → Save
-```
-
-Запомните **пароль пользователя `postgres`** — вы задавали его при установке PostgreSQL.
-
-### 2.2. Проверить строку подключения
-
-Файл `backend/TkpApi/appsettings.json`:
-
-```
+```json
 "ConnectionStrings": {
-  "Tkp": "Host=localhost;Port=5432;Database=tkp;Username=postgres;Password=<ВАШ ПАРОЛЬ>"
+  "Tkp": "Host=localhost;Port=5432;Database=tkp;Username=postgres;Password=ВАШ_ПАРОЛЬ"
 }
 ```
 
-Если ваш пароль не `postgres` — замените `<ВАШ ПАРОЛЬ>`. Порт по умолчанию 5432.
+Там же должны быть секции (без `Jwt:Key` сервер не стартует):
 
-### 2.3. Запуск из терминала
+```json
+"Jwt":   { "Key": "секрет-не-короче-32-символов-для-hmac-sha256", "Issuer": "tkp-api", "Audience": "tkp-web", "ExpireMinutes": 480 },
+"Admin": { "Email": "admin@tkp.local", "Password": "Admin#12345" }
+```
 
-```bash
-cd backend/TkpApi    # ВАЖНО: запускать именно из этой папки
+### 3.3. Запуск — обязательно из папки бэкенда
+
+```powershell
+cd E:\dev\TaCP\backend\TkpApi
 dotnet run
 ```
 
-- **Первый запуск идёт 1–3 минуты**: NuGet скачивает пакеты (нужен интернет).
-- Затем в консоли появится `Now listening on: http://localhost:5085`.
-- Таблицы БД создадутся автоматически, каталог наполнится из `seed-catalog.csv` (~75 позиций).
+Первый запуск 1–3 минуты (NuGet). В логе ожидайте:
+- `Now listening on: http://localhost:5085`
+- `Каталог наполнен из seed-catalog.csv: ~80 позиций`
+- `Создан администратор admin@tkp.local`
 
-Проверка: откройте **http://localhost:5085/swagger** — должен открыться список
-эндпоинтов. Разверните `GET /api/catalog` → «Try it out» → Execute: вернётся JSON
-со справочником. Значит, бэкенд жив и база подключена.
+Проверка: **http://localhost:5085/swagger** → `GET /api/catalog` → 200 (~80 позиций
+**без поля price** — только `purchase`).
 
-### 2.4. Запуск из VS Code кнопкой F5
+### 3.4. F5 в VS Code (опционально)
 
-1. Откройте в VS Code **всю папку проекта** (File → Open Folder → корень репозитория).
-2. Установите расширения **C# Dev Kit** и **C#** — VS Code сам предложит их
-   (список рекомендаций лежит в `.vscode/extensions.json`).
-3. Откройте панель **Run and Debug** (`Ctrl+Shift+D`), в выпадающем списке выберите
-   **«C# API (backend/TkpApi)»** и нажмите **F5**.
-   - Конфигурации уже созданы: `.vscode/launch.json` + `.vscode/tasks.json`
-     (сборка `dotnet build` выполняется автоматически перед запуском).
-   - Вторая конфигурация **«Frontend (npm run dev)»** так же запускает фронтенд.
-4. Если внизу появилась ошибка «solution» — `Ctrl+Shift+P` → `.NET: Open Solution` →
-   выберите `backend/TkpApi/TkpApi.csproj` и повторите F5.
+Откройте **корень проекта** (`E:\dev\TaCP`), `Ctrl+Shift+D` → **«C# API (backend/TkpApi)»** → F5.
+Конфигурации лежат в `.vscode/launch.json` (+ задача сборки в `tasks.json`).
 
 ---
 
-## 3. Связать фронтенд с бэкендом
+## 4. Связка фронтенд ↔ бэкенд + авторизация
 
-1. Фронтенд открыт (5173), бэкенд запущен (5085).
-2. В приложении слева внизу → **«Реквизиты компании»** → блок **«Подключение к C#-бэкенду»**.
-3. Впишите `http://localhost:5085` (без слэша на конце) → **«Проверить»**.
-   Появится тост «API доступен», статус станет «онлайн».
-4. **«Сохранить»** — приложение перезагрузит проекты, каталог и тарифы с сервера,
-   индикатор в сайдбаре станет зелёным («API · онлайн»).
+1. В приложении (http://localhost:3000): сайдбар → **«Реквизиты компании»** →
+   блок **«Подключение к C#-бэкенду»** → впишите `http://localhost:5085` →
+   **Проверить** (должно стать «онлайн») → **Сохранить**.
+2. Появится **экран входа** — введите `admin@tkp.local` / `Admin#12345`.
+3. В сайдбаре появится карточка профиля (ФИО, e-mail, «Выйти»), внизу — индикатор
+   **«C# API · онлайн»**. Все мутации теперь уходят в PostgreSQL.
+4. Регистрация новых пользователей (инженер/менеджер) — на том же экране входа;
+   список пользователей — `GET /api/auth/users` (только админ).
 
-С этого момента каждая правка ТКП сохраняется в PostgreSQL
-(оптимистично в UI + отложенный `PUT /api/projects/{id}`).
+JWT в Swagger: `POST /api/auth/login` → скопировать `token` → кнопка **Authorize** →
+вставить токен → защищённые эндпоинты (`/api/auth/me`, `/api/auth/users`) откроются.
 
 ---
 
-## 4. Типичные ошибки и решения
+## 5. Типовые проблемы
 
 | Симптом | Причина | Решение |
 |---|---|---|
-| `dotnet: command not found` | .NET SDK не установлен или терминал не перезапущен | Установить SDK 8.0, перезапустить VS Code |
-| `No project found` / `MSB1003` | `dotnet run` запущен не из той папки | `cd backend/TkpApi` |
-| `28P01: password authentication failed` | Неверный пароль в `appsettings.json` | Вписать реальный пароль `postgres` |
-| `connection refused` (порт 5432) | Сервер PostgreSQL не запущен | Запустить службу postgresql / `pg_ctl start` |
-| `port 5085 already in use` | Уже запущен предыдущий `dotnet run` | Остановить его (`Ctrl+C`) или сменить порт в `appsettings.json` |
-| Ошибки NuGet при первом запуске | Нет интернета / прокси | Проверить сеть, повторить `dotnet restore` |
-| Фронтенд: «Бэкенд недоступен» | API не запущен или URL со слэшем на конце | Запустить API; URL без `/` на конце |
-| F5 не запускает C#-проект | Нет расширения C# Dev Kit | Установить C# Dev Kit + C#, перезапустить папку |
-| `npm install` падает | Старый Node или кэш | Node ≥ 20, затем `npm cache clean --force` и повторить |
-| При `npm install` сыплются `WARN EBADENGINE` (oxide, supabase…) | Node 18 (устарел) | Предупреждения не блокируют установку, но **обновите Node до 22 LTS** и переустановите `node_modules` начисто |
-| `createdb: Имя не распознано…` | Утилиты PostgreSQL не в PATH | Полный путь: `& "C:\Program Files\PostgreSQL\16\bin\createdb.exe" -U postgres tkp` (подставьте свою версию) или создать базу в pgAdmin: Databases → Create → Database → `tkp` |
+| `WARN EBADENGINE` при `npm install`; `npm run dev` падает на oxide | Node 18 (устарел) | Node 22 LTS; затем `Remove-Item -Recurse -Force node_modules, package-lock.json; npm install` |
+| `createdb: имя не распознано` | Утилиты PostgreSQL не в PATH | Полный путь `& "C:\Program Files\PostgreSQL\16\bin\createdb.exe" -U postgres tkp` или pgAdmin |
+| `MSB1003: не удалось найти проект` | `dotnet run` запущен не из `backend/TkpApi` | `cd backend/TkpApi` и только потом `dotnet run` |
+| `28P01 password authentication failed` | Неверный пароль в строке подключения | Поправить `appsettings.json` → `ConnectionStrings:Tkp` |
+| Порт 5085 занят | Другой экземпляр API | Закрыть старый `dotnet run` или сменить `"Urls"` в appsettings |
+| 500 на `GET /api/projects/{id}` после смены модели | Схема БД создана под старой моделью (`EnsureCreated` не обновляет существующую БД) | Пересоздать: `DROP DATABASE tkp; CREATE DATABASE tkp;` и `dotnet run` (в проде — EF-миграции) |
+| 401 в Swagger | Эндпоинт под `RequireAuthorization` | Получить токен (`POST /api/auth/login`) и вставить через **Authorize** |
+| CI: `Missing script: "test"` | В `package.json` нет скрипта test | Добавьте `"test": "vitest run"` в `scripts` (или держите в CI `npx vitest run` + vitest в devDependencies) |
+| CI: `Could not resolve 'vitest/config'` | vitest нет в зависимостях — npx ставит «левую» версию | `npm i -D vitest`, закоммитьте `package.json` **и** `package-lock.json` |
+| `git push` → `rejected (non-fast-forward)` | Локальный `main` отстал от удалённого (на GitHub сливались PR) | `git pull --rebase origin main` → решить конфликты → `git push` |
+| Белая страница после обновлений | В localStorage `settings` без `apiBaseUrl` (старая версия persist) | Обновлён код (persist v3 + миграция). Аварийно: DevTools → Console → `const s=JSON.parse(localStorage.getItem("tkp-pro-v2")); s.state.settings.apiBaseUrl=s.state.settings.apiBaseUrl??""; localStorage.setItem("tkp-pro-v2",JSON.stringify(s)); location.reload();` |
+| `Exception has occurred: require is not defined / No PostCSS Config found` в отладчике VS Code | **Не ошибка**: Vite штатно перехватывает эти исключения | Смотрите на баннер `VITE ready` — если он есть, сервер работает. Шум убирается: снять *Caught Exceptions* в Run and Debug |
+| CS1729 «нет конструктора с N аргументов» в record | Две строки параметров слиплись — вторая «утонула» в комментарии `//` | Разнести параметры record по строкам (комментарии — только над строкой) |
 
 ---
 
-## 5. Где что лежит
+## 6. Повседневный цикл
 
+```powershell
+git checkout main && git pull --rebase origin main
+git checkout -b feature/название-задачи
+# …код…
+npx vitest run                        # фронтенд-тесты
+dotnet test ../backend/TkpApi.Tests   # бэкенд-тесты (из backend/TkpApi)
+git add -A && git commit              # по Conventional Commits (GIT_WORKFLOW.md)
+git push -u origin feature/название-задачи
+# → GitHub: Compare & pull request → Squash and merge → Delete branch
+git checkout main && git pull --rebase origin main
 ```
-.
-├─ QUICKSTART.md              ← этот файл
-├─ DOCS.md                    ← полная документация проекта
-├─ package.json               ← фронтенд (npm run dev / build)
-├─ src/                       ← React + TypeScript (Vite)
-│   ├─ store.ts               ← двухрежимное хранилище (локально / REST)
-│   ├─ api/client.ts          ← типизированный REST-клиент
-│   ├─ utils.ts, utils/excel.ts ← расчёты и экспорт в Excel
-│   └─ components/            ← страницы и вкладки
-└─ backend/
-    ├─ README.md              ← подробности по бэкенду
-    └─ TkpApi/
-        ├─ TkpApi.csproj      ← C#-проект (dotnet run)
-        ├─ appsettings.json   ← строка подключения к PostgreSQL, порт 5085
-        ├─ Program.cs         ← все REST-эндпоинты + Swagger
-        ├─ Models.cs          ← доменная модель (зеркало src/types.ts)
-        ├─ TkpDbContext.cs    ← схема БД (EF Core)
-        └─ seed-catalog.csv   ← стартовый справочник
-```
+
+Полный регламент — в [GIT_WORKFLOW.md](./GIT_WORKFLOW.md).
