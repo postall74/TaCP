@@ -7,6 +7,7 @@ import type {
   Cabinet, Direction, Equipment, LineItem, Project, ProjectStatus, ProjectVersion, Rates, Settings,
 } from "./types";
 import { calcProject, genId } from "./utils";
+import { can, denyReason } from "./utils/roles";
 
 /* ============================================================
    ХРАНИЛИЩЕ. Двухрежимное:
@@ -100,9 +101,11 @@ interface StoreState {
     templateKey: string | null; markup: number; validDays: number;
   }) => string;
   updateProject: (id: string, patch: Partial<Project>) => void;
-  deleteProject: (id: string) => void;
+  /** false — отказано по правам (тост уже показан). */
+  deleteProject: (id: string) => boolean;
   duplicateProject: (id: string) => string;
-  setStatus: (id: string, status: ProjectStatus) => void;
+  /** false — отказано по правам (тост уже показан). */
+  setStatus: (id: string, status: ProjectStatus) => boolean;
 
   addCabinet: (pid: string, kind: string, name: string) => string;
   addCabinetsBulk: (pid: string, cabs: Cabinet[]) => void;
@@ -285,8 +288,14 @@ export const useStore = create<StoreState>()(
         },
 
         deleteProject: (id) => {
+          // право на удаление — менеджер/админ (матрица utils/roles.ts)
+          if (!can(get().user, "project.delete")) {
+            get().toast(denyReason(get().user, "project.delete"), "err");
+            return false;
+          }
           set((s) => ({ projects: s.projects.filter((p) => p.id !== id) }));
           api()?.deleteProject(id).catch(syncFail);
+          return true;
         },
 
         duplicateProject: (id) => {
@@ -308,7 +317,16 @@ export const useStore = create<StoreState>()(
           return nid;
         },
 
-        setStatus: (id, status) => get().updateProject(id, { status }),
+        setStatus: (id, status) => {
+          // «выиграно/проиграно» — решение менеджера/админа; остальные переходы — рабочий процесс
+          const perm = status === "won" || status === "lost" ? "status.decide" : "status.workflow";
+          if (!can(get().user, perm)) {
+            get().toast(denyReason(get().user, perm), "err");
+            return false;
+          }
+          get().updateProject(id, { status });
+          return true;
+        },
 
         addCabinet: (pid, kind, name) => {
           const cid = genId("cab");

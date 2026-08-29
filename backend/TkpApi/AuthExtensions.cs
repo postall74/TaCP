@@ -144,6 +144,22 @@ public static class AuthExtensions
             return Results.Ok(result);
         }).RequireAuthorization("AdminOnly");
 
+        // Смена роли пользователя — только админ (страница «Пользователи» фронтенда).
+        // Важно: роль в уже выданном JWT обновится при следующем входе пользователя.
+        app.MapPut("/api/auth/users/{id}/role", async (string id, ChangeRoleDto dto, UserManager<AppUser> users) =>
+        {
+            var user = await users.FindByIdAsync(id);
+            if (user is null) return Results.NotFound();
+            var old = await users.GetRolesAsync(user);
+            var remove = await users.RemoveFromRolesAsync(user, old);
+            if (!remove.Succeeded)
+                return Results.BadRequest(new { errors = remove.Errors.Select(e => e.Description) });
+            var add = await users.AddToRoleAsync(user, NormalizeRole(dto.Role));
+            if (!add.Succeeded)
+                return Results.BadRequest(new { errors = add.Errors.Select(e => e.Description) });
+            return Results.Ok(ToDto(user, await users.GetRolesAsync(user)));
+        }).RequireAuthorization("AdminOnly");
+
         return app;
     }
 
@@ -227,3 +243,4 @@ public static class AuthExtensions
 
 public sealed record LoginDto(string Email, string Password);
 public sealed record RegisterDto(string Email, string Password, string FullName, string? Position, string? Role);
+public sealed record ChangeRoleDto(string Role);
