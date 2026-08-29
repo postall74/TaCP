@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { restApi, toCompany, type RestApi } from "./api/client";
+import { restApi, toCompany, getToken, setToken, type AuthUser, type RestApi } from "./api/client";
 import { CATALOG } from "./data/catalog";
 import { buildTemplateCabinets } from "./data/templates";
 import type {
@@ -79,6 +79,8 @@ interface StoreState {
   settings: Settings;
   toasts: Toast[];
   remoteLoading: boolean;
+  /** Текущий пользователь (null — не авторизован / локальный режим). */
+  user: AuthUser | null;
 
   toast: (text: string, kind?: ToastKind) => void;
   dismissToast: (id: string) => void;
@@ -86,6 +88,12 @@ interface StoreState {
 
   pingApi: (url?: string) => Promise<boolean>;
   hydrateFromApi: () => Promise<void>;
+
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, fullName: string, role: string) => Promise<void>;
+  logout: () => void;
+  /** При старте: если есть токен и URL — восстановить профиль через /api/auth/me. */
+  initAuth: () => Promise<void>;
 
   createProject: (a: {
     title: string; client: string; contact: string; direction: Direction;
@@ -159,6 +167,7 @@ export const useStore = create<StoreState>()(
         settings: DEFAULT_SETTINGS,
         toasts: [],
         remoteLoading: false,
+        user: null,
 
         toast: (text, kind = "ok") => {
           const id = genId("t");
@@ -214,6 +223,38 @@ export const useStore = create<StoreState>()(
           } catch {
             set((s) => ({ remoteLoading: false, settings: { ...s.settings, apiOnline: false } }));
             get().toast("Сервер недоступен — работаем с локальной копией", "err");
+          }
+        },
+
+        /* ---------- аутентификация (JWT) ---------- */
+
+        login: async (email, password) => {
+          const a = api();
+          if (!a) throw new Error("Не задан URL бэкенда");
+          const r = await a.login(email, password);
+          setToken(r.token);
+          set({ user: r.user, settings: { ...get().settings, apiOnline: true } });
+        },
+        register: async (email, password, fullName, role) => {
+          const a = api();
+          if (!a) throw new Error("Не задан URL бэкенда");
+          await a.register(email, password, fullName, role);
+        },
+        logout: () => {
+          setToken(null);
+          set({ user: null });
+          get().toast("Вы вышли из системы", "info");
+        },
+        initAuth: async () => {
+          const a = api();
+          if (!a || !getToken()) return;
+          try {
+            const u = await a.me();
+            set({ user: u });
+          } catch {
+            // токен невалиден/истёк — сбрасываем, покажем экран входа
+            setToken(null);
+            set({ user: null });
           }
         },
 

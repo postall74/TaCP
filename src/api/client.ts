@@ -14,13 +14,33 @@ export class ApiError extends Error {
   }
 }
 
+/* ---------------- JWT-токен (localStorage) ---------------- */
+const TOKEN_KEY = "tkp-jwt";
+export const getToken = (): string | null => localStorage.getItem(TOKEN_KEY);
+export const setToken = (t: string | null) =>
+  t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY);
+
+/** Профиль пользователя — DTO из /api/auth/login и /api/auth/me. */
+export interface AuthUser {
+  id: string;
+  email: string;
+  fullName: string;
+  position: string;
+  roles: string[];
+}
+
 async function req<T>(base: string, path: string, init?: RequestInit, timeoutMs = 8000): Promise<T> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const token = getToken();
   try {
     const res = await fetch(base.replace(/\/+$/, "") + path, {
-      headers: { "Content-Type": "application/json" },
       ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init?.headers ?? {}),
+      },
       signal: ctrl.signal,
     });
     if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status} ${res.statusText}`);
@@ -58,6 +78,19 @@ export const toCompany = (s: Settings): CompanyDto => ({
 export const restApi = (base: string) => ({
   /* проверка доступности (лёгкий эндпоинт, короткий таймаут) */
   ping: () => req<Rates>(base, "/api/rates", undefined, 3000),
+
+  /* аутентификация (JWT) */
+  login: (email: string, password: string) =>
+    req<{ token: string; expiresAt: string; user: AuthUser }>(base, "/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  register: (email: string, password: string, fullName: string, role: string) =>
+    req<AuthUser>(base, "/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ email, password, fullName, position: "", role }),
+    }),
+  me: () => req<AuthUser>(base, "/api/auth/me"),
 
   /* проекты */
   projects: () => req<Project[]>(base, "/api/projects"),
