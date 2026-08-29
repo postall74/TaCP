@@ -92,6 +92,14 @@ export const restApi = (base: string) => ({
     }),
   me: () => req<AuthUser>(base, "/api/auth/me"),
 
+  /* пользователи (только админ) */
+  users: () => req<AuthUser[]>(base, "/api/auth/users"),
+  setUserRole: (id: string, role: string) =>
+    req<AuthUser>(base, `/api/auth/users/${id}/role`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    }),
+
   /* проекты */
   projects: () => req<Project[]>(base, "/api/projects"),
   createProject: (p: Project) => req<Project>(base, "/api/projects", { method: "POST", body: JSON.stringify(p) }),

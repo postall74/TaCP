@@ -6,10 +6,12 @@ import Dashboard from "./components/Dashboard";
 import Editor from "./components/Editor";
 import LoginGate from "./components/LoginGate";
 import RatesPage from "./components/RatesPage";
+import UsersPage from "./components/UsersPage";
 import { Field, Input, Modal, Textarea, ToastHost, cx } from "./components/ui";
 import {
-  IcBolt, IcBox, IcClock, IcFolder, IcGear, IcMoon, IcPanel, IcRefresh, IcSun, IcWand, IcX,
+  IcBolt, IcBox, IcClock, IcFolder, IcGear, IcMoon, IcPanel, IcRefresh, IcSun, IcUser, IcWand, IcX,
 } from "./components/icons";
+import { can, currentRole, ROLE_LABEL } from "./utils/roles";
 
 /* ============================================================
    ОБОЛОЧКА: тёмный сайдбар с навигацией, переключатель темы,
@@ -17,13 +19,14 @@ import {
    к C#-бэкенду, JWT-вход. Тосты — глобальные.
    ============================================================ */
 
-type Route = "board" | "editor" | "catalog" | "rates";
+type Route = "board" | "editor" | "catalog" | "rates" | "users";
 
-const NAV: { key: Route; label: string; hint: string; icon: (p: { size?: number }) => ReactNode }[] = [
+const NAV: { key: Route; label: string; hint: string; icon: (p: { size?: number }) => ReactNode; adminOnly?: boolean }[] = [
   { key: "board", label: "Дашборд", hint: "проекты и статусы", icon: IcFolder },
   { key: "editor", label: "Конструктор", hint: "структура ТКП", icon: IcPanel },
   { key: "catalog", label: "Справочник", hint: "оборудование", icon: IcBox },
   { key: "rates", label: "Тарифы", hint: "нормо-часы", icon: IcClock },
+  { key: "users", label: "Пользователи", hint: "роли и доступ", icon: IcUser, adminOnly: true },
 ];
 
 export default function App() {
@@ -43,7 +46,11 @@ export default function App() {
 
   const apiBase = (settings.apiBaseUrl ?? "").trim();
   const editorProject = projects.find((p) => p.id === editorId);
-  const activeRoute: Route = route === "editor" ? (editorProject ? "editor" : "board") : route;
+  /* пользователи — только админ; редактор — только при открытом проекте */
+  const activeRoute: Route =
+    route === "editor" ? (editorProject ? "editor" : "board")
+    : route === "users" ? (can(user, "users.manage") ? "users" : "board")
+    : route;
 
   /* тема: класс на <html> переключает все CSS-переменные токенов */
   useEffect(() => {
@@ -102,7 +109,7 @@ export default function App() {
         </div>
 
         <nav className="mt-1 flex flex-col gap-1 px-3">
-          {NAV.map((n) => {
+          {NAV.filter((n) => !n.adminOnly || can(user, "users.manage")).map((n) => {
             const Icon = n.icon;
             const active = activeRoute === n.key;
             const dim = n.key === "editor" && !editorProject;
@@ -135,7 +142,12 @@ export default function App() {
         {/* профиль (если авторизован) */}
         {user && (
           <div className="mx-3 mt-4 rounded-lg bg-dark2 px-3 py-2.5">
-            <div className="truncate text-[12.5px] font-bold text-white">{user.fullName}</div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="truncate text-[12.5px] font-bold text-white">{user.fullName}</div>
+              <span className="shrink-0 rounded bg-darkline px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-darkmute uppercase">
+                {ROLE_LABEL[currentRole(user)]}
+              </span>
+            </div>
             <div className="truncate text-[10px] text-darkmute">{user.email}</div>
             <button onClick={logout} className="mt-1.5 flex cursor-pointer items-center gap-1 text-[10.5px] font-semibold text-heat transition-colors hover:text-white">
               <IcX size={11} /> Выйти
@@ -203,6 +215,7 @@ export default function App() {
             )}
             {activeRoute === "catalog" && <CatalogPage />}
             {activeRoute === "rates" && <RatesPage />}
+            {activeRoute === "users" && <UsersPage />}
           </div>
         </div>
       </main>

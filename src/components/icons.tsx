@@ -219,3 +219,9 @@ export const IcTable = (p: P) => (
     <path d="M3 9.5h18M3 15h18M9.5 9.5V20M16 9.5V20" />
   </Base>
 );
+export const IcUser = (p: P) => (
+  <Base {...p}>
+    <circle cx={12} cy={8} r={4} />
+    <path d="M4.5 20.5c1.3-3.4 4.1-5 7.5-5s6.2 1.6 7.5 5" />
+  </Base>
+);
