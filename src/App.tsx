@@ -144,6 +144,26 @@ export default function App() {
         )}
 
         <div className="mt-auto flex flex-col gap-1.5 border-t border-darkline px-3 py-4">
+          {/* режим работы: локально (localStorage) или C#-бэкенд */}
+          <div
+            className={cx(
+              "mx-0.5 mb-1 flex items-center gap-2 rounded-md border px-2.5 py-1.5 font-mono text-[10px] font-bold tracking-wide uppercase",
+              !apiBase && "border-darkline text-darkmute",
+              apiBase && settings.apiOnline === true && "border-ok/40 text-ok",
+              apiBase && settings.apiOnline !== true && "border-heat/40 text-heat"
+            )}
+            title={apiBase ? apiBase : "Данные хранятся в браузере. URL бэкенда — в «Реквизитах компании»."}
+          >
+            <span
+              className={cx(
+                "h-1.5 w-1.5 shrink-0 rounded-full",
+                !apiBase && "bg-darkmute",
+                apiBase && settings.apiOnline === true && "blink-dot bg-ok",
+                apiBase && settings.apiOnline !== true && "bg-heat"
+              )}
+            />
+            {!apiBase ? "Локальный режим" : settings.apiOnline === true ? "C# API · онлайн" : "C# API · офлайн"}
+          </div>
           <button onClick={addDemo} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-[12px] font-semibold text-darkmute transition-colors hover:bg-dark2 hover:text-white">
             <IcWand size={15} /> Демо-проект
           </button>
