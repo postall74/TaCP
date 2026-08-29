@@ -20,6 +20,7 @@ export default function LoginGate() {
   const login = useStore((s) => s.login);
   const register = useStore((s) => s.register);
   const toast = useStore((s) => s.toast);
+  const isRemote = !!(useStore((s) => s.settings.apiBaseUrl) ?? "").trim();
 
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
@@ -118,6 +119,12 @@ export default function LoginGate() {
             <p className="mt-1 text-[12.5px] text-mute">
               {mode === "login" ? "Войдите, чтобы продолжить работу с проектами" : "Создайте учётную запись сотрудника"}
             </p>
+
+            {/* режим аутентификации */}
+            <div className="mt-3 flex items-center gap-2 rounded-md bg-paper px-3 py-2 font-mono text-[10.5px] font-bold tracking-wide text-mute uppercase">
+              <span className={cx("h-1.5 w-1.5 rounded-full", isRemote ? "blink-dot bg-ok" : "bg-warn")} />
+              {isRemote ? "Сервер · ASP.NET Identity" : "Локально · браузер (localStorage)"}
+            </div>
 
             {/* переключатель */}
             <div className="mt-5 grid grid-cols-2 gap-1 rounded-lg bg-paper p-1">
