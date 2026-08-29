@@ -7,7 +7,10 @@ import type {
   Cabinet, Direction, Equipment, LineItem, Project, ProjectStatus, ProjectVersion, Rates, Settings,
 } from "./types";
 import { calcProject, genId } from "./utils";
-import { can, denyReason } from "./utils/roles";
+import { can, denyReason, type Role } from "./utils/roles";
+import {
+  ensureLocalAdmin, localListUsers, localLogin, localLogout, localMe, localRegister, localSetUserRole,
+} from "./utils/localAuth";
 
 /* ============================================================
    ХРАНИЛИЩЕ. Двухрежимное:
@@ -93,8 +96,12 @@ interface StoreState {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, fullName: string, role: string) => Promise<void>;
   logout: () => void;
-  /** При старте: если есть токен и URL — восстановить профиль через /api/auth/me. */
+  /** При старте: восстановить профиль (сервер — /api/auth/me, локально — сессия в localStorage). */
   initAuth: () => Promise<void>;
+  /** Список пользователей: сервер (admin) или локальное хранилище. */
+  listUsers: () => Promise<AuthUser[]>;
+  /** Смена роли пользователя (сервер: PUT /api/auth/users/{id}/role, локально: сразу). */
+  setUserRole: (id: string, role: string) => Promise<void>;
 
   createProject: (a: {
     title: string; client: string; contact: string; direction: Direction;
@@ -229,35 +236,67 @@ export const useStore = create<StoreState>()(
           }
         },
 
-        /* ---------- аутентификация (JWT) ---------- */
+        /* ---------- аутентификация (двухрежимная) ----------
+           серверный режим (apiBaseUrl задан) → ASP.NET Identity + JWT;
+           локальный режим → localStorage (utils/localAuth.ts).
+           Контракты действий одинаковые — UI разницы не видит. */
 
         login: async (email, password) => {
           const a = api();
-          if (!a) throw new Error("Не задан URL бэкенда");
-          const r = await a.login(email, password);
-          setToken(r.token);
-          set({ user: r.user, settings: { ...get().settings, apiOnline: true } });
+          if (a) {
+            const r = await a.login(email, password);
+            setToken(r.token);
+            set({ user: r.user, settings: { ...get().settings, apiOnline: true } });
+          } else {
+            const u = await localLogin(email, password);
+            set({ user: u });
+          }
         },
+
         register: async (email, password, fullName, role) => {
           const a = api();
-          if (!a) throw new Error("Не задан URL бэкенда");
-          await a.register(email, password, fullName, role);
+          if (a) await a.register(email, password, fullName, role);
+          else await localRegister(email, password, fullName, role as Role);
         },
+
         logout: () => {
           setToken(null);
+          localLogout();
           set({ user: null });
           get().toast("Вы вышли из системы", "info");
         },
+
         initAuth: async () => {
           const a = api();
-          if (!a || !getToken()) return;
-          try {
-            const u = await a.me();
-            set({ user: u });
-          } catch {
-            // токен невалиден/истёк — сбрасываем, покажем экран входа
-            setToken(null);
-            set({ user: null });
+          if (a) {
+            if (!getToken()) return;
+            try {
+              set({ user: await a.me() });
+            } catch {
+              // токен невалиден/истёк — сбрасываем, покажем экран входа
+              setToken(null);
+              set({ user: null });
+            }
+          } else {
+            await ensureLocalAdmin();
+            const u = localMe();
+            if (u) set({ user: u });
+          }
+        },
+
+        listUsers: async () => {
+          const a = api();
+          return a ? a.users() : localListUsers();
+        },
+
+        setUserRole: async (id, role) => {
+          const a = api();
+          if (a) await a.setUserRole(id, role);
+          else await localSetUserRole(id, role as Role);
+          // если поменяли роль текущего пользователя — обновим профиль
+          if (get().user?.id === id) {
+            const u = get().user && { ...get().user!, roles: [role] };
+            if (u) set({ user: u });
           }
         },
 

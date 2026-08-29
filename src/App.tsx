@@ -57,13 +57,16 @@ export default function App() {
     document.documentElement.classList.toggle("dark", settings.theme === "dark");
   }, [settings.theme]);
 
-  /* при старте: восстановить профиль по токену и загрузить данные с сервера */
+  /* при старте: восстановить профиль (токен на сервере или сессия в localStorage) */
   useEffect(() => {
-    if (apiBase) {
-      void initAuth();
-      void hydrateFromApi();
-    }
-  }, [apiBase, initAuth, hydrateFromApi]);
+    void initAuth();
+  }, [initAuth]);
+
+  /* серверные данные подтягиваем только после входа:
+     проекты/каталог защищены политикой Staff и требуют Bearer-токен */
+  useEffect(() => {
+    if (apiBase && user) void hydrateFromApi();
+  }, [apiBase, user, hydrateFromApi]);
 
   const openProject = (id: string) => {
     setEditorId(id);
@@ -84,8 +87,9 @@ export default function App() {
     toast("Демо-проект создан по шаблону «Щит АВР»");
   };
 
-  /* Экран входа: показывается, когда задан URL бэкенда, но профиля нет. */
-  if (apiBase && !user) {
+  /* Экран входа показывается всегда, пока нет профиля:
+     в серверном режиме — ASP.NET Identity, в локальном — localStorage. */
+  if (!user) {
     return (
       <>
         <LoginGate />

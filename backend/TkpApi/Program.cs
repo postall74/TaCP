@@ -57,7 +57,7 @@ app.MapAuthEndpoints();  // /api/auth/register|login|me|users
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<TkpDbContext>();
-    db.Database.EnsureCreated(); // для разработки; в проде — EF-миграции (README)
+    EnsureSchema(db, app.Logger);
     if (!db.Equipment.Any())
     {
         var seedPath = Path.Combine(app.Environment.ContentRootPath, "seed-catalog.csv");
@@ -77,7 +77,8 @@ await app.SeedRolesAndAdminAsync();
 app.MapGet("/api/projects", async (TkpDbContext db) =>
     await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
                      .Include(p => p.Versions)
-                     .OrderByDescending(p => p.UpdatedAt).ToListAsync());
+                     .OrderByDescending(p => p.UpdatedAt).ToListAsync())
+   .RequireAuthorization("Staff");
 
 app.MapPost("/api/projects", async (Project p, TkpDbContext db) =>
 {
@@ -85,14 +86,15 @@ app.MapPost("/api/projects", async (Project p, TkpDbContext db) =>
     db.Projects.Add(p);
     await db.SaveChangesAsync();
     return Results.Created($"/api/projects/{p.Id}", p);
-});
+}).RequireAuthorization("Staff");
 
 app.MapGet("/api/projects/{id}", async (string id, TkpDbContext db) =>
     await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
                      .Include(p => p.Versions)
                      .FirstOrDefaultAsync(p => p.Id == id) is { } p
         ? Results.Ok(p)
-        : Results.NotFound());
+        : Results.NotFound())
+   .RequireAuthorization("Staff");
 
 /* Полная синхронизация: скаляры проекта + замена состава шкафов одним пакетом.
    Именно этот эндпоинт использует фронтенд после каждой локальной мутации. */
@@ -112,7 +114,7 @@ app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext d
     p.Cabinets = patch.Cabinets ?? new List<Cabinet>();
     await db.SaveChangesAsync();
     return Results.Ok(p);
-});
+}).RequireAuthorization("Staff");
 
 app.MapDelete("/api/projects/{id}", async (string id, TkpDbContext db) =>
 {
@@ -121,7 +123,7 @@ app.MapDelete("/api/projects/{id}", async (string id, TkpDbContext db) =>
     db.Projects.Remove(p);
     await db.SaveChangesAsync();
     return Results.NoContent();
-});
+}).RequireAuthorization("Staff");
 
 /* Шкафы: пакетное добавление (результат мастера подбора). */
 app.MapPost("/api/projects/{id}/cabinets", async (string id, List<Cabinet> cabs, TkpDbContext db) =>
@@ -133,7 +135,7 @@ app.MapPost("/api/projects/{id}/cabinets", async (string id, List<Cabinet> cabs,
     p.UpdatedAt = DateTime.UtcNow;
     await db.SaveChangesAsync();
     return Results.Ok(p.Cabinets);
-});
+}).RequireAuthorization("Staff");
 
 app.MapDelete("/api/cabinets/{id}", async (string id, TkpDbContext db) =>
 {
@@ -142,7 +144,7 @@ app.MapDelete("/api/cabinets/{id}", async (string id, TkpDbContext db) =>
     db.Cabinets.Remove(c);
     await db.SaveChangesAsync();
     return Results.NoContent();
-});
+}).RequireAuthorization("Staff");
 
 /* Позиция в шкаф — цена фиксируется снимком из справочника на сервере. */
 app.MapPost("/api/cabinets/{id}/items", async (string id, string equipmentId, decimal qty, TkpDbContext db) =>
@@ -160,7 +162,7 @@ app.MapPost("/api/cabinets/{id}/items", async (string id, string equipmentId, de
     });
     await db.SaveChangesAsync();
     return Results.Ok(cab.Items);
-});
+}).RequireAuthorization("Staff");
 
 /* ---------------- Версии ---------------- */
 
@@ -179,12 +181,13 @@ app.MapPost("/api/projects/{id}/versions", async (string id, string? label, TkpD
     p.Versions.Insert(0, new ProjectVersion { Label = label ?? $"Версия {p.Versions.Count + 1}", Snapshot = snapshot });
     await db.SaveChangesAsync();
     return Results.Ok(p.Versions);
-});
+}).RequireAuthorization("Staff");
 
 /* ---------------- Каталог ---------------- */
 
 app.MapGet("/api/catalog", async (TkpDbContext db) =>
-    await db.Equipment.OrderBy(e => e.Category).ThenBy(e => e.Sku).ToListAsync());
+    await db.Equipment.OrderBy(e => e.Category).ThenBy(e => e.Sku).ToListAsync())
+   .RequireAuthorization("Staff");
 
 app.MapPost("/api/catalog", async (Equipment e, TkpDbContext db) =>
 {
@@ -192,7 +195,7 @@ app.MapPost("/api/catalog", async (Equipment e, TkpDbContext db) =>
     db.Equipment.Add(e);
     await db.SaveChangesAsync();
     return Results.Created("/api/catalog", e);
-});
+}).RequireAuthorization("Staff");
 
 app.MapPut("/api/catalog/{id}", async (string id, Equipment e, TkpDbContext db) =>
 {
@@ -200,7 +203,7 @@ app.MapPut("/api/catalog/{id}", async (string id, Equipment e, TkpDbContext db) 
     db.Equipment.Update(e);
     await db.SaveChangesAsync();
     return Results.Ok(e);
-});
+}).RequireAuthorization("Staff");
 
 app.MapDelete("/api/catalog/{id}", async (string id, TkpDbContext db) =>
 {
@@ -209,7 +212,7 @@ app.MapDelete("/api/catalog/{id}", async (string id, TkpDbContext db) =>
     db.Equipment.Remove(e);
     await db.SaveChangesAsync();
     return Results.NoContent();
-});
+}).RequireAuthorization("Staff");
 
 /* Импорт прайса: CSV «артикул;наименование;бренд;категория;направление;ед;закупка;цена;характеристики». */
 app.MapPost("/api/catalog/import", async (HttpRequest req, TkpDbContext db) =>
@@ -219,18 +222,74 @@ app.MapPost("/api/catalog/import", async (HttpRequest req, TkpDbContext db) =>
     var (added, updated, skipped) = CatalogCsv.Import(db, text);
     await db.SaveChangesAsync();
     return Results.Ok(new { added, updated, skipped });
-});
+}).RequireAuthorization("Staff");
 
 /* ---------------- Тарифы и настройки ---------------- */
 
 // Боевая схема — таблицы rate_cards / settings; здесь singleton для краткости.
 var rates = new Rates();
 var company = new CompanySettings();
-app.MapGet("/api/rates", () => rates);
-app.MapPut("/api/rates", (Rates r) => { rates = r; return Results.Ok(rates); });
-app.MapGet("/api/settings", () => company);
-app.MapPut("/api/settings", (CompanySettings c) => { company = c; return Results.Ok(company); });
+app.MapGet("/api/rates", () => rates).RequireAuthorization("Staff");
+app.MapPut("/api/rates", (Rates r) => { rates = r; return Results.Ok(rates); }).RequireAuthorization("AdminOnly");
+app.MapGet("/api/settings", () => company).RequireAuthorization("Staff");
+app.MapPut("/api/settings", (CompanySettings c) => { company = c; return Results.Ok(company); }).RequireAuthorization("AdminOnly");
 
 app.Run();
+
+/* ---------------- схема БД: миграции + авто-baseline ---------------- */
+
+/// <summary>
+/// Применяет EF-миграции. Три случая:
+///  1. Файлов миграций ещё нет (чистый клон) — создаём схему EnsureCreated (dev-режим);
+///  2. БД уже содержит таблицы от EnsureCreated, но нет журнала миграций —
+///     помечаем ВСЕ текущие миграции как применённые (baseline), чтобы не пересоздавать данные;
+///  3. Обычный режим — накатываем ожидающие миграции.
+/// Команды для генерации миграций — в backend/MIGRATIONS.md.
+/// </summary>
+static void EnsureSchema(TkpDbContext db, ILogger logger)
+{
+    var pending = db.Database.GetPendingMigrations().ToList();
+    var applied = db.Database.GetAppliedMigrations().ToList();
+
+    if (pending.Count == 0 && applied.Count == 0)
+    {
+        // Миграции не сгенерированы — dev-режим (см. MIGRATIONS.md, как перейти на миграции)
+        db.Database.EnsureCreated();
+        logger.LogInformation("Миграции не найдены — схема создана через EnsureCreated (dev)");
+        return;
+    }
+
+    if (applied.Count == 0 && db.Database.CanConnect() && HasAnyTable(db))
+    {
+        // Существующая БД от EnsureCreated: baseline — помечаем все миграции применёнными
+        var history = "__EFMigrationsHistory";
+        db.Database.ExecuteSqlRaw(
+            $"CREATE TABLE IF NOT EXISTS \"{history}\" (\"MigrationId\" varchar(150) NOT NULL PRIMARY KEY, \"ProductVersion\" varchar(32) NOT NULL)");
+        foreach (var m in pending)
+            db.Database.ExecuteSqlRaw(
+                $"INSERT INTO \"{history}\" (\"MigrationId\", \"ProductVersion\") VALUES (@p0, @p1)", m, "8.0.8");
+        logger.LogInformation("Baseline: {Count} миграций помечены как применённые (схема уже существовала)", pending.Count);
+        return;
+    }
+
+    db.Database.Migrate();
+    logger.LogInformation("Миграции накатаны: {Count} применено", db.Database.GetAppliedMigrations().Count());
+}
+
+static bool HasAnyTable(TkpDbContext db)
+{
+    try
+    {
+        var conn = db.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open) conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public'";
+        return Convert.ToInt32(cmd.ExecuteScalar()) > 0;
+    }
+    catch
+    {
+        return false;
+    }
+}
 
 // Разбор CSV прайс-листа вынесен в CatalogCsv.cs (чистая часть + Import).
