@@ -86,6 +86,26 @@ public static class Rights
         };
     }
 
+    /* ---------------- смена ролей: защита последнего админа ---------------- */
+
+    public const string LastAdminDeny =
+        "Нельзя снять роль администратора с последнего администратора — сначала назначьте админом кого-то ещё";
+
+    /// <summary>
+    /// Можно ли пользователю с ролями <paramref name="oldRoles"/> назначить
+    /// <paramref name="newRole"/>, если всего администраторов <paramref name="adminCount"/>.
+    /// Чистая функция — эндпоинт добавляет к ней только подсчёт админов в БД.
+    /// </summary>
+    public static (bool Ok, string? Reason) CanChangeRole(
+        IEnumerable<string> oldRoles, string newRole, int adminCount)
+    {
+        var wasAdmin = oldRoles.Contains(Roles.Admin, StringComparer.OrdinalIgnoreCase);
+        var staysAdmin = string.Equals(newRole, Roles.Admin, StringComparison.OrdinalIgnoreCase);
+        if (wasAdmin && !staysAdmin && adminCount <= 1)
+            return (false, LastAdminDeny);
+        return (true, null);
+    }
+
     /// <summary>Единый формат отказа: 403 + RFC 7807, причина — в detail.</summary>
     public static IResult Forbid(ClaimsPrincipal user, string perm) =>
         Results.Problem(
