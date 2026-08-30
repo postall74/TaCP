@@ -29,6 +29,29 @@ export interface AuthUser {
   roles: string[];
 }
 
+/** Причина ошибки из тела ответа: { errors: [] } (регистрация), { detail } / { title }
+    (RFC 7807 — отказы матрицы прав), массив строк, plain-text. Иначе — статус. */
+async function errorOf(res: Response): Promise<string> {
+  const fallback = `HTTP ${res.status} ${res.statusText}`;
+  let text: string;
+  try {
+    text = await res.text();
+  } catch {
+    return fallback;
+  }
+  if (!text) return fallback;
+  try {
+    const body = JSON.parse(text);
+    if (Array.isArray(body?.errors)) return body.errors.join("; ") || fallback;
+    if (typeof body?.detail === "string" && body.detail) return body.detail;
+    if (typeof body?.title === "string" && body.title) return body.title;
+    if (Array.isArray(body)) return body.filter((x: unknown) => typeof x === "string").join("; ") || fallback;
+  } catch {
+    if (text.length <= 160) return text; // сервер вернул plain-text причину
+  }
+  return fallback;
+}
+
 async function req<T>(base: string, path: string, init?: RequestInit, timeoutMs = 8000): Promise<T> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -43,7 +66,7 @@ async function req<T>(base: string, path: string, init?: RequestInit, timeoutMs 
       },
       signal: ctrl.signal,
     });
-    if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status} ${res.statusText}`);
+    if (!res.ok) throw new ApiError(res.status, await errorOf(res));
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
   } finally {

@@ -41,12 +41,17 @@ public static class AuthExtensions
 
     public static IServiceCollection AddTkpAuth(this IServiceCollection services, IConfiguration config)
     {
-        // Identity: пользователи + роли, без Cookie (токены вместо сессий)
+        // Identity: пользователи + роли, без Cookie (токены вместо сессий).
+        // Политика пароля сознательно совпадает с локальным режимом
+        // (localAuth.ts: «минимум 6 символов») и паролем сида Admin#12345 —
+        // внутренний инструмент, жёсткость повышается в проде настройками.
         services.AddIdentityCore<AppUser>(o =>
             {
                 o.Password.RequireDigit = true;
                 o.Password.RequiredLength = 6;
                 o.Password.RequireNonAlphanumeric = false;
+                o.Password.RequireUppercase = false;
+                o.Password.RequireLowercase = false;
                 o.User.RequireUniqueEmail = true;
             })
             .AddRoles<IdentityRole>()
@@ -95,7 +100,9 @@ public static class AuthExtensions
     {
         var g = app.MapGroup("/api/auth").AllowAnonymous();
 
-        // Регистрация (в проде — закрыть или оставить только админу; см. RequireAdmin)
+        // Регистрация (в проде — закрыть или оставить только админу; см. RequireAdmin).
+        // Ошибки Identity переводим на русский — фронтенд показывает их как есть
+        // (раньше клиент видел безликий «HTTP 400 Bad Request»).
         g.MapPost("/register", async (RegisterDto dto, UserManager<AppUser> users) =>
         {
             var user = new AppUser
@@ -105,7 +112,7 @@ public static class AuthExtensions
             };
             var res = await users.CreateAsync(user, dto.Password);
             if (!res.Succeeded)
-                return Results.BadRequest(new { errors = res.Errors.Select(e => e.Description) });
+                return Results.BadRequest(new { errors = res.Errors.Select(e => RuError(e.Code)) });
 
             await users.AddToRoleAsync(user, NormalizeRole(dto.Role));
             return Results.Ok(new { user.Id, user.Email, user.FullName, role = NormalizeRole(dto.Role) });
@@ -202,6 +209,19 @@ public static class AuthExtensions
     {
         Roles.Admin or Roles.Manager or Roles.Engineer => (role ?? Roles.Engineer).ToLowerInvariant(),
         _ => Roles.Engineer, // неизвестная роль деградирует до инженера
+    };
+
+    /// <summary>Коды ошибок Identity → человекочитаемый русский (показывается в форме).</summary>
+    private static string RuError(string? code) => code switch
+    {
+        "PasswordTooShort" => "Пароль слишком короткий — минимум 6 символов",
+        "PasswordRequiresDigit" => "В пароле нужна хотя бы одна цифра",
+        "PasswordRequiresUpper" => "В пароле нужна хотя бы одна заглавная буква",
+        "PasswordRequiresLower" => "В пароле нужна хотя бы одна строчная буква",
+        "PasswordRequiresNonAlphanumeric" => "В пароле нужен хотя бы один спецсимвол",
+        "DuplicateUserName" or "DuplicateEmail" => "Пользователь с таким e-mail уже существует",
+        "InvalidEmail" or "InvalidUserName" => "Некорректный формат e-mail",
+        _ => code ?? "Не удалось создать пользователя",
     };
 
     private static (string Token, DateTime ExpiresAt) IssueToken(AppUser user, IList<string> roles, IConfiguration config)
