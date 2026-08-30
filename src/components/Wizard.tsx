@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useStore } from "../store";
 import { findEq } from "../data/catalog";
-import type { Cabinet, CabinetSegment, Equipment, LineItem, Project, SegmentKind, SeparationForm } from "../types";
+import type { Cabinet, CabinetSegment, Equipment, LineItem, Project, SeparationForm } from "../types";
 import { CABINET_KINDS, DIRECTIONS } from "../types";
 import { fmtMoney, genId } from "../utils";
 import {
@@ -164,15 +164,9 @@ const ZIP_CATS = [
   "УЗИП и защита", "Блоки питания", "ПЛК и модули", "Панели оператора",
 ];
 
-/** Отсеки по форме разделения (результат опросника секционирования). */
-const segmentsForForm = (form: SeparationForm): { kind: SegmentKind; name: string; partitions: number }[] => {
-  const pick = (...kinds: SegmentKind[]) =>
-    kinds.map((k) => SEGMENT_PRESETS.find((p) => p.kind === k)).filter((x): x is (typeof SEGMENT_PRESETS)[number] => !!x);
-  if (form === "1") return [];
-  if (form === "2a" || form === "2b") return pick("busbar");
-  if (form === "3a" || form === "4a") return pick("input", "feeders", "busbar");
-  return pick("input", "feeders", "busbar", "cable"); // 3b, 4b
-};
+/* Отсеки по форме разделения — общая логика в utils/segments.ts
+   (segmentsForForm): её используют и этот опросник, и панель
+   «Секционирование» на вкладке «Конструктор». */
 
 export default function Wizard({ project, onClose }: { project: Project; onClose: () => void }) {
   const catalog = useStore((s) => s.catalog);
