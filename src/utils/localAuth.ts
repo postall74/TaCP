@@ -112,6 +112,13 @@ export async function localSetUserRole(id: string, role: Role): Promise<void> {
   const users = readUsers();
   const u = users.find((x) => x.id === id);
   if (!u) throw new Error("Пользователь не найден");
+  /* та же защита, что на сервере (Rights.LastAdminDeny): последнего админа
+     разжаловать нельзя — иначе локальная система останется без управления */
+  const admins = users.filter((x) => x.roles.includes("admin")).length;
+  if (u.roles.includes("admin") && role !== "admin" && admins <= 1)
+    throw new Error(
+      "Нельзя снять роль администратора с последнего администратора — сначала назначьте админом кого-то ещё"
+    );
   u.roles = [role];
   writeUsers(users);
 }
