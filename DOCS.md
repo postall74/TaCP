@@ -256,6 +256,13 @@ MarkupPct     = Profit / totalCost × 100         (наценка к себес�
   `PUT /api/rates`, `PUT /api/settings`, `/api/auth/users*` — `AdminOnly`.
   Фронтенд грузит данные только после входа (эффект `apiBase && user`).
 - Проекты получают `OwnerId` из токена — задел на разделение данных по пользователям.
+- **Регистрация** (`POST /api/auth/register`): политика пароля — минимум 6 символов
+  и хотя бы одна цифра (Identity: `RequireUppercase/Lowercase = false` — единая с
+  локальным режимом `localAuth.ts` и сидом `Admin#12345`). Ошибки валидации
+  возвращаются **по-русски** (маппер `RuError` в `AuthExtensions.cs`) и показываются
+  в форме как есть: клиент разбирает тело ответа (`errors[]`, `detail` RFC 7807 —
+  `errorOf` в `src/api/client.ts`), поэтому вместо безликого «HTTP 400 Bad Request»
+  пользователь видит «Пользователь с таким e-mail уже существует» и т. п.
 
 ### 8.1. Матрица прав (`src/utils/roles.ts` ⇄ `backend/TkpApi/Rights.cs`)
 
@@ -392,6 +399,12 @@ Enum'ы в JSON — строки (`"nku"`, `"draft"`), Id — строки: се
 
 Записи — по веткам (регламент — `GIT_WORKFLOW.md`); свежие сверху.
 
+- **`fix/registration-400`** — регистрация перестала падать безликим
+  «HTTP 400 Bad Request»: клиент разбирает тело ошибки (`errors[]`,
+  `detail` RFC 7807 — `errorOf` в `client.ts`), Identity-ошибки переведены на
+  русский (`RuError`), политика пароля ослаблена до «6+ символов и цифра»
+  (единая с `localAuth.ts` и сидом админа), форма проверяет пароль до запроса
+  и показывает требования. Обновлены §8, QUICKSTART §5.
 - **`feature/server-side-rights`** — серверное применение матрицы прав (§8.1):
   `backend/TkpApi/Rights.cs` — зеркало `src/utils/roles.ts` (роли из JWT,
   `Can`, `PermForStatus`, `DenyReason`, единый 403 + RFC 7807); охранники в

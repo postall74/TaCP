@@ -71,7 +71,9 @@ export async function localRegister(
   const mail = email.trim().toLowerCase();
   if (users.some((u) => u.email.toLowerCase() === mail))
     throw new Error("Пользователь с таким e-mail уже существует");
-  if (password.length < 6) throw new Error("Пароль — минимум 6 символов");
+  /* политика один в один с серверной (Identity в AuthExtensions.cs): 6+ символов и цифра */
+  if (password.length < 6 || !/\d/.test(password))
+    throw new Error("Пароль — минимум 6 символов и хотя бы одна цифра");
   const u: LocalUser = {
     id: genId("usr"), email: mail, fullName: fullName.trim(), position: "локальный режим",
     roles: [role], passwordHash: await hashPassword(password), createdAt: Date.now(),

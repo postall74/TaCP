@@ -53,6 +53,13 @@ export default function LoginGate() {
           setBusy(false);
           return;
         }
+        // та же политика, что на сервере (Identity) и в локальном режиме —
+        // отсекаем заведомо невалидный пароль до запроса
+        if (password.length < 6 || !/\d/.test(password)) {
+          setError("Пароль — минимум 6 символов и хотя бы одна цифра");
+          setBusy(false);
+          return;
+        }
         await register(email.trim(), password, fullName.trim(), role);
         toast("Аккаунт создан — войдите");
         setMode("login");
@@ -227,6 +234,11 @@ export default function LoginGate() {
               <Field label="Пароль">
                 <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} className={inputCls} placeholder="••••••••" />
               </Field>
+              {mode === "register" && (
+                <p className="-mt-1 text-[11px] leading-relaxed text-mute">
+                  Требования: минимум 6 символов, хотя бы одна цифра. Ошибки сервера показываются здесь же — вместо «HTTP 400».
+                </p>
+              )}
 
               {error && (
                 <div className="anim-scale rounded-md bg-heat-soft px-3 py-2 text-[12px] font-semibold text-heat">{error}</div>

@@ -161,6 +161,7 @@ JWT в Swagger: `POST /api/auth/login` → скопировать `token` → к
 | Белая страница после обновлений | В localStorage `settings` без `apiBaseUrl` (старая версия persist) | Обновлён код (persist v3 + миграция). Аварийно: DevTools → Console → `const s=JSON.parse(localStorage.getItem("tkp-pro-v2")); s.state.settings.apiBaseUrl=s.state.settings.apiBaseUrl??""; localStorage.setItem("tkp-pro-v2",JSON.stringify(s)); location.reload();` |
 | `Exception has occurred: require is not defined / No PostCSS Config found` в отладчике VS Code | **Не ошибка**: Vite штатно перехватывает эти исключения | Смотрите на баннер `VITE ready` — если он есть, сервер работает. Шум убирается: снять *Caught Exceptions* в Run and Debug |
 | CS1729 «нет конструктора с N аргументов» в record | Две строки параметров слиплись — вторая «утонула» в комментарии `//` | Разнести параметры record по строкам (комментарии — только над строкой) |
+| Регистрация: «HTTP 400 Bad Request» без причины | Слабый пароль или занятый e-mail (Identity возвращал английские ошибки, клиент их отбрасывал) | Исправлено: пароль — **минимум 6 символов и цифра**, причина показывается по-русски («Пользователь с таким e-mail уже существует»). Если всё ещё 400 — смотрите консоль API: строка с `errors` |
 
 ---
 
