@@ -39,6 +39,21 @@ export interface LineItem {
   purchase: number; // закупочная цена (снимок)
 }
 
+/** Функциональный отсек шкафа (секционирование по ГОСТ IEC 61439-2).
+    Перегородки отсека — параметрические позиции: их стоимость и типовой
+    комплект вычисляет utils/segments.ts, в items они попадают снапшотами. */
+export type SegmentKind = "input" | "feeders" | "control" | "busbar" | "cable" | "custom";
+
+export interface CabinetSegment {
+  id: string;
+  kind: SegmentKind;
+  name: string; // «Вводной отсек», «Отходящие линии»…
+  partitions: number; // перегородки, образующие отсек (0–4)
+}
+
+/** Форма внутреннего разделения по ГОСТ IEC 61439-2. */
+export type SeparationForm = "1" | "2a" | "2b" | "3a" | "3b" | "4a" | "4b";
+
 /** Шкаф / секция / линейка (ProjectStructure). hours — сборка (производство). */
 export interface Cabinet {
   id: string;
@@ -49,6 +64,10 @@ export interface Cabinet {
   designHours: number; // чел·ч проектирования
   softwareHours: number; // чел·ч разработки ПО
   note?: string;
+  /** Секционирование: функциональные отсеки. Пусто/нет — шкаф без разделения (форма 1). */
+  segments?: CabinetSegment[];
+  /** Заявленная форма разделения (выводится в документ и на структурную схему). */
+  form?: SeparationForm;
 }
 
 /** Снимок версии ТКП. */

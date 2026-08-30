@@ -211,6 +211,42 @@ const ruleEmpty = (cab: Cabinet): Issue[] =>
     ? [issue(`${cab.id}-empty`, "info", "Шкаф пока пуст — оборудование ещё не добавлено.", cab)]
     : [];
 
+/* ---------------- секционирование (ГОСТ IEC 61439-2) ---------------- */
+
+const FORM_RANK: Record<string, number> = { "1": 1, "2a": 2, "2b": 2, "3a": 3, "3b": 3, "4a": 4, "4b": 4 };
+
+/** 7. Заявлена форма ≥2, но шинного отсека в составе нет. */
+const ruleFormNoBusbar = (cab: Cabinet): Issue[] => {
+  if (!cab.form || (FORM_RANK[cab.form] ?? 1) < 2) return [];
+  const hasBusbar = (cab.segments ?? []).some((s) => s.kind === "busbar");
+  if (hasBusbar) return [];
+  return [
+    issue(
+      `${cab.id}-form-busbar`,
+      "warn",
+      `Форма разделения ${cab.form} требует отделения шин, но шинного отсека в шкафу нет.`,
+      cab,
+      "Добавьте «Шинный отсек» в панели «Секционирование» этого шкафа."
+    ),
+  ];
+};
+
+/** 8. Форма ≥3 при одном или нуле функциональных отсеков. */
+const ruleFormFewSegments = (cab: Cabinet): Issue[] => {
+  if (!cab.form || (FORM_RANK[cab.form] ?? 1) < 3) return [];
+  const n = (cab.segments ?? []).filter((s) => s.kind !== "busbar").length;
+  if (n >= 2) return [];
+  return [
+    issue(
+      `${cab.id}-form-segments`,
+      "warn",
+      `Форма ${cab.form} отделяет функциональные блоки друг от друга, а отсеков всего ${n}.`,
+      cab,
+      "Разбейте шкаф минимум на два функциональных отсека (ввод, отходящие линии, управление…)."
+    ),
+  ];
+};
+
 /* ---------------- правила на весь проект ---------------- */
 
 /** 7. Греющий кабель без терморегулятора. */
@@ -242,6 +278,8 @@ export function validateCabinet(cab: Cabinet, ctx: ValidateCtx): Issue[] {
   return [
     ...PER_CABINET.flatMap((r) => r(cab, ctx)),
     ...ruleEmpty(cab),
+    ...ruleFormNoBusbar(cab),
+    ...ruleFormFewSegments(cab),
   ].sort((a, b) => SEVERITY_META[a.severity].rank - SEVERITY_META[b.severity].rank);
 }
 

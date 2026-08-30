@@ -157,3 +157,47 @@ describe("пустой шкаф и сводка", () => {
     expect(sum.total).toBe(sum.error + sum.warn + sum.info);
   });
 });
+
+/* ---------------- секционирование (ГОСТ IEC 61439-2) ---------------- */
+
+const seg = (kind: "input" | "feeders" | "control" | "busbar" | "cable", partitions = 1) =>
+  ({ id: `sg-${kind}`, kind, name: kind, partitions });
+
+describe("правила секционирования", () => {
+  it("форма 2a без шинного отсека — предупреждение", () => {
+    const c = { ...cab([item(brk80)]), form: "2a" as const, segments: [seg("input")] };
+    const issues = validateCabinet(c, ctx([brk80], [c]));
+    expect(hasId(issues, "form-busbar")).toBe(true);
+  });
+
+  it("форма 2a с шинным отсеком — молчит", () => {
+    const c = { ...cab([item(brk80)]), form: "2a" as const, segments: [seg("input"), seg("busbar")] };
+    const issues = validateCabinet(c, ctx([brk80], [c]));
+    expect(hasId(issues, "form-busbar")).toBe(false);
+  });
+
+  it("форма 1 и отсутствие формы не требуют отсеков", () => {
+    for (const f of [undefined, "1" as const]) {
+      const c = { ...cab([item(brk80)]), form: f, segments: [] };
+      const issues = validateCabinet(c, ctx([brk80], [c]));
+      expect(hasId(issues, "form-busbar")).toBe(false);
+      expect(hasId(issues, "form-segments")).toBe(false);
+    }
+  });
+
+  it("форма 3b с одним функциональным отсеком — предупреждение", () => {
+    const c = { ...cab([item(brk80)]), form: "3b" as const, segments: [seg("input"), seg("busbar")] };
+    const issues = validateCabinet(c, ctx([brk80], [c]));
+    expect(hasId(issues, "form-segments")).toBe(true);
+  });
+
+  it("форма 3b с полноценной разбивкой — молчит", () => {
+    const c = {
+      ...cab([item(brk80)]), form: "3b" as const,
+      segments: [seg("input"), seg("feeders"), seg("busbar")],
+    };
+    const issues = validateCabinet(c, ctx([brk80], [c]));
+    expect(hasId(issues, "form-segments")).toBe(false);
+    expect(hasId(issues, "form-busbar")).toBe(false);
+  });
+});

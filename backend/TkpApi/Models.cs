@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
 
@@ -64,6 +65,18 @@ public class LineItem
     public decimal Purchase { get; set; }   // закупочная цена (снимок на момент добавления)
 }
 
+/// <summary>Функциональный отсек шкафа — секционирование по ГОСТ IEC 61439-2
+/// (зеркало CabinetSegment из src/types.ts; логика — src/utils/segments.ts).</summary>
+public class CabinetSegment
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    /// <summary>input | feeders | control | busbar | cable | custom.</summary>
+    public string Kind { get; set; } = "custom";
+    public string Name { get; set; } = "";
+    /// <summary>Перегородки, образующие отсек (0–4).</summary>
+    public int Partitions { get; set; }
+}
+
 /// <summary>Шкаф / секция / линейка (project_cabinets).</summary>
 public class Cabinet
 {
@@ -75,6 +88,16 @@ public class Cabinet
     public decimal SoftwareHours { get; set; }
     public string? Note { get; set; }
     public List<LineItem> Items { get; set; } = new();
+
+    /// <summary>Отсеки секционирования. Пока [NotMapped]: персист в таблицу
+    /// cabinet_segments приедет с EF-миграцией (дорожная карта, п. 1). Фронтенд
+    /// хранит их в локальной копии проекта — данные не теряются.</summary>
+    [NotMapped]
+    public List<CabinetSegment>? Segments { get; set; }
+
+    /// <summary>Форма внутреннего разделения: "1"…"4b" (ГОСТ IEC 61439-2).</summary>
+    [NotMapped]
+    public string? Form { get; set; }
 }
 
 /// <summary>Проект ТКП (projects) — мета-данные + вся экономика.</summary>
