@@ -20,7 +20,12 @@ export default function LoginGate() {
   const login = useStore((s) => s.login);
   const register = useStore((s) => s.register);
   const toast = useStore((s) => s.toast);
-  const isRemote = !!(useStore((s) => s.settings.apiBaseUrl) ?? "").trim();
+  const updateSettings = useStore((s) => s.updateSettings);
+  const pingApi = useStore((s) => s.pingApi);
+  const apiBaseUrl = useStore((s) => s.settings.apiBaseUrl) ?? "";
+  const apiOnline = useStore((s) => s.settings.apiOnline);
+  const [pingBusy, setPingBusy] = useState(false);
+  const isRemote = !!apiBaseUrl.trim();
 
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
@@ -110,6 +115,52 @@ export default function LoginGate() {
               <IcBolt size={18} />
             </span>
             <span className="font-display text-lg font-bold text-ink">ТКП·Про</span>
+          </div>
+
+          {/* подключение к C#-бэкенду — задаётся и проверяется ДО входа */}
+          <div className="mb-4 rounded-2xl border border-line bg-card p-4 shadow-sm shadow-dark/5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold tracking-[0.14em] text-mute uppercase">Подключение к C#-бэкенду</span>
+              <span
+                className={cx(
+                  "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold",
+                  isRemote && apiOnline === true && "bg-ok-soft text-ok",
+                  isRemote && apiOnline === false && "bg-heat-soft text-heat",
+                  (!isRemote || apiOnline === null) && "bg-line/70 text-mute"
+                )}
+              >
+                <span className={cx("h-1.5 w-1.5 rounded-full", isRemote && apiOnline === true ? "blink-dot bg-ok" : isRemote && apiOnline === false ? "bg-heat" : "bg-mute")} />
+                {!isRemote ? "локальный режим" : apiOnline === true ? "онлайн" : apiOnline === false ? "офлайн" : "не проверялось"}
+              </span>
+            </div>
+            <div className="mt-2 flex gap-2">
+              <input
+                value={apiBaseUrl}
+                onChange={(e) => updateSettings({ apiBaseUrl: e.target.value })}
+                placeholder="http://localhost:5085 (пусто — локально)"
+                className="min-w-0 flex-1 rounded-md border border-line bg-paper px-2.5 py-1.5 font-mono text-[12px] text-ink outline-none transition-all focus:border-accent"
+              />
+              <button
+                type="button"
+                disabled={pingBusy || !isRemote}
+                onClick={async () => {
+                  setPingBusy(true);
+                  await pingApi(apiBaseUrl);
+                  setPingBusy(false);
+                }}
+                className={cx(
+                  "shrink-0 cursor-pointer rounded-md border px-3 text-[12px] font-bold transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-40",
+                  "border-line bg-paper text-ink2 hover:border-accent hover:text-accent-deep"
+                )}
+              >
+                {pingBusy ? "Проверка…" : "Проверить"}
+              </button>
+            </div>
+            <p className="mt-1.5 text-[10.5px] leading-relaxed text-mute">
+              {isRemote
+                ? "Серверный режим: пользователи и данные — в PostgreSQL. Проверка идёт на открытый /api/health — токен не нужен."
+                : "Без URL приложение работает локально (данные в браузере). Укажите адрес и нажмите «Проверить», чтобы подключиться к backend/TkpApi."}
+            </p>
           </div>
 
           <div className="rounded-2xl border border-line bg-card p-7 shadow-xl shadow-dark/5">

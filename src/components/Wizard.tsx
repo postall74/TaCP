@@ -1,82 +1,127 @@
 import { useMemo, useState } from "react";
 import { useStore } from "../store";
 import { findEq } from "../data/catalog";
-import type { Cabinet, Equipment, LineItem, Project } from "../types";
+import type { Cabinet, CabinetSegment, Equipment, LineItem, Project, SegmentKind, SeparationForm } from "../types";
 import { CABINET_KINDS, DIRECTIONS } from "../types";
 import { fmtMoney, genId } from "../utils";
 import {
-  KIT_GROUP_LABEL, KIT_SYSTEMS, buildKit, findKitSystem, kitAssemblyHours, kitLabel, kitTotal, type KitInput,
+  buildKit, kitTotal, kitAssemblyHours, kitLabel, kitLinesToItems, findKitSystem,
+  nearestDims, hasExactDims, KIT_SYSTEMS, KIT_GROUP_LABEL,
 } from "../utils/kit";
+import { buildSegmentLines, FORM_META, segmentsForForm } from "../utils/segments";
 import { Btn, Field, Input, NumInput, Select, Toggle, cx } from "./ui";
 import { IcAlert, IcArrowLeft, IcCheck, IcChevronRight, IcWand, IcX } from "./icons";
 
 /* ============================================================
-   МАСТЕР ПОДБОРА — пошаговый инженерный опросник.
-   Шаги: корпус (готовый из справочника / составной комплект по
-   образцу PROVENTO-DKC CQE, см. utils/kit.ts / ручной ввод) → вводные и
-   отходящие автоматы → АВР (БАВР / контакторы / рубильник) →
-   УЗИП → кнопки и индикация → шинные сборки по току →
-   компоновка («стена к стене», цоколи) → конфигурация ПЛК
-   (сигналы + резерв модулей) → трудозатраты (сборка / проект /
-   ППО) → ЗИП (%, но не менее 1 шт) и транспорт. Результат —
-   готовые шкафы, добавляемые в структуру проекта одним кликом.
+   МАСТЕР ПОДБОРА — пошаговый инженерный опросник (14 шагов).
+   Корпус: тип (напольный/навесной) → система (CQE N — DKC,
+   PROVENTO — EKF; прежний CQE снят с производства) → габариты
+   (нет типового — ближайшие или ручной ввод) → составной ряд
+   (2+ корпусов «стена к стене»: панели N+1, стыки N−1, цоколи N)
+   → доп. траверсы. АВР — до вводов: 2/3/5 вводов, 1-ф/3-ф.
+   Заземление: TN-S/TN-C-S/TT/IT (шин PE — сколько нужно, для IT —
+   контроль изоляции). УЗИП: силовые + RS-485/Ethernet/каналы ПЛК.
+   Кнопки и индикация — отдельный опросник с визуальным макетом
+   дверцы. Приборы: амперметры/вольтметры на вводе и отходящих.
+   Шины — в т.ч. секционированные. Микроклимат: вентиляторы,
+   решётки, обогрев, кондиционирование. ПЛК — с барьерами
+   искрозащиты и преобразователями сигналов. Секционирование —
+   опросник форм 1/2a/3a/3b/4a/4b по ГОСТ IEC 61439-2. Работы,
+   ЗИП (мин. 1 шт), транспорт, сводка.
    ============================================================ */
 
 interface Draft {
   kind: string;
   cabNeed: boolean;
-  cabId: string | null;
-  cabMount: "any" | "floor" | "wall";
-  cabIp: "any" | "31" | "54" | "65" | "66" | "67";
-  manualOn: boolean;
-  manualName: string;
-  manualPrice: number;
-
-  /* режим подбора корпуса: готовый из справочника / составной комплект / ручной ввод */
-  cabMode: "catalog" | "kit" | "manual";
+  cabMode: "kit" | "catalog" | "manual";
+  /* составной комплект */
+  cabMountKit: "floor" | "wall";
   kitSystem: string;
   kitH: number; kitW: number; kitD: number; kitDoors: number;
+  joined: number;        // корпусов в составном шкафу (1 — одиночный)
+  extraTrav: number;     // дополнительные траверсы, шт
+  pedestalKit: boolean;
+  customDim: boolean; customName: string; customPrice: number;
+  /* готовый из справочника */
+  cabMount: "any" | "floor" | "wall";
+  cabIp: "any" | "31" | "54" | "65" | "66" | "67";
+  cabId: string | null;
+  /* ручной ввод */
+  manualOn: boolean; manualName: string; manualPrice: number;
 
   on: Record<string, boolean>;
 
+  /* АВР — до вводов и линий */
+  avrKind: "bavr" | "contactors" | "switch";
+  avrInputs: 2 | 3 | 5;
+  avrPhase: "1ph" | "3ph";
+  ctrlLines: number;
+
+  /* ввод, отходящие, учёт, заземление */
   mainId: string;
   out1p: number; out1pId: string;
   out3p: number; out3pId: string;
   rcd: number;
   meter: boolean;
+  ground: "tn-s" | "tn-c-s" | "tt" | "it";
+  peBuses: number;
+  itMonitor: boolean;
 
-  avrKind: "none" | "bavr" | "contactors" | "switch";
-  ctrlLines: number;
-
+  /* УЗИП: силовые + слаботочные */
   uzpKind: "none" | "t2" | "t12";
+  uzpRs: number; uzpEth: number; uzpIo: number;
 
+  /* кнопки и индикация (+ визуальная дверца) */
   buttons: number; btnStop: number; lamps: number; switches: number;
+  lineBtns: number;
+  avrInd: boolean;
 
-  busNeed: boolean; busCurrent: number;
+  /* приборы */
+  ammIn: number; voltIn: number; ammOut: number;
 
+  /* шины */
+  busNeed: boolean; busCurrent: number; busSections: number;
+
+  /* компоновка (только для готовых корпусов из справочника) */
   wallRow: boolean; rowSize: number; pedestal: boolean;
 
+  /* микроклимат */
+  fans: number; grilles: number; heaters: number; thermos: number; acOn: boolean;
+
+  /* ПЛК */
   plcNeed: boolean; di: number; doN: number; ai: number; ao: number; reserve: number;
   hmiKind: "none" | "7" | "10";
+  barriers: number; converters: number;
+
+  /* секционирование (опросник форм) */
+  segOn: boolean;
+  segQ1: boolean; // отдельный шинный отсек?
+  segQ2: boolean; // блоки отделены друг от друга?
+  segQ3: "3a" | "3b" | "4a" | "4b";
 
   hours: number; designHours: number; softwareHours: number; separateLine: boolean;
-
   zipOn: boolean; zipPct: number;
   transportOn: boolean; transportPct: number;
 }
 
-const STEP_IDS = ["cab", "breakers", "avr", "uzp", "controls", "busbars", "layout", "plc", "work", "zip", "summary"] as const;
+const STEP_IDS = [
+  "cab", "avr", "breakers", "uzp", "controls", "meters", "busbars",
+  "layout", "climate", "plc", "section", "work", "zip", "summary",
+] as const;
 type StepId = (typeof STEP_IDS)[number];
 
 const STEP_META: { id: StepId; title: string; desc: string }[] = [
-  { id: "cab", title: "Корпус шкафа", desc: "готовый / комплект / ручной" },
-  { id: "breakers", title: "Ввод и линии", desc: "автоматы, учёт" },
-  { id: "avr", title: "АВР", desc: "резервирование ввода" },
-  { id: "uzp", title: "УЗИП", desc: "импульсные перенапряжения" },
-  { id: "controls", title: "Кнопки и индикация", desc: "лампы, переключатели" },
-  { id: "busbars", title: "Шинные сборки", desc: "подбор по току" },
+  { id: "cab", title: "Корпус шкафа", desc: "тип, габарит, составной ряд" },
+  { id: "avr", title: "АВР", desc: "2/3/5 вводов, 1-ф / 3-ф" },
+  { id: "breakers", title: "Ввод и линии", desc: "автоматы, учёт, заземление" },
+  { id: "uzp", title: "УЗИП", desc: "силовые, RS-485, Ethernet, I/O" },
+  { id: "controls", title: "Кнопки и индикация", desc: "опросник + макет дверцы" },
+  { id: "meters", title: "Приборы", desc: "амперметры, вольтметры" },
+  { id: "busbars", title: "Шинные сборки", desc: "по току, секции" },
   { id: "layout", title: "Компоновка", desc: "стенки, цоколи" },
-  { id: "plc", title: "ПЛК и модули", desc: "сигналы, резерв" },
+  { id: "climate", title: "Микроклимат", desc: "вентиляция, обогрев" },
+  { id: "plc", title: "ПЛК и модули", desc: "сигналы, искрозащита" },
+  { id: "section", title: "Секционирование", desc: "формы 1…4b (61439-2)" },
   { id: "work", title: "Работы и ППО", desc: "нормо-часы" },
   { id: "zip", title: "ЗИП и транспорт", desc: "% запаса, доставка" },
   { id: "summary", title: "Сводка", desc: "проверка и применение" },
@@ -119,6 +164,16 @@ const ZIP_CATS = [
   "УЗИП и защита", "Блоки питания", "ПЛК и модули", "Панели оператора",
 ];
 
+/** Отсеки по форме разделения (результат опросника секционирования). */
+const segmentsForForm = (form: SeparationForm): { kind: SegmentKind; name: string; partitions: number }[] => {
+  const pick = (...kinds: SegmentKind[]) =>
+    kinds.map((k) => SEGMENT_PRESETS.find((p) => p.kind === k)).filter((x): x is (typeof SEGMENT_PRESETS)[number] => !!x);
+  if (form === "1") return [];
+  if (form === "2a" || form === "2b") return pick("busbar");
+  if (form === "3a" || form === "4a") return pick("input", "feeders", "busbar");
+  return pick("input", "feeders", "busbar", "cable"); // 3b, 4b
+};
+
 export default function Wizard({ project, onClose }: { project: Project; onClose: () => void }) {
   const catalog = useStore((s) => s.catalog);
   const addCabinetsBulk = useStore((s) => s.addCabinetsBulk);
@@ -130,28 +185,32 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
   const [d, setD] = useState<Draft>(() => ({
     kind: CABINET_KINDS[project.direction][0],
     cabNeed: true,
-    cabId: null,
-    cabMount: "any",
-    cabIp: "any",
-    manualOn: false,
-    manualName: "",
-    manualPrice: 15000,
-    cabMode: "catalog",
-    kitSystem: "cqe", kitH: 2000, kitW: 600, kitD: 400, kitDoors: 1,
-    on: { breakers: true, avr: true, uzp: true, controls: true, busbars: true, layout: true, plc: project.direction === "asu" },
+    cabMode: "kit",
+    cabMountKit: "floor",
+    kitSystem: "cqen-floor",
+    kitH: 2000, kitW: 800, kitD: 600, kitDoors: 1,
+    joined: 1, extraTrav: 0, pedestalKit: false,
+    customDim: false, customName: "", customPrice: 25000,
+    cabMount: "any", cabIp: "any", cabId: null,
+    manualOn: false, manualName: "", manualPrice: 15000,
+    on: {
+      avr: false, breakers: true, uzp: false, controls: true, meters: false,
+      busbars: true, layout: true, climate: false, plc: project.direction === "asu", section: false,
+    },
+    avrKind: "bavr", avrInputs: 2, avrPhase: "3ph", ctrlLines: 0,
     mainId: "brk-nsx100",
-    out1p: 6, out1pId: "brk-c16",
-    out3p: 2, out3pId: "brk-3p40",
-    rcd: 0,
-    meter: true,
-    avrKind: "none",
-    ctrlLines: 0,
-    uzpKind: "none",
-    buttons: 2, btnStop: 1, lamps: 2, switches: 1,
-    busNeed: true, busCurrent: 100,
+    out1p: 6, out1pId: "brk-c16", out3p: 2, out3pId: "brk-3p40",
+    rcd: 0, meter: true,
+    ground: "tn-s", peBuses: 1, itMonitor: true,
+    uzpKind: "t2", uzpRs: 0, uzpEth: 0, uzpIo: 0,
+    buttons: 2, btnStop: 1, lamps: 2, switches: 1, lineBtns: 0, avrInd: true,
+    ammIn: 0, voltIn: 0, ammOut: 0,
+    busNeed: true, busCurrent: 100, busSections: 1,
     wallRow: false, rowSize: 2, pedestal: false,
+    fans: 0, grilles: 0, heaters: 0, thermos: 0, acOn: false,
     plcNeed: project.direction === "asu", di: 16, doN: 8, ai: 4, ao: 0, reserve: 20,
-    hmiKind: "10",
+    hmiKind: "10", barriers: 0, converters: 0,
+    segOn: false, segQ1: false, segQ2: false, segQ3: "3a",
     hours: 10, designHours: 4, softwareHours: 0, separateLine: true,
     zipOn: true, zipPct: 20,
     transportOn: false, transportPct: 2,
@@ -162,11 +221,23 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
 
   const meta = STEP_META[step];
 
-  /* ---------- подбор корпуса ---------- */
+  /* ---------- система комплекта по типу монтажа ---------- */
+  const sys = findKitSystem(d.kitSystem);
+  const mountSystems = KIT_SYSTEMS.filter((s) => s.mount === d.cabMountKit);
+  const switchMount = (m: "floor" | "wall") => {
+    const s = KIT_SYSTEMS.find((x) => x.mount === m);
+    if (!s) return;
+    set({
+      cabMountKit: m, kitSystem: s.id,
+      kitH: s.heights[Math.floor(s.heights.length / 2)], kitW: s.widths[0], kitD: s.depths[0],
+      kitDoors: 1, joined: 1, extraTrav: 0, pedestalKit: false,
+    });
+  };
+
+  /* ---------- подбор готового корпуса (режим «из справочника») ---------- */
   const enclosures = useMemo(() => catalog.filter((e) => e.category === "Корпуса и щиты"), [catalog]);
   const ipOf = (e: Equipment) => Number(/IP\s*(\d+)/i.exec(e.attrs ?? "")?.[1] ?? 0);
   const mountOf = (e: Equipment) => ((e.attrs ?? "").toLowerCase().includes("напольн") ? "floor" : "wall");
-
   const pool = enclosures.filter((e) => d.cabMount === "any" || mountOf(e) === d.cabMount);
   const exact = d.cabIp === "any" ? pool : pool.filter((e) => ipOf(e) === Number(d.cabIp));
   const fallback =
@@ -174,37 +245,58 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
       ? pool.filter((e) => ipOf(e) > 0 && ipOf(e) < Number(d.cabIp)).sort((a, b) => ipOf(b) - ipOf(a)).slice(0, 3)
       : [];
 
-  /* ---------- составной комплект (конфигуратор корпусов, utils/kit.ts) ----------
-     Ряд «стена к стене» и цоколи приходят с шага «Компоновка»: панели и стыки
-     пересчитываются автоматически (ряд+1 панелей, ряд−1 стыков). */
-  const kitInput: KitInput = {
+  /* ---------- комплект корпуса (режим «составной») ---------- */
+  const kitInput = {
     systemId: d.kitSystem, h: d.kitH, w: d.kitW, d: d.kitD, doors: d.kitDoors,
-    wallRow: d.on.layout && d.wallRow, rowSize: d.rowSize, pedestal: d.on.layout && d.pedestal,
+    joined: d.joined, pedestal: d.pedestalKit, extraTraverses: d.extraTrav,
   };
   const kitLines = useMemo(
-    () => (d.cabNeed && d.cabMode === "kit" ? buildKit(kitInput) : []),
-    [d] // kitInput целиком производен от d
+    () => (d.cabNeed && d.cabMode === "kit" && !d.customDim ? buildKit(kitInput) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [d.cabNeed, d.cabMode, d.customDim, d.kitSystem, d.kitH, d.kitW, d.kitD, d.kitDoors, d.joined, d.pedestalKit, d.extraTrav]
   );
+  const cabHeight = d.cabMode === "kit" ? d.kitH : 1800;
+  const near = nearestDims(sys, d.kitH, d.kitW, d.kitD);
+
+  /* ---------- секционирование ---------- */
+  const segForm: SeparationForm = !d.segQ1 ? "1" : !d.segQ2 ? "2a" : d.segQ3;
+  const segPresets = d.segOn ? segmentsForForm(segForm) : [];
+  const segSegments: CabinetSegment[] = useMemo(
+    () => segPresets.map((p) => ({ id: genId("seg"), kind: p.kind, name: p.name, partitions: p.partitions })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [d.segOn, segForm]
+  );
+  const segBuild = d.segOn ? buildSegmentLines(segSegments, cabHeight) : null;
 
   /* ---------- сборка результата ---------- */
   const bundle = useMemo(() => {
     const items: (LineItem | null)[] = [];
     if (d.cabNeed) {
-      if (d.cabMode === "kit") {
-        const sys = findKitSystem(d.kitSystem);
-        for (const k of kitLines)
-          items.push({
-            id: genId("li"), eqId: k.key, sku: k.sku, name: k.name,
-            brand: sys.brand, unit: k.unit, qty: k.qty, purchase: k.purchase,
-          });
-      } else if (d.cabId) items.push(li(d.cabId, 1));
-      else if (d.manualOn && d.manualName.trim()) {
-        const purchase = Math.max(1, d.manualPrice); // вводится закупочная цена
-        items.push({
-          id: genId("li"), eqId: "manual-enclosure", sku: "РУЧНОЙ-ВВОД", name: d.manualName.trim(),
-          brand: "—", unit: "шт", qty: 1, purchase,
-        });
+      if (d.cabMode === "kit" && !d.customDim) {
+        for (const l of kitLines)
+          items.push({ id: l.key, eqId: `kit-${l.key}`, sku: l.sku, name: l.name, brand: sys.brand, unit: "шт", qty: l.qty, purchase: l.purchase });
+      } else if (d.cabMode === "kit" && d.customDim && d.customName.trim()) {
+        items.push({ id: genId("li"), eqId: "manual-enclosure", sku: "РУЧНОЙ-ВВОД", name: d.customName.trim(), brand: "—", unit: "шт", qty: 1, purchase: Math.max(1, d.customPrice) });
+      } else if (d.cabMode === "catalog" && d.cabId) {
+        items.push(li(d.cabId, 1));
+      } else if (d.cabMode === "manual" && d.manualName.trim()) {
+        items.push({ id: genId("li"), eqId: "manual-enclosure", sku: "РУЧНОЙ-ВВОД", name: d.manualName.trim(), brand: "—", unit: "шт", qty: 1, purchase: Math.max(1, d.manualPrice) });
       }
+    }
+    if (d.on.avr) {
+      const kits = d.avrInputs === 2 ? 1 : 2; // 3 ввода — каскад из 2 блоков; 5 — два объединённых АВР
+      if (d.avrKind === "bavr") {
+        items.push(li("bavr-kit", kits));
+        if (d.avrInputs === 5) items.push(li("interlock", 1));
+        items.push(li("rp-24", 2 * kits));
+      }
+      if (d.avrKind === "contactors") {
+        items.push(li("km-25", d.avrInputs));
+        items.push(li("interlock", Math.max(1, d.avrInputs - 1)));
+        items.push(li("rp-24", d.avrInputs));
+      }
+      if (d.avrKind === "switch") items.push(li("sw-rev100", 1));
+      items.push(li("rp-24", d.ctrlLines));
     }
     if (d.on.breakers) {
       items.push(li(d.mainId, 1));
@@ -212,34 +304,52 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
       items.push(li(d.out3pId, d.out3p));
       items.push(li("rcd-4030", d.rcd));
       if (d.meter) {
-        items.push(li("meter-231", 1));
-        items.push(li("ct-100", 3));
-        items.push(li("amm-din", 1));
+        if (d.avrPhase === "1ph") items.push(li("meter-201", 1));
+        else {
+          items.push(li("meter-231", 1));
+          items.push(li("ct-100", 3));
+          items.push(li("amm-din", 1));
+        }
       }
-    }
-    if (d.on.avr) {
-      if (d.avrKind === "bavr") { items.push(li("bavr-kit", 1)); items.push(li("rp-24", 2)); }
-      if (d.avrKind === "contactors") { items.push(li("km-25", 2)); items.push(li("interlock", 1)); items.push(li("rp-24", 2)); }
-      if (d.avrKind === "switch") items.push(li("sw-rev100", 1));
-      items.push(li("rp-24", d.ctrlLines));
+      items.push(li("pe-bus", d.peBuses));
+      if (d.ground === "it" && d.itMonitor) items.push(li("imd-1", 1));
     }
     if (d.on.uzp) {
       if (d.uzpKind === "t2") items.push(li("uzp-t2", 1));
       if (d.uzpKind === "t12") items.push(li("uzp-t12", 1));
+      items.push(li("uzp-rs485", d.uzpRs));
+      items.push(li("uzp-eth", d.uzpEth));
+      items.push(li("uzp-io", d.uzpIo));
     }
     if (d.on.controls) {
-      items.push(li("btn-1", d.buttons));
+      items.push(li("btn-1", d.buttons + d.lineBtns * 2));
       items.push(li("btn-e", d.btnStop));
       items.push(li("lamp-3", d.lamps));
       items.push(li("swsel-1", d.switches));
+      if (d.avrInd && d.on.avr) items.push(li("lamp-1", 3)); // Сеть 1 / Сеть 2 / Авария
+    }
+    if (d.on.meters) {
+      items.push(li("amm-din", d.ammIn + d.ammOut));
+      items.push(li("volt-din", d.voltIn));
     }
     if (d.on.busbars && d.busNeed) {
-      busSelection(d.busCurrent)?.items.forEach((x) => items.push(x));
+      const sel = busSelection(d.busCurrent);
+      if (sel) {
+        const mult = Math.max(1, Math.round(d.busSections));
+        for (const it of sel.items) if (it) items.push({ ...it, qty: it.qty * mult });
+        if (mult > 1) items.push(li("bus-joint", mult - 1));
+      }
     }
-    /* в kit-режиме панели и цоколи уже посчитаны конфигуратором — не дублируем */
-    if (d.on.layout && !(d.cabNeed && d.cabMode === "kit")) {
+    if (d.on.layout && d.cabMode === "catalog") {
       if (d.wallRow) items.push(li("panel-side", Math.max(2, d.rowSize + 1)));
       if (d.pedestal) items.push(li("pedestal-600", Math.max(1, d.rowSize)));
+    }
+    if (d.on.climate) {
+      items.push(li("fan-120", d.fans));
+      items.push(li("grille-120", d.grilles));
+      items.push(li("heater-150", d.heaters));
+      items.push(li("thermo-1", d.thermos));
+      if (d.acOn) items.push(li("ac-unit", 1));
     }
     if (d.on.plc && d.plcNeed) {
       items.push(li("plc-110", 1));
@@ -251,7 +361,11 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
       items.push(li("term-set", 2));
       if (d.hmiKind === "7") items.push(li("hmi-7", 1));
       if (d.hmiKind === "10") items.push(li("hmi-10", 1));
+      items.push(li("barrier-ex", d.barriers));
+      items.push(li("conv-sig", d.converters));
     }
+    if (segBuild) for (const l of segBuild.lines) items.push(l);
+
     const main = dedupe(items);
 
     /* ЗИП: % от количества по ключевым категориям, но не менее 1 шт */
@@ -269,12 +383,14 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
     const eqSum = main.reduce((s, i) => s + i.purchase * i.qty, 0);
     const zipSum = zipItems.reduce((s, i) => s + i.purchase * i.qty, 0);
     return { main, zipItems, eqSum, zipSum };
-  }, [d, kitLines]);
+  }, [d, kitLines, segBuild, sys.brand]);
 
   const enc = d.cabMode === "catalog" && d.cabId ? findEq(d.cabId) : undefined;
   const cabName = d.cabNeed
     ? d.cabMode === "kit"
-      ? `${d.kind} — ${kitLabel(kitInput)}`
+      ? d.customDim && d.customName.trim()
+        ? `${d.kind} — ${d.customName.trim()}`
+        : `${d.kind} — ${kitLabel(kitInput)}`
       : enc
         ? `${d.kind} — ${enc.name}`
         : d.cabMode === "manual" && d.manualName.trim()
@@ -282,13 +398,40 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
           : `${d.kind} №${project.cabinets.length + 1}`
     : `${d.kind} (корпус заказчика)`;
 
+  /* ---------- элементы на дверце (визуальный макет) ---------- */
+  const doorEls = useMemo(() => {
+    const els: DoorEl[] = [];
+    if (d.on.controls) {
+      if (d.on.avr && d.avrInd) {
+        els.push({ kind: "lamp", label: "Сеть 1", color: "#1f8a5b" });
+        els.push({ kind: "lamp", label: "Сеть 2", color: "#a8770e" });
+        els.push({ kind: "lamp", label: "Авария", color: "#ce4432" });
+      }
+      for (let i = 0; i < d.lamps; i++) els.push({ kind: "lamp", label: `Лампа ${i + 1}`, color: "#6f7b8b" });
+      for (let i = 0; i < d.switches; i++) els.push({ kind: "sel", label: "Режим" });
+      for (let i = 0; i < d.lineBtns; i++) els.push({ kind: "pair", label: `Л${i + 1} Пуск/Стоп` });
+      for (let i = 0; i < d.buttons; i++) els.push({ kind: "btn", label: `Кнопка ${i + 1}` });
+      for (let i = 0; i < d.btnStop; i++) els.push({ kind: "stop", label: "Авар. стоп" });
+    }
+    return els;
+  }, [d.on.controls, d.on.avr, d.avrInd, d.lamps, d.switches, d.lineBtns, d.buttons, d.btnStop]);
+  const doorsCount = d.cabNeed && d.cabMode === "kit" && !d.customDim && sys.mount === "floor" ? Math.max(1, Math.min(sys.maxDoors, d.kitDoors)) : 1;
+
   const apply = () => {
     const { main, zipItems } = bundle;
     if (main.length === 0 && zipItems.length === 0) {
       toast("Мастер ничего не добавит — включите хотя бы один шаг", "err");
       return;
     }
-    /* ручной корпус добавляем в справочник, чтобы позиция была переиспользуемой */
+    /* нестандартный корпус добавляем в справочник, чтобы позиция была переиспользуемой */
+    if (d.cabNeed && d.cabMode === "kit" && d.customDim && d.customName.trim()) {
+      upsertEquipment({
+        id: genId("eq"), sku: "РУЧНОЙ-ВВОД", name: d.customName.trim(), brand: "—",
+        category: "Корпуса и щиты", direction: project.direction, unit: "шт",
+        purchase: Math.max(1, d.customPrice),
+        attrs: "нестандартный габарит, добавлен из мастера подбора",
+      });
+    }
     if (d.cabNeed && d.cabMode === "manual" && d.manualName.trim()) {
       upsertEquipment({
         id: genId("eq"), sku: "РУЧНОЙ-ВВОД", name: d.manualName.trim(), brand: "—",
@@ -300,7 +443,10 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
     const cabs: Cabinet[] = [
       {
         id: genId("cab"), kind: d.kind, name: cabName,
-        items: main, hours: d.hours, designHours: d.designHours, softwareHours: d.softwareHours,
+        items: main,
+        hours: d.hours + (segBuild?.hours ?? 0),
+        designHours: d.designHours, softwareHours: d.softwareHours,
+        ...(d.segOn ? { segments: segSegments, form: segForm } : {}),
       },
     ];
     if (zipItems.length > 0) {
@@ -343,14 +489,14 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
           {/* -------- рельса шагов -------- */}
           <div className="hidden w-56 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-line bg-card p-3 md:flex">
             {STEP_META.map((s, i) => {
-              const off = !["cab", "work", "zip", "summary"].includes(s.id) && !d.on[s.id];
+              const off = !["cab", "work", "zip", "summary", "breakers"].includes(s.id) && !d.on[s.id];
               const cur = i === step;
               return (
                 <button
                   key={s.id}
                   onClick={() => go(i)}
                   className={cx(
-                    "flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-all duration-150",
+                    "flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left transition-all duration-150",
                     cur ? "bg-accent text-white shadow-md shadow-accent/25" : off ? "opacity-45 hover:opacity-70" : "text-ink2 hover:bg-paper"
                   )}
                 >
@@ -376,19 +522,90 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                 <span className="mr-2 rounded bg-dark px-1.5 py-0.5 font-mono text-[10px] font-bold text-white">ШАГ {step + 1}/{STEP_IDS.length}</span>
                 <span className="text-[14.5px] font-bold text-ink">{meta.title}</span>
               </div>
-              {/* мобильный прогресс */}
               <div className="h-1.5 w-24 overflow-hidden rounded-full bg-line">
                 <div className="h-full rounded-full bg-accent transition-all duration-300" style={{ width: `${((step + 1) / STEP_IDS.length) * 100}%` }} />
               </div>
             </div>
 
             <div key={meta.id} className="anim-step min-h-0 flex-1 overflow-y-auto p-5">
-              {meta.id === "cab" && <StepCab d={d} set={set} pool={pool} exact={exact} fallback={fallback} ipOf={ipOf} project={project} />}
+              {meta.id === "cab" && (
+                <StepCab
+                  d={d} set={set} pool={pool} exact={exact} fallback={fallback} ipOf={ipOf} project={project}
+                  mountSystems={mountSystems} switchMount={switchMount} kitLines={kitLines} near={near}
+                />
+              )}
+              {meta.id === "avr" && (
+                <StepShell on={d.on.avr} setOn={(v) => setOn("avr", v)} hint="АВР не добавляется — один ввод">
+                  <div className="grid gap-2 md:grid-cols-3">
+                    <ChoiceCard active={d.avrKind === "bavr"} onClick={() => set({ avrKind: "bavr" })} title="На БАВР" text="Блок автоматики с реле контроля фаз + промежуточные реле. Надёжно, без силовой коммутации контакторами" />
+                    <ChoiceCard active={d.avrKind === "contactors"} onClick={() => set({ avrKind: "contactors" })} title="На контакторах" text="По контактору на ввод с механической блокировкой + реле. Классическая силовая схема" />
+                    <ChoiceCard active={d.avrKind === "switch"} onClick={() => set({ avrKind: "switch" })} title="Реверсивный рубильник" text="Ручное переключение 1-0-2 с блокировкой — бюджетный вариант без автоматики (только 2 ввода)" />
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="text-[11px] font-bold tracking-wide text-mute uppercase">Число вводов</div>
+                    <div className="mt-1.5 grid max-w-2xl gap-2 md:grid-cols-3">
+                      <ChoiceCard active={d.avrInputs === 2} onClick={() => set({ avrInputs: 2 })} title="2 ввода" text="Основной + резервный" />
+                      <ChoiceCard active={d.avrInputs === 3} onClick={() => set({ avrInputs: 3 })} title="3 ввода" text="Каскад из двух блоков АВР" />
+                      <ChoiceCard active={d.avrInputs === 5} onClick={() => set({ avrInputs: 5 })} title="5 вводов" text="Два АВР, объединённые между собой" />
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="text-[11px] font-bold tracking-wide text-mute uppercase">Линии</div>
+                    <div className="mt-1.5 grid max-w-md gap-2 md:grid-cols-2">
+                      <ChoiceCard active={d.avrPhase === "3ph"} onClick={() => set({ avrPhase: "3ph" })} title="Трёхфазные" text="400 В, контроль чередования фаз" />
+                      <ChoiceCard active={d.avrPhase === "1ph"} onClick={() => set({ avrPhase: "1ph" })} title="Однофазные" text="230 В — на шаге «Ввод и линии» подставим 1P/2P аппараты и однофазный счётчик" />
+                    </div>
+                  </div>
+
+                  {d.avrKind === "switch" && d.avrInputs !== 2 && (
+                    <div className="anim-scale mt-3 flex items-start gap-2.5 rounded-lg border border-warn/40 bg-warn-soft px-4 py-3">
+                      <span className="mt-0.5 text-warn"><IcAlert size={16} /></span>
+                      <div className="text-[12px] leading-relaxed text-ink2">
+                        Реверсивный рубильник — только схема 1-0-2. Для {d.avrInputs} вводов выберите БАВР или контакторы.
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-4 max-w-xs">
+                    <Field label="Линии управления (промежуточные реле), шт">
+                      <NumInput value={d.ctrlLines} step={1} onChange={(v) => set({ ctrlLines: Math.max(0, Math.round(v)) })} />
+                    </Field>
+                  </div>
+
+                  <div className="anim-scale mt-4 max-w-2xl rounded-lg border border-line bg-card p-3">
+                    <div className="text-[11px] font-bold tracking-wide text-mute uppercase">Состав АВР</div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {d.avrKind === "bavr" && (
+                        <>
+                          <ConfChip label={`БАВР-2В ×${d.avrInputs === 2 ? 1 : 2}`} />
+                          {d.avrInputs === 5 && <ConfChip label="Блокировка ×1" />}
+                          <ConfChip label={`Реле ×${(d.avrInputs === 2 ? 1 : 2) * 2}`} />
+                        </>
+                      )}
+                      {d.avrKind === "contactors" && (
+                        <>
+                          <ConfChip label={`Контактор 25А ×${d.avrInputs}`} />
+                          <ConfChip label={`Блокировка ×${Math.max(1, d.avrInputs - 1)}`} />
+                          <ConfChip label={`Реле ×${d.avrInputs}`} />
+                        </>
+                      )}
+                      {d.avrKind === "switch" && <ConfChip label="РП-2-100 ×1" />}
+                      {d.ctrlLines > 0 && <ConfChip label={`Реле управления ×${d.ctrlLines}`} />}
+                    </div>
+                  </div>
+                </StepShell>
+              )}
               {meta.id === "breakers" && (
                 <StepShell on={d.on.breakers} setOn={(v) => setOn("breakers", v)} hint="Автоматы, УЗО и учёт не добавляются">
                   <div className="grid gap-4 md:grid-cols-2">
-                    <Field label="Вводной автомат">
-                      <Select value={d.mainId} onChange={(v) => set({ mainId: v })} options={["brk-iek80", "brk-nsx100", "brk-nsx250"].map(idToOpt)} />
+                    <Field label="Вводной автомат" hint={d.avrPhase === "1ph" ? "Для однофазных линий — 1P/2P аппараты" : undefined}>
+                      <Select
+                        value={d.mainId}
+                        onChange={(v) => set({ mainId: v })}
+                        options={(d.avrPhase === "1ph" ? ["brk-c25", "brk-2p32", "brk-iek16"] : ["brk-iek80", "brk-nsx100", "brk-nsx250"]).map(idToOpt)}
+                      />
                     </Field>
                     <Field label="УЗО (кол-во)">
                       <NumInput value={d.rcd} step={1} onChange={(v) => set({ rcd: Math.max(0, Math.round(v)) })} />
@@ -411,26 +628,42 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                     </div>
                   </div>
                   <div className="mt-4">
-                    <Toggle on={d.meter} onChange={(v) => set({ meter: v })} label="Учёт электроэнергии (счётчик 3-ф + 3 трансформатора тока + мультиметр)" />
+                    <Toggle on={d.meter} onChange={(v) => set({ meter: v })} label={d.avrPhase === "1ph" ? "Учёт электроэнергии (счётчик 1-ф)" : "Учёт электроэнергии (счётчик 3-ф + 3 трансформатора тока + мультиметр)"} />
                   </div>
-                </StepShell>
-              )}
-              {meta.id === "avr" && (
-                <StepShell on={d.on.avr} setOn={(v) => setOn("avr", v)} hint="АВР не добавляется">
-                  <div className="grid gap-2 md:grid-cols-3">
-                    <ChoiceCard active={d.avrKind === "bavr"} onClick={() => set({ avrKind: "bavr" })} title="На БАВР" text="Блок автоматики с реле контроля фаз + промежуточные реле. Надёжно, без силовой коммутации контакторами" />
-                    <ChoiceCard active={d.avrKind === "contactors"} onClick={() => set({ avrKind: "contactors" })} title="На контакторах" text="2 контактора с механической блокировкой + реле. Классическая силовая схема" />
-                    <ChoiceCard active={d.avrKind === "switch"} onClick={() => set({ avrKind: "switch" })} title="Реверсивный рубильник" text="Ручное переключение 1-0-2 с блокировкой — бюджетный вариант без автоматики" />
-                  </div>
-                  <div className="mt-4 max-w-xs">
-                    <Field label="Линии управления (промежуточные реле), шт">
-                      <NumInput value={d.ctrlLines} step={1} onChange={(v) => set({ ctrlLines: Math.max(0, Math.round(v)) })} />
-                    </Field>
+
+                  {/* заземление */}
+                  <div className="mt-5 border-t border-line pt-4">
+                    <div className="text-[11px] font-bold tracking-wide text-mute uppercase">Система заземления</div>
+                    <div className="mt-2 grid max-w-3xl grid-cols-2 gap-2 md:grid-cols-4">
+                      {([
+                        { v: "tn-s", t: "TN-S", x: "PE и N разделены" },
+                        { v: "tn-c-s", t: "TN-C-S", x: "PEN разделяется на вводе" },
+                        { v: "tt", t: "TT", x: "локальное заземление" },
+                        { v: "it", t: "IT", x: "изолированная нейтраль" },
+                      ] as const).map((g) => (
+                        <ChoiceCard key={g.v} active={d.ground === g.v} onClick={() => set({ ground: g.v })} title={g.t} text={g.x} />
+                      ))}
+                    </div>
+                    <div className="mt-3 grid max-w-xl gap-3 md:grid-cols-2">
+                      <Field label="Шин заземления PE, шт" hint="Главная PE + дополнительные (по отсекам, по требованиям заказчика)">
+                        <NumInput value={d.peBuses} step={1} onChange={(v) => set({ peBuses: Math.max(1, Math.round(v)) })} />
+                      </Field>
+                      {d.ground === "it" && (
+                        <div className="pt-1">
+                          <Toggle on={d.itMonitor} onChange={(v) => set({ itMonitor: v })} label="Устройство контроля изоляции (обязательно для IT)" />
+                        </div>
+                      )}
+                    </div>
+                    {d.ground === "it" && (
+                      <p className="mt-2 max-w-2xl rounded-md bg-steel-soft px-3 py-2 text-[11.5px] leading-relaxed text-steel">
+                        Система IT: первый замыкатель на землю не отключает питание — обязателен контроль изоляции (добавим устройство контроля) и сигнализация. Рекомендуется для непрерывных процессов.
+                      </p>
+                    )}
                   </div>
                 </StepShell>
               )}
               {meta.id === "uzp" && (
-                <StepShell on={d.on.uzp} setOn={(v) => setOn("uzp", v)} hint="УЗИП не добавляется">
+                <StepShell on={d.on.uzp} setOn={(v) => setOn("uzp", v)} hint="УЗИП не добавляются">
                   <div className="grid gap-2 md:grid-cols-2">
                     <ChoiceCard active={d.uzpKind === "t2"} onClick={() => set({ uzpKind: "t2" })} title="УЗИП тип 2 (класс II)" text="Защита от коммутационных перенапряжений. Рекомендуется для большинства объектов с кабельным вводом" />
                     <ChoiceCard active={d.uzpKind === "t12"} onClick={() => set({ uzpKind: "t12" })} title="УЗИП тип 1+2 (класс I+II)" text="Включая защиту от прямого грозового воздействия — для воздушных вводов и молниезащищённых зданий" />
@@ -438,17 +671,70 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                   <p className="mt-3 rounded-md bg-steel-soft px-3 py-2 text-[12px] text-steel">
                     Подбор по СП 256.1325800: при воздушном вводе — тип 1+2 на вводе, при кабельном — достаточно типа 2.
                   </p>
+
+                  <div className="mt-5 border-t border-line pt-4">
+                    <div className="text-[11px] font-bold tracking-wide text-mute uppercase">УЗИП для слаботочных линий и каналов ПЛК</div>
+                    <div className="mt-2 grid max-w-2xl grid-cols-3 gap-3">
+                      <Field label="Линии RS-485, шт">
+                        <NumInput value={d.uzpRs} step={1} onChange={(v) => set({ uzpRs: Math.max(0, Math.round(v)) })} />
+                      </Field>
+                      <Field label="Линии Ethernet, шт">
+                        <NumInput value={d.uzpEth} step={1} onChange={(v) => set({ uzpEth: Math.max(0, Math.round(v)) })} />
+                      </Field>
+                      <Field label="Каналы ПЛК (24 В DC), шт">
+                        <NumInput value={d.uzpIo} step={1} onChange={(v) => set({ uzpIo: Math.max(0, Math.round(v)) })} />
+                      </Field>
+                    </div>
+                    <p className="mt-2 max-w-2xl text-[11.5px] leading-relaxed text-mute">
+                      Импульсы приходят и по интерфейсам: RS-485 и Ethernet защищаются сигнальными УЗИП, дискретные/аналоговые каналы ПЛК — ограничителями 24 В DC (по числу каналов, подверженных наводкам).
+                    </p>
+                  </div>
                 </StepShell>
               )}
               {meta.id === "controls" && (
                 <StepShell on={d.on.controls} setOn={(v) => setOn("controls", v)} hint="Органы управления не добавляются">
-                  <div className="grid max-w-xl grid-cols-2 gap-3 md:grid-cols-4">
-                    <Field label="Кнопки, шт"><NumInput value={d.buttons} step={1} onChange={(v) => set({ buttons: Math.max(0, Math.round(v)) })} /></Field>
-                    <Field label="«Авар. стоп», шт"><NumInput value={d.btnStop} step={1} onChange={(v) => set({ btnStop: Math.max(0, Math.round(v)) })} /></Field>
-                    <Field label="Лампы индикации, шт"><NumInput value={d.lamps} step={1} onChange={(v) => set({ lamps: Math.max(0, Math.round(v)) })} /></Field>
-                    <Field label="Переключатели 1-0-2, шт"><NumInput value={d.switches} step={1} onChange={(v) => set({ switches: Math.max(0, Math.round(v)) })} /></Field>
+                  <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
+                    <div>
+                      <div className="grid max-w-xl grid-cols-2 gap-3 md:grid-cols-3">
+                        <Field label="Кнопки, шт"><NumInput value={d.buttons} step={1} onChange={(v) => set({ buttons: Math.max(0, Math.round(v)) })} /></Field>
+                        <Field label="«Авар. стоп», шт"><NumInput value={d.btnStop} step={1} onChange={(v) => set({ btnStop: Math.max(0, Math.round(v)) })} /></Field>
+                        <Field label="Лампы индикации, шт"><NumInput value={d.lamps} step={1} onChange={(v) => set({ lamps: Math.max(0, Math.round(v)) })} /></Field>
+                        <Field label="Переключатели 1-0-2, шт"><NumInput value={d.switches} step={1} onChange={(v) => set({ switches: Math.max(0, Math.round(v)) })} /></Field>
+                        <Field label="Пары «Пуск/Стоп» на линии, шт" hint="Для шкафов управления и АСУ ТП — по паре на двигатель/линию">
+                          <NumInput value={d.lineBtns} step={1} onChange={(v) => set({ lineBtns: Math.max(0, Math.round(v)) })} />
+                        </Field>
+                      </div>
+                      <div className="mt-4 max-w-xl">
+                        <Toggle
+                          on={d.avrInd && d.on.avr}
+                          onChange={(v) => set({ avrInd: v })}
+                          label={d.on.avr ? "Индикация АВР: «Сеть 1», «Сеть 2», «Авария» (3 лампы на дверце)" : "Индикация АВР (включите шаг «АВР», чтобы задать)"}
+                        />
+                      </div>
+                      <p className="mt-3 max-w-xl text-[12px] leading-relaxed text-mute">
+                        Отвечайте на вопросы — справа сразу видно, как элементы лягут на дверцу{doorsCount === 2 ? " (в составном шкафу органов управления — на левой двери)" : ""}.
+                      </p>
+                    </div>
+                    <DoorPreview els={doorEls} doors={doorsCount} />
                   </div>
-                  <p className="mt-3 text-[12px] text-mute">Типовой набор на дверцу: «Вкл / Откл», аварийный гриб, лампы «Сеть 1», «Сеть 2», «Авария», переключатель режимов.</p>
+                </StepShell>
+              )}
+              {meta.id === "meters" && (
+                <StepShell on={d.on.meters} setOn={(v) => setOn("meters", v)} hint="Приборы не добавляются">
+                  <div className="grid max-w-2xl grid-cols-3 gap-3">
+                    <Field label="Амперметры на вводе, шт">
+                      <NumInput value={d.ammIn} step={1} onChange={(v) => set({ ammIn: Math.max(0, Math.round(v)) })} />
+                    </Field>
+                    <Field label="Вольтметры на вводе, шт">
+                      <NumInput value={d.voltIn} step={1} onChange={(v) => set({ voltIn: Math.max(0, Math.round(v)) })} />
+                    </Field>
+                    <Field label="Амперметры на отходящих линиях, шт">
+                      <NumInput value={d.ammOut} step={1} onChange={(v) => set({ ammOut: Math.max(0, Math.round(v)) })} />
+                    </Field>
+                  </div>
+                  <p className="mt-3 max-w-2xl text-[12px] leading-relaxed text-mute">
+                    Приборы — щитовые, на DIN-рейку. На отходящих линиях амперметры ставят для ответственных потребителей (насосы, вентиляция) — по требованию заказчика.
+                  </p>
                 </StepShell>
               )}
               {meta.id === "busbars" && (
@@ -456,9 +742,12 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                   <Toggle on={d.busNeed} onChange={(v) => set({ busNeed: v })} label="Шинная сборка требуется" />
                   {d.busNeed && (
                     <>
-                      <div className="mt-3 max-w-xs">
+                      <div className="mt-3 grid max-w-lg gap-3 md:grid-cols-2">
                         <Field label="Расчётный ток нагрузки, А" hint="По нему подберём сечение и количество шинодержателей">
                           <NumInput value={d.busCurrent} step={10} onChange={(v) => set({ busCurrent: Math.max(0, v) })} />
+                        </Field>
+                        <Field label="Секций главных шин" hint="Для секционированных шкафов — секция на отсек + стыки">
+                          <NumInput value={d.busSections} step={1} onChange={(v) => set({ busSections: Math.max(1, Math.min(6, Math.round(v))) })} />
                         </Field>
                       </div>
                       {(() => {
@@ -466,8 +755,13 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                         if (!sel) return null;
                         return (
                           <div className="anim-scale mt-3 max-w-xl rounded-lg border border-ok/30 bg-ok-soft px-4 py-3">
-                            <div className="text-[13px] font-bold text-ok">{sel.label}</div>
-                            <div className="text-[11.5px] text-ink2">{sel.note}</div>
+                            <div className="text-[13px] font-bold text-ok">
+                              {sel.label}{d.busSections > 1 ? ` — ×${d.busSections} секции + стыки (${d.busSections - 1} шт)` : ""}
+                            </div>
+                            <div className="text-[11.5px] text-ink2">
+                              {sel.note}
+                              {d.busSections > 1 && " · если шкаф секционирован — секции шин согласуются с отсеками (шаг «Секционирование»)"}
+                            </div>
                           </div>
                         );
                       })()}
@@ -476,27 +770,52 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                 </StepShell>
               )}
               {meta.id === "layout" && (
-                <StepShell on={d.on.layout} setOn={(v) => setOn("layout", v)} hint="Компоновочные элементы не добавляются">
-                  <div className="flex flex-col gap-3">
-                    <Toggle on={d.wallRow} onChange={(v) => set({ wallRow: v })} label="Шкафы ставятся «стена к стене» — общие боковые стенки" />
-                    {d.wallRow && (
-                      <div className="anim-scale max-w-xs">
-                        <Field label="Шкафов в ряду" hint={`Боковых панелей: ${Math.max(2, d.rowSize + 1)} (вместо ${d.rowSize * 2} по отдельности)`}>
-                          <NumInput value={d.rowSize} step={1} onChange={(v) => set({ rowSize: Math.max(2, Math.round(v)) })} />
-                        </Field>
-                      </div>
-                    )}
-                    <Toggle on={d.pedestal} onChange={(v) => set({ pedestal: v })} label="Цоколи для напольных шкафов (100 мм, с фланцами для кабеля)" />
-                    {d.pedestal && d.cabMode !== "kit" && <p className="text-[12px] text-mute">Добавим {Math.max(1, d.rowSize)} цоколь(я) — по числу напольных корпусов ряда.</p>}
-                    {d.cabNeed && d.cabMode === "kit" && (d.wallRow || d.pedestal) && (
-                      <div className="anim-scale rounded-md border border-accent/30 bg-accent-soft/60 px-3.5 py-2.5 text-[12px] leading-relaxed text-ink2">
-                        <b>Комплект пересчитан автоматически:</b>{" "}
-                        {d.wallRow && <>боковых панелей — {d.rowSize + 1} (ряд+1), стыковых комплектов — {Math.max(1, d.rowSize - 1)}; </>}
-                        {d.pedestal && <>цоколей — {Math.max(1, d.rowSize)} по числу шкафов ряда. </>}
-                        Позиции уже учтены в составе комплекта — отдельно не добавляются.
-                      </div>
-                    )}
+                d.cabMode === "kit" && d.cabNeed ? (
+                  <div className="rounded-md border border-dashed border-line2 bg-card/60 px-4 py-3">
+                    <div className="text-[13px] font-bold text-ink2">Компоновка уже учтена в комплекте корпуса</div>
+                    <p className="mt-1 max-w-2xl text-[12px] leading-relaxed text-mute">
+                      {d.customDim
+                        ? "Для нестандартного корпуса панели и цоколи уточняются по месту — добавьте их позициями из справочника на вкладке «Конструктор»."
+                        : `Шкаф комплектуется как ${d.joined > 1 ? `составной ряд из ${d.joined} корпусов «стена к стене»` : "одиночный корпус"}: боковые панели (${d.joined + 1} шт), ${d.joined > 1 ? `стыковые комплекты (${d.joined - 1} шт), ` : ""}${d.pedestalKit ? `цоколи (${d.joined} шт) и ` : ""}траверсы (${2 * d.joined + d.extraTrav} шт) уже в составе на шаге «Корпус шкафа».`}
+                    </p>
                   </div>
+                ) : (
+                  <StepShell on={d.on.layout} setOn={(v) => setOn("layout", v)} hint="Компоновочные элементы не добавляются">
+                    <div className="flex flex-col gap-3">
+                      <Toggle on={d.wallRow} onChange={(v) => set({ wallRow: v })} label="Шкафы ставятся «стена к стене» — общие боковые стенки" />
+                      {d.wallRow && (
+                        <div className="anim-scale max-w-xs">
+                          <Field label="Шкафов в ряду" hint={`Боковых панелей: ${Math.max(2, d.rowSize + 1)} (вместо ${d.rowSize * 2} по отдельности)`}>
+                            <NumInput value={d.rowSize} step={1} onChange={(v) => set({ rowSize: Math.max(2, Math.round(v)) })} />
+                          </Field>
+                        </div>
+                      )}
+                      <Toggle on={d.pedestal} onChange={(v) => set({ pedestal: v })} label="Цоколи для напольных шкафов (100 мм, с фланцами для кабеля)" />
+                      {d.pedestal && <p className="text-[12px] text-mute">Добавим {Math.max(1, d.rowSize)} цоколь(я) — по числу напольных корпусов ряда.</p>}
+                    </div>
+                  </StepShell>
+                )
+              )}
+              {meta.id === "climate" && (
+                <StepShell on={d.on.climate} setOn={(v) => setOn("climate", v)} hint="Микроклимат не добавляется">
+                  <div className="grid max-w-3xl grid-cols-2 gap-3 md:grid-cols-4">
+                    <Field label="Вентиляторы, шт"><NumInput value={d.fans} step={1} onChange={(v) => set({ fans: Math.max(0, Math.round(v)) })} /></Field>
+                    <Field label="Решётки с фильтром, шт"><NumInput value={d.grilles} step={1} onChange={(v) => set({ grilles: Math.max(0, Math.round(v)) })} /></Field>
+                    <Field label="Обогреватели, шт"><NumInput value={d.heaters} step={1} onChange={(v) => set({ heaters: Math.max(0, Math.round(v)) })} /></Field>
+                    <Field label="Термостаты / гигростаты, шт"><NumInput value={d.thermos} step={1} onChange={(v) => set({ thermos: Math.max(0, Math.round(v)) })} /></Field>
+                  </div>
+                  <div className="mt-4 max-w-3xl">
+                    <Toggle on={d.acOn} onChange={(v) => set({ acOn: v })} label="Шкафной кондиционер (для ПЛК/частотников, высокая тепловая нагрузка)" />
+                  </div>
+                  {d.heaters > 0 && d.thermos === 0 && (
+                    <div className="anim-scale mt-3 flex max-w-2xl items-start gap-2.5 rounded-lg border border-warn/40 bg-warn-soft px-4 py-3">
+                      <span className="mt-0.5 text-warn"><IcAlert size={16} /></span>
+                      <div className="text-[12px] leading-relaxed text-ink2">Обогреватели без термостата будут греть постоянно — добавьте хотя бы один термостат/гигростат.</div>
+                    </div>
+                  )}
+                  <p className="mt-3 max-w-2xl text-[12px] leading-relaxed text-mute">
+                    Типовая пара: вентилятор + решётка с фильтром (приток снизу, вытяжка сверху). Для уличных шкафов и шкафов АСУ — обогрев с гигростатом против конденсата.
+                  </p>
                 </StepShell>
               )}
               {meta.id === "plc" && (
@@ -513,9 +832,15 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                           <Select value={String(d.reserve)} onChange={(v) => set({ reserve: Number(v) })} options={[{ value: "0", label: "0 %" }, { value: "10", label: "10 %" }, { value: "20", label: "20 %" }, { value: "30", label: "30 %" }]} />
                         </Field>
                       </div>
-                      <div className="mt-3 max-w-xs">
+                      <div className="mt-3 grid max-w-2xl grid-cols-2 gap-3 md:grid-cols-3">
                         <Field label="Панель оператора (HMI)">
                           <Select value={d.hmiKind} onChange={(v) => set({ hmiKind: v as Draft["hmiKind"] })} options={[{ value: "none", label: "Не нужна" }, { value: "7", label: "7 дюймов" }, { value: "10", label: "10,1 дюйма" }]} />
+                        </Field>
+                        <Field label="Барьеры искрозащиты, шт" hint="Для каналов во взрывоопасных зонах (Ex-i)">
+                          <NumInput value={d.barriers} step={1} onChange={(v) => set({ barriers: Math.max(0, Math.round(v)) })} />
+                        </Field>
+                        <Field label="Преобразователи сигналов, шт" hint="Согласование 4-20 мА / 0-10 В / RS-485">
+                          <NumInput value={d.converters} step={1} onChange={(v) => set({ converters: Math.max(0, Math.round(v)) })} />
                         </Field>
                       </div>
                       <div className="anim-scale mt-4 max-w-2xl rounded-lg border border-line bg-card p-3">
@@ -528,10 +853,56 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                           {modCount(d.ao, 4, d.reserve) > 0 && <ConfChip label={`AO4 ×${modCount(d.ao, 4, d.reserve)} (${d.ao})`} />}
                           <ConfChip label="БП 24В 10А ×1" />
                           {d.hmiKind !== "none" && <ConfChip label={`HMI ${d.hmiKind}" ×1`} />}
+                          {d.barriers > 0 && <ConfChip label={`Барьер Ex ×${d.barriers}`} />}
+                          {d.converters > 0 && <ConfChip label={`Преобр. сигн. ×${d.converters}`} />}
                         </div>
                       </div>
                     </>
                   )}
+                </StepShell>
+              )}
+              {meta.id === "section" && (
+                <StepShell on={d.segOn} setOn={(v) => set({ segOn: v })} hint="Шкаф остаётся без внутреннего разделения (форма 1)">
+                  <p className="max-w-2xl text-[12px] leading-relaxed text-mute">
+                    Опросник по ГОСТ IEC 61439-2 — три вопроса дают форму разделения и готовый набор отсеков.
+                    Точная доводка — после добавления, в панели «Секционирование» шкафа.
+                  </p>
+                  <div className="mt-3 flex flex-col gap-3">
+                    <Toggle on={d.segQ1} onChange={(v) => set({ segQ1: v, ...(v ? {} : { segQ2: false }) })} label="1. Отделить главные шины от оборудования?" />
+                    {d.segQ1 && (
+                      <div className="anim-step">
+                        <Toggle on={d.segQ2} onChange={(v) => set({ segQ2: v })} label="2. Отделить функциональные блоки (ввод, отходящие, управление) друг от друга?" />
+                      </div>
+                    )}
+                    {d.segQ1 && d.segQ2 && (
+                      <div className="anim-step grid max-w-2xl gap-2 md:grid-cols-2">
+                        <ChoiceCard active={d.segQ3 === "3a"} onClick={() => set({ segQ3: "3a" })} title="Форма 3a" text="Клеммы — в отсеке своего блока" />
+                        <ChoiceCard active={d.segQ3 === "3b"} onClick={() => set({ segQ3: "3b" })} title="Форма 3b" text="Клеммы — в общем отдельном отсеке" />
+                        <ChoiceCard active={d.segQ3 === "4a"} onClick={() => set({ segQ3: "4a" })} title="Форма 4a" text="Присоединения — внутри отсека блока" />
+                        <ChoiceCard active={d.segQ3 === "4b"} onClick={() => set({ segQ3: "4b" })} title="Форма 4b" text="Присоединения — в отдельном общем отсеке" />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="anim-scale mt-4 max-w-2xl rounded-lg border border-line bg-card p-3.5">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <div className="text-[13px] font-bold text-ink">{FORM_META[segForm].label}</div>
+                      <div className="font-mono text-[13px] font-bold text-ink">{fmtMoney(segBuild?.lines.reduce((s, l) => s + l.qty * l.purchase, 0) ?? 0)}</div>
+                    </div>
+                    <div className="mt-0.5 text-[11.5px] text-mute">{FORM_META[segForm].desc}</div>
+                    {segPresets.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {segPresets.map((p) => (
+                          <span key={p.kind} className="rounded-md bg-steel-soft px-2 py-1 text-[11px] font-bold text-steel">{p.name}</span>
+                        ))}
+                        {segBuild && segBuild.partitionQty > 0 && (
+                          <span className="rounded-md bg-dark px-2 py-1 font-mono text-[11px] font-bold text-white">
+                            перегородки ×{segBuild.partitionQty} · +{segBuild.hours} ч сборки
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </StepShell>
               )}
               {meta.id === "work" && (
@@ -551,8 +922,9 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                     <Toggle on={d.separateLine} onChange={(v) => set({ separateLine: v })} label="Показывать работы отдельной строкой в документе ТКП" />
                   </div>
                   <p className="mt-3 max-w-2xl text-[12px] leading-relaxed text-mute">
-                    Стоимость работ = часы × ставки с страницы «Тарифы», в продаже — с наценкой на работы из параметров проекта.
-                    ППО добавляйте и для серверов SCADA — часы попадут в расчёт по производству.
+                    Стоимость работ = часы × ставки со страницы «Тарифы», в продаже — с наценкой на работы из параметров проекта.
+                    {d.cabMode === "kit" && !d.customDim && ` Ориентир сборки комплекта: ${kitAssemblyHours(kitInput)} ч;`}
+                    {segBuild && segBuild.hours > 0 && ` секционирование добавит ${segBuild.hours} ч.`}
                   </p>
                 </div>
               )}
@@ -597,7 +969,8 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                 <div className="max-w-3xl">
                   <div className="rounded-lg border border-line bg-card p-3">
                     <div className="text-[11px] font-bold tracking-wide text-mute uppercase">
-                      {cabName} · сборка {d.hours} ч · проект {d.designHours} ч · ПО {d.softwareHours} ч
+                      {cabName} · сборка {d.hours + (segBuild?.hours ?? 0)} ч · проект {d.designHours} ч · ПО {d.softwareHours} ч
+                      {d.segOn && ` · ${FORM_META[segForm].label}`}
                     </div>
                     <div className="mt-2 flex flex-col">
                       {bundle.main.map((it) => (
@@ -612,7 +985,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                   <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
                     <SumChip label="Оборудование" value={fmtMoney(bundle.eqSum)} />
                     <SumChip label={`ЗИП (${bundle.zipItems.length} поз)`} value={fmtMoney(bundle.zipSum)} />
-                    <SumChip label="Работы" value={`${d.hours + d.designHours + d.softwareHours} ч`} />
+                    <SumChip label="Работы" value={`${d.hours + d.designHours + d.softwareHours + (segBuild?.hours ?? 0)} ч`} />
                     <SumChip label="Доставка" value={d.transportOn ? `${d.transportPct} %` : "нет"} />
                   </div>
                 </div>
@@ -657,7 +1030,7 @@ function StepShell({ on, setOn, hint, children }: { on: boolean; setOn: (v: bool
 }
 
 function StepCab({
-  d, set, pool, exact, fallback, ipOf, project,
+  d, set, pool, exact, fallback, ipOf, project, mountSystems, switchMount, kitLines, near,
 }: {
   d: Draft;
   set: (p: Partial<Draft>) => void;
@@ -666,15 +1039,14 @@ function StepCab({
   fallback: Equipment[];
   ipOf: (e: Equipment) => number;
   project: Project;
+  mountSystems: typeof KIT_SYSTEMS;
+  switchMount: (m: "floor" | "wall") => void;
+  kitLines: ReturnType<typeof buildKit>;
+  near: { h: number; w: number; d: number };
 }) {
   const sys = findKitSystem(d.kitSystem);
-  /* превью комплекта для текущего шкафа (ряд пересчитается на шаге «Компоновка») */
-  const previewLines = buildKit({
-    systemId: d.kitSystem, h: d.kitH, w: d.kitW, d: d.kitD, doors: d.kitDoors,
-    wallRow: false, rowSize: 1, pedestal: false,
-  });
   const previewGroups = (["frame", "skin", "mount", "door", "base", "joint"] as const)
-    .map((g) => ({ g, lines: previewLines.filter((l) => l.group === g) }))
+    .map((g) => ({ g, lines: kitLines.filter((l) => l.group === g) }))
     .filter((x) => x.lines.length > 0);
 
   return (
@@ -689,30 +1061,152 @@ function StepCab({
         <div className="anim-step mt-4">
           {/* способ подбора корпуса */}
           <div className="grid gap-2 md:grid-cols-3">
+            <ChoiceCard active={d.cabMode === "kit"} onClick={() => set({ cabMode: "kit", manualOn: false })} title="Составной комплект" text="Конфигуратор: тип → система → габариты → составной ряд, двери, траверсы, цоколи" />
             <ChoiceCard active={d.cabMode === "catalog"} onClick={() => set({ cabMode: "catalog", manualOn: false })} title="Готовый корпус" text="Целиком из справочника — одна позиция в составе шкафа" />
-            <ChoiceCard active={d.cabMode === "kit"} onClick={() => set({ cabMode: "kit", manualOn: false })} title="Составной комплект" text="Конфигуратор по образцу PROVENTO / DKC CQE: каркас, панели, двери, цоколи" />
             <ChoiceCard active={d.cabMode === "manual"} onClick={() => set({ cabMode: "manual", manualOn: true, cabId: null })} title="Ручной ввод" text="Нестандартный корпус — внесём в справочник для переиспользования" />
           </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="mt-4 max-w-xs">
             <Field label="Тип шкафа в структуре">
               <Select value={d.kind} onChange={(v) => set({ kind: v })} options={CABINET_KINDS[project.direction].map((k) => ({ value: k, label: k }))} />
             </Field>
-            {d.cabMode === "catalog" && (
-              <>
+          </div>
+
+          {/* -------- режим: составной комплект (конфигуратор) -------- */}
+          {d.cabMode === "kit" && (
+            <div className="anim-step mt-4">
+              {/* 1) тип шкафа */}
+              <div className="text-[11px] font-bold tracking-wide text-mute uppercase">1 · Тип шкафа</div>
+              <div className="mt-1.5 grid max-w-md gap-2 md:grid-cols-2">
+                <ChoiceCard active={d.cabMountKit === "floor"} onClick={() => switchMount("floor")} title="Напольный" text="Каркасный: стойки, крыша, основание, панели, цоколи" />
+                <ChoiceCard active={d.cabMountKit === "wall"} onClick={() => switchMount("wall")} title="Навесной" text="Корпус с задней стенкой, монтаж на стену" />
+              </div>
+
+              {/* 2) система */}
+              <div className="mt-4 text-[11px] font-bold tracking-wide text-mute uppercase">2 · Система корпусов</div>
+              <div className="mt-1.5 grid gap-2 md:grid-cols-2">
+                {mountSystems.map((s) => (
+                  <ChoiceCard
+                    key={s.id}
+                    active={d.kitSystem === s.id}
+                    onClick={() => set({ kitSystem: s.id, kitH: s.heights[Math.floor(s.heights.length / 2)], kitW: s.widths[0], kitD: s.depths[0], kitDoors: 1, customDim: false })}
+                    title={`${s.name} · ${s.brand} · IP${s.ip}`}
+                    text={s.note}
+                  />
+                ))}
+              </div>
+
+              {/* 3) габариты */}
+              <div className="mt-4 text-[11px] font-bold tracking-wide text-mute uppercase">3 · Габариты и наполнение корпуса</div>
+              <div className="mt-1.5 grid max-w-3xl grid-cols-2 gap-3 md:grid-cols-5">
+                <Field label="Высота, мм">
+                  <Select value={String(d.kitH)} onChange={(v) => set({ kitH: Number(v) })} options={sys.heights.map((h) => ({ value: String(h), label: String(h) }))} />
+                </Field>
+                <Field label="Ширина, мм">
+                  <Select value={String(d.kitW)} onChange={(v) => set({ kitW: Number(v) })} options={sys.widths.map((w) => ({ value: String(w), label: String(w) }))} />
+                </Field>
+                <Field label="Глубина, мм">
+                  <Select value={String(d.kitD)} onChange={(v) => set({ kitD: Number(v) })} options={sys.depths.map((x) => ({ value: String(x), label: String(x) }))} />
+                </Field>
+                {sys.mount === "floor" && (
+                  <Field label="Дверей на корпус">
+                    <Select value={String(d.kitDoors)} onChange={(v) => set({ kitDoors: Number(v) })} options={Array.from({ length: sys.maxDoors }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))} />
+                  </Field>
+                )}
+                {sys.mount === "floor" && (
+                  <Field label="Корпусов в шкафу" hint="2 и более — составной шкаф «стена к стене»">
+                    <NumInput value={d.joined} step={1} onChange={(v) => set({ joined: Math.max(1, Math.min(6, Math.round(v))) })} />
+                  </Field>
+                )}
+              </div>
+              <div className="mt-2 grid max-w-3xl grid-cols-2 gap-3 md:grid-cols-5">
+                <Field label="Доп. траверсы, шт" hint="Сверх базовых двух (верх/низ) на корпус">
+                  <NumInput value={d.extraTrav} step={1} onChange={(v) => set({ extraTrav: Math.max(0, Math.min(20, Math.round(v))) })} />
+                </Field>
+                {sys.mount === "floor" && (
+                  <div className="pt-5">
+                    <Toggle on={d.pedestalKit} onChange={(v) => set({ pedestalKit: v })} label="Цоколи (100 мм, фланцы)" />
+                  </div>
+                )}
+              </div>
+              {d.joined > 1 && (
+                <p className="mt-2 max-w-2xl rounded-md bg-steel-soft px-3 py-2 text-[11.5px] leading-relaxed text-steel">
+                  Составной шкаф: панели — {d.joined + 1} шт (вместо {d.joined * 2}), стыковые комплекты — {d.joined - 1}, цоколи{d.pedestalKit ? ` — ${d.joined}` : " не заданы"}. Шаг «Компоновка» для такого шкафа отключается — всё уже в комплекте.
+                </p>
+              )}
+
+              {/* нестандартный габарит */}
+              <div className={cx("mt-4 max-w-3xl rounded-lg border p-3", d.customDim ? "border-accent bg-accent-soft/40" : "border-dashed border-line2")}>
+                <Toggle on={d.customDim} onChange={(v) => set({ customDim: v })} label="Нужного типоразмера нет — нестандартный корпус" />
+                {d.customDim && (
+                  <div className="anim-step mt-3">
+                    <div className="rounded-md bg-warn-soft px-3 py-2 text-[12px] text-ink2">
+                      Такого габарита в линейке <b>{sys.name}</b> нет. Ближайший типовой:{" "}
+                      <button
+                        type="button"
+                        className="cursor-pointer font-mono font-bold text-accent-deep underline decoration-accent/40 underline-offset-2"
+                        onClick={() => set({ kitH: near.h, kitW: near.w, kitD: near.d, customDim: false })}
+                      >
+                        {near.h}×{near.w}×{near.d} — использовать
+                      </button>
+                      {" "}— или заполните данные вручную (позиция попадёт в справочник и БД).
+                    </div>
+                    <div className="mt-3 grid gap-3 md:grid-cols-[1fr_180px]">
+                      <Field label="Наименование корпуса">
+                        <Input value={d.customName} onChange={(v) => set({ customName: v })} placeholder={`Шкаф ${sys.name} 2400×1000×800, спец. исполнение`} />
+                      </Field>
+                      <Field label="Закупочная цена, ₽">
+                        <NumInput value={d.customPrice} step={500} onChange={(v) => set({ customPrice: Math.max(0, v) })} />
+                      </Field>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* живой состав комплекта */}
+              {!d.customDim && (
+                <div className="anim-scale mt-4 max-w-3xl rounded-lg border border-line bg-card p-3.5">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <div className="text-[11px] font-bold tracking-wide text-mute uppercase">
+                      Комплект {kitLabel({ systemId: d.kitSystem, h: d.kitH, w: d.kitW, d: d.kitD, doors: d.kitDoors, joined: d.joined, pedestal: d.pedestalKit, extraTraverses: d.extraTrav })}
+                    </div>
+                    <div className="font-mono text-[15px] font-bold text-ink">{fmtMoney(kitTotal(kitLines))}</div>
+                  </div>
+                  <div className="mt-2 grid gap-x-6 gap-y-1.5 md:grid-cols-2">
+                    {previewGroups.map(({ g, lines }) => (
+                      <div key={g}>
+                        <div className="mb-0.5 text-[10px] font-bold tracking-wide text-mute uppercase">{KIT_GROUP_LABEL[g]}</div>
+                        {lines.map((l) => (
+                          <div key={l.key} className="flex items-baseline justify-between gap-2 border-b border-line/50 py-0.5 text-[12px] last:border-0">
+                            <span className="truncate text-ink2">{l.name}</span>
+                            <span className="font-mono font-bold whitespace-nowrap text-ink">
+                              {l.qty} шт · {fmtMoney(l.purchase * l.qty)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-2.5 text-[11.5px] leading-relaxed text-mute">
+                    Сборка комплекта ≈ <b className="text-ink2">{kitAssemblyHours({ systemId: d.kitSystem, h: d.kitH, w: d.kitW, d: d.kitD, doors: d.kitDoors, joined: d.joined, pedestal: d.pedestalKit, extraTraverses: d.extraTrav })} ч</b> — ориентир для шага «Работы».
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* -------- режим: готовый корпус из справочника -------- */}
+          {d.cabMode === "catalog" && (
+            <>
+              <div className="mt-4 grid max-w-xl gap-3 md:grid-cols-2">
                 <Field label="Тип установки">
                   <Select value={d.cabMount} onChange={(v) => set({ cabMount: v as Draft["cabMount"] })} options={[{ value: "any", label: "Любой" }, { value: "floor", label: "Напольный" }, { value: "wall", label: "Навесной (на стену)" }]} />
                 </Field>
                 <Field label="Степень защиты IP">
                   <Select value={d.cabIp} onChange={(v) => set({ cabIp: v as Draft["cabIp"] })} options={["any", "31", "54", "65", "66", "67"].map((x) => ({ value: x, label: x === "any" ? "Любая" : `IP${x}` }))} />
                 </Field>
-              </>
-            )}
-          </div>
+              </div>
 
-          {/* -------- режим: готовый корпус из справочника -------- */}
-          {d.cabMode === "catalog" && (
-            <>
               {exact.length > 0 && (
                 <div className="mt-4 grid gap-2 md:grid-cols-2">
                   {exact.map((e) => (
@@ -747,73 +1241,9 @@ function StepCab({
             </>
           )}
 
-          {/* -------- режим: составной комплект (конфигуратор) -------- */}
-          {d.cabMode === "kit" && (
-            <div className="anim-step mt-4">
-              <div className="grid gap-2 md:grid-cols-2">
-                {KIT_SYSTEMS.map((s) => (
-                  <ChoiceCard
-                    key={s.id}
-                    active={d.kitSystem === s.id}
-                    onClick={() => set({ kitSystem: s.id, kitH: s.heights[Math.floor(s.heights.length / 2)], kitW: s.widths[0], kitD: s.depths[0], kitDoors: 1 })}
-                    title={`${s.name} · IP${s.ip}`}
-                    text={s.note}
-                  />
-                ))}
-              </div>
-
-              <div className="mt-4 grid max-w-3xl grid-cols-2 gap-3 md:grid-cols-4">
-                <Field label="Высота, мм">
-                  <Select value={String(d.kitH)} onChange={(v) => set({ kitH: Number(v) })} options={sys.heights.map((h) => ({ value: String(h), label: String(h) }))} />
-                </Field>
-                <Field label="Ширина, мм">
-                  <Select value={String(d.kitW)} onChange={(v) => set({ kitW: Number(v) })} options={sys.widths.map((w) => ({ value: String(w), label: String(w) }))} />
-                </Field>
-                <Field label="Глубина, мм">
-                  <Select value={String(d.kitD)} onChange={(v) => set({ kitD: Number(v) })} options={sys.depths.map((x) => ({ value: String(x), label: String(x) }))} />
-                </Field>
-                {sys.mount === "floor" && (
-                  <Field label="Дверей на шкаф">
-                    <Select value={String(d.kitDoors)} onChange={(v) => set({ kitDoors: Number(v) })} options={Array.from({ length: sys.maxDoors }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))} />
-                  </Field>
-                )}
-              </div>
-
-              {/* живой состав комплекта */}
-              <div className="anim-scale mt-4 max-w-3xl rounded-lg border border-line bg-card p-3.5">
-                <div className="flex items-baseline justify-between gap-3">
-                  <div className="text-[11px] font-bold tracking-wide text-mute uppercase">
-                    Комплект {kitLabel({ ...kitInputOf(d), wallRow: false, rowSize: 1, pedestal: false })} · на один шкаф
-                  </div>
-                  <div className="font-mono text-[15px] font-bold text-ink">{fmtMoney(kitTotal(previewLines))}</div>
-                </div>
-                <div className="mt-2 grid gap-x-6 gap-y-1.5 md:grid-cols-2">
-                  {previewGroups.map(({ g, lines }) => (
-                    <div key={g}>
-                      <div className="mb-0.5 text-[10px] font-bold tracking-wide text-mute uppercase">{KIT_GROUP_LABEL[g]}</div>
-                      {lines.map((l) => (
-                        <div key={l.key} className="flex items-baseline justify-between gap-2 border-b border-line/50 py-0.5 text-[12px] last:border-0">
-                          <span className="truncate text-ink2">{l.name}</span>
-                          <span className="font-mono font-bold whitespace-nowrap text-ink">
-                            {l.qty} {l.unit} · {fmtMoney(l.purchase * l.qty)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-                <p className="mt-2.5 text-[11.5px] leading-relaxed text-mute">
-                  Сборка комплекта ≈ <b className="text-ink2">{kitAssemblyHours({ ...kitInputOf(d), wallRow: false, rowSize: 1, pedestal: false })} ч</b> — используйте
-                  как ориентир на шаге «Работы». Ряд «стена к стене» и цоколи задаются на шаге «Компоновка»:
-                  боковые панели пересчитаются как <b className="text-ink2">ряд+1</b>, добавятся стыковые комплекты.
-                </p>
-              </div>
-            </div>
-          )}
-
           {/* -------- режим: ручной ввод -------- */}
           {d.cabMode === "manual" && (
-            <div className="anim-step mt-4 rounded-lg border border-accent bg-accent-soft/40 p-3">
+            <div className="anim-step mt-4 max-w-3xl rounded-lg border border-accent bg-accent-soft/40 p-3">
               <div className="grid gap-3 md:grid-cols-[1fr_180px]">
                 <Field label="Наименование корпуса">
                   <Input value={d.manualName} onChange={(v) => set({ manualName: v })} placeholder="Шкаф напольный 2200×800×600, IP66, нерж." />
@@ -831,11 +1261,87 @@ function StepCab({
   );
 }
 
-/** KitInput из черновика мастера (для превью и подписей внутри StepCab). */
-const kitInputOf = (d: Draft): KitInput => ({
-  systemId: d.kitSystem, h: d.kitH, w: d.kitW, d: d.kitD, doors: d.kitDoors,
-  wallRow: false, rowSize: 1, pedestal: false,
-});
+/* ================= визуальный макет дверцы ================= */
+
+interface DoorEl {
+  kind: "lamp" | "btn" | "pair" | "sel" | "stop";
+  label: string;
+  color?: string;
+}
+
+function DoorPreview({ els, doors }: { els: DoorEl[]; doors: number }) {
+  const cols = 4;
+  const dw = 230;
+  const mx = 22;
+  const top = 48;
+  const cellY = 50;
+  const rows = Math.max(1, Math.ceil(els.length / cols));
+  const dh = top + rows * cellY + 30;
+  const W = doors === 2 ? dw * 2 + 24 : dw + 24;
+  const stepX = (dw - 2 * mx) / cols;
+
+  return (
+    <div className="rounded-lg border border-line bg-card p-3">
+      <div className="mb-1.5 text-[10px] font-bold tracking-wide text-mute uppercase">Макет дверцы{doors === 2 ? " (левая)" : ""} — предпросмотр</div>
+      <svg width="100%" viewBox={`0 0 ${W} ${dh + 12}`} style={{ display: "block" }}>
+        {Array.from({ length: doors }, (_, di) => {
+          const ox = 12 + di * dw;
+          return (
+            <g key={di}>
+              <rect x={ox} y={6} width={dw} height={dh} rx={7} fill="#f4f5f7" stroke="#141b24" strokeWidth={1.6} />
+              <rect x={ox + dw - 9} y={6 + dh * 0.22} width={4} height={26} rx={2} fill="#c2cad4" />
+              <rect x={ox + dw - 9} y={6 + dh * 0.68} width={4} height={26} rx={2} fill="#c2cad4" />
+              <rect x={ox + dw - 18} y={6 + dh / 2 - 16} width={6} height={32} rx={3} fill="#3d4a59" />
+            </g>
+          );
+        })}
+        {els.map((el, i) => {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const x = 12 + mx + stepX / 2 + col * stepX;
+          const y = 6 + top + row * cellY + 14;
+          return (
+            <g key={i}>
+              {el.kind === "lamp" && (
+                <>
+                  <circle cx={x} cy={y} r={9} fill={el.color} stroke="#141b24" strokeWidth={1.2} />
+                  <circle cx={x - 3} cy={y - 3} r={2.6} fill="#fff" opacity={0.4} />
+                </>
+              )}
+              {el.kind === "btn" && <rect x={x - 10} y={y - 10} width={20} height={20} rx={4.5} fill="#141b24" stroke="#3d4a59" strokeWidth={1.2} />}
+              {el.kind === "sel" && (
+                <>
+                  <rect x={x - 11} y={y - 11} width={22} height={22} rx={3.5} fill="#eceef1" stroke="#141b24" strokeWidth={1.2} />
+                  <text x={x} y={y + 3.2} textAnchor="middle" fontSize={7.5} fontWeight={700} fill="#141b24">I·0·II</text>
+                </>
+              )}
+              {el.kind === "stop" && (
+                <>
+                  <rect x={x - 15} y={y - 15} width={30} height={30} rx={5} fill="#f7edd8" stroke="#a8770e" strokeWidth={1.2} />
+                  <circle cx={x} cy={y} r={10.5} fill="#ce4432" stroke="#8f2f22" strokeWidth={1.2} />
+                </>
+              )}
+              {el.kind === "pair" && (
+                <>
+                  <circle cx={x - 11} cy={y} r={8} fill="#1f8a5b" stroke="#141b24" strokeWidth={1.1} />
+                  <circle cx={x + 11} cy={y} r={8} fill="#ce4432" stroke="#141b24" strokeWidth={1.1} />
+                </>
+              )}
+              <text x={x} y={y + (el.kind === "stop" ? 27 : el.kind === "pair" ? 22 : 23)} textAnchor="middle" fontSize={6.6} fontWeight={600} fill="#3d4a59">
+                {el.label.length > 12 ? el.label.slice(0, 11) + "…" : el.label}
+              </text>
+            </g>
+          );
+        })}
+        {els.length === 0 && (
+          <text x={W / 2} y={dh / 2 + 6} textAnchor="middle" fontSize={9} fill="#8b98a9">
+            Дверца пустая — добавьте элементы слева
+          </text>
+        )}
+      </svg>
+    </div>
+  );
+}
 
 function EncCard({ e, active, ip, note, onClick }: { e: Equipment; active: boolean; ip: number; note?: string; onClick: () => void }) {
   return (

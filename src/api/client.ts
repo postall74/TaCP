@@ -76,8 +76,9 @@ export const toCompany = (s: Settings): CompanyDto => ({
 
 /** Клиент API: по одному методу на эндпоинт Program.cs. */
 export const restApi = (base: string) => ({
-  /* проверка доступности (лёгкий эндпоинт, короткий таймаут) */
-  ping: () => req<Rates>(base, "/api/rates", undefined, 3000),
+  /* проверка доступности: ОТКРЫТЫЙ эндпоинт (без авторизации) — иначе
+     «Проверить» всегда давал 401 до входа. См. Program.cs: /api/health */
+  ping: () => req<{ status: string }>(base, "/api/health", undefined, 3000),
 
   /* аутентификация (JWT) */
   login: (email: string, password: string) =>

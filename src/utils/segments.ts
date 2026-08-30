@@ -23,6 +23,16 @@ export const FORM_META: Record<SeparationForm, { label: string; desc: string; ne
   "4b": { label: "Форма 4b", desc: "выводы отделены и находятся в отдельном отсеке", needBusbar: true, minSegments: 3 },
 };
 
+/** Типовые отсеки по форме разделения (результат опросника). */
+export function segmentsForForm(form: SeparationForm): { kind: SegmentKind; name: string; partitions: number }[] {
+  const pick = (...kinds: SegmentKind[]) =>
+    kinds.map((k) => SEGMENT_PRESETS.find((p) => p.kind === k)).filter((x): x is (typeof SEGMENT_PRESETS)[number] => !!x);
+  if (form === "1") return [];
+  if (form === "2a" || form === "2b") return pick("busbar");
+  if (form === "3a" || form === "4a") return pick("input", "feeders", "busbar");
+  return pick("input", "feeders", "busbar", "cable"); // 3b, 4b
+}
+
 export const SEGMENT_PRESETS: { kind: SegmentKind; name: string; partitions: number; hint: string }[] = [
   { kind: "input", name: "Вводной отсек", partitions: 1, hint: "вводной аппарат, учёт, УЗИП" },
   { kind: "feeders", name: "Отсек отходящих линий", partitions: 1, hint: "отходящие автоматы, УЗО, гребёнки" },
