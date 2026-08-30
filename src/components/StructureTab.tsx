@@ -1,8 +1,11 @@
 import { useMemo, useState } from "react";
 import { useStore } from "../store";
-import type { Direction, Equipment, Project } from "../types";
+import type { Cabinet, CabinetSegment, Direction, Equipment, LineItem, Project, SeparationForm } from "../types";
 import { DIRECTIONS } from "../types";
-import { calcProject, fmtMoney, plural } from "../utils";
+import { calcProject, fmtMoney, genId, plural } from "../utils";
+import {
+  DEFAULT_CABINET_HEIGHT, FORM_META, SEGMENT_PRESETS, buildSegmentLines, mergeSegmentItems,
+} from "../utils/segments";
 import {
   SEVERITY_META, summarize, validateCabinet, validateProject, type Issue, type ValidateCtx,
 } from "../utils/rules";
@@ -158,6 +161,12 @@ export default function StructureTab({ project, onOpenWizard }: { project: Proje
                 <span className="font-mono text-[11px] font-semibold text-mute">
                   {c.items.length} {plural(c.items.length, "позиция", "позиции", "позиций")}
                 </span>
+                {(c.segments?.length ?? 0) > 0 && (
+                  <Badge cls="bg-steel-soft text-steel">
+                    <IcLayers size={11} /> {c.segments!.length} {plural(c.segments!.length, "отсек", "отсека", "отсеков")}
+                    {c.form ? ` · ${FORM_META[c.form].label}` : ""}
+                  </Badge>
+                )}
                 <span className="min-w-[110px] text-right font-mono text-[13.5px] font-bold text-ink tabular-nums">{fmtMoney(cc.total)}</span>
                 <IconBtn
                   title="Удалить шкаф"
@@ -228,6 +237,19 @@ export default function StructureTab({ project, onOpenWizard }: { project: Proje
                         </tbody>
                       </table>
                     )}
+
+                    {/* секционирование: отсеки + форма разделения */}
+                    <SegmentationPanel
+                      cab={c}
+                      onSegments={(segments) => updateCabinet(project.id, c.id, { segments })}
+                      onForm={(form) => updateCabinet(project.id, c.id, { form })}
+                      onApplyKit={(items, addHours) => {
+                        updateCabinet(project.id, c.id, {
+                          items,
+                          hours: Math.round((c.hours + addHours) * 2) / 2,
+                        });
+                      }}
+                    />
 
                     {/* итоги и трудозатраты шкафа */}
                     <div className="flex flex-wrap items-center justify-between gap-3 bg-paper/70 px-4 py-2.5">
@@ -595,5 +617,155 @@ function AddCabinetBtn({
         </div>
       </Modal>
     </>
+  );
+}
+
+/* ============================================================
+   СЕКЦИОНИРОВАНИЕ ШКАФА (ГОСТ IEC 61439-2): функциональные отсеки,
+   перегородки и форма разделения. Комплект отсеков добавляется
+   в состав шкафа снапшотами (utils/segments.ts) — экономика
+   считается как обычно через calcProject.
+   ============================================================ */
+function SegmentationPanel({
+  cab, onSegments, onForm, onApplyKit,
+}: {
+  cab: Cabinet;
+  onSegments: (s: CabinetSegment[]) => void;
+  onForm: (f: SeparationForm | undefined) => void;
+  onApplyKit: (items: LineItem[], addHours: number) => void;
+}) {
+  const toast = useStore((s) => s.toast);
+  const [open, setOpen] = useState(false);
+
+  const segments = cab.segments ?? [];
+  const preview = buildSegmentLines(segments, DEFAULT_CABINET_HEIGHT);
+  const formMeta = cab.form ? FORM_META[cab.form] : null;
+  const inItems = cab.items.some((it) => it.eqId === "seg-partition");
+
+  const setSeg = (id: string, patch: Partial<CabinetSegment>) =>
+    onSegments(segments.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+
+  const apply = () => {
+    if (preview.lines.length === 0) {
+      toast("Добавьте хотя бы один отсек с перегородками", "err");
+      return;
+    }
+    onApplyKit(mergeSegmentItems(cab.items, preview.lines), preview.hours);
+    toast(
+      `Комплект секционирования: ${preview.lines.length} ${plural(preview.lines.length, "позиция", "позиции", "позиций")}` +
+        (preview.hours > 0 ? `, +${preview.hours} ч сборки` : ""),
+      "ok"
+    );
+  };
+
+  return (
+    <div className="border-t border-line bg-paper/40">
+      {/* строка-переключатель */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full cursor-pointer flex-wrap items-center gap-2 px-4 py-2 text-left transition-colors hover:bg-paper"
+      >
+        <span className="text-mute transition-transform duration-200" style={{ transform: open ? "rotate(0deg)" : "rotate(-90deg)" }}>
+          <IcChevronDown size={14} />
+        </span>
+        <span className="text-mute"><IcLayers size={14} /></span>
+        <span className="text-[12px] font-bold text-ink2">Секционирование</span>
+        {segments.length > 0 && (
+          <Badge cls="bg-steel-soft text-steel">
+            {segments.length} {plural(segments.length, "отсек", "отсека", "отсеков")}
+            {cab.form && ` · ${FORM_META[cab.form].label}`}
+          </Badge>
+        )}
+        {inItems && <span className="flex items-center gap-1 text-[10.5px] font-semibold text-ok"><IcCheck size={12} /> комплект в составе</span>}
+        <span className="ml-auto font-mono text-[10.5px] font-semibold text-mute">ГОСТ IEC 61439-2</span>
+      </button>
+
+      {open && (
+        <div className="anim-step px-4 pt-1 pb-3.5">
+          {/* форма разделения */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="w-52">
+              <Field label="Форма внутреннего разделения">
+                <Select
+                  value={cab.form ?? ""}
+                  onChange={(v) => onForm(v === "" ? undefined : (v as SeparationForm))}
+                  options={[
+                    { value: "", label: "не указана" },
+                    ...(Object.keys(FORM_META) as SeparationForm[]).map((f) => ({ value: f, label: FORM_META[f].label })),
+                  ]}
+                />
+              </Field>
+            </div>
+            <div className="min-w-0 flex-1 pt-4 text-[11.5px] leading-snug text-mute">
+              {formMeta ? `${formMeta.label}: ${formMeta.desc}.` : "Укажите форму — проверка совместимости подскажет, каких отсеков не хватает."}
+            </div>
+          </div>
+
+          {/* пресеты отсеков */}
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
+            {SEGMENT_PRESETS.map((p) => (
+              <button
+                key={p.kind}
+                type="button"
+                title={p.hint}
+                onClick={() => onSegments([...segments, { id: genId("seg"), kind: p.kind, name: p.name, partitions: p.partitions }])}
+                className="group flex cursor-pointer items-center gap-1.5 rounded-md border border-line bg-card px-2.5 py-1.5 text-[11.5px] font-bold text-ink2 transition-all duration-150 hover:border-steel hover:bg-steel-soft hover:text-steel active:scale-95"
+              >
+                <IcPlus size={12} /> {p.name}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => onSegments([...segments, { id: genId("seg"), kind: "custom", name: `Отсек ${segments.length + 1}`, partitions: 1 }])}
+              className="flex cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-line2 px-2.5 py-1.5 text-[11.5px] font-bold text-mute transition-all duration-150 hover:border-accent hover:text-accent-deep active:scale-95"
+            >
+              <IcPlus size={12} /> Свой отсек
+            </button>
+          </div>
+
+          {/* список отсеков */}
+          {segments.length > 0 && (
+            <div className="mt-3 overflow-hidden rounded-lg border border-line bg-card">
+              {segments.map((s, i) => (
+                <div key={s.id} className="anim-up flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line/60 px-3 py-2 last:border-b-0" style={{ animationDelay: `${i * 40}ms` }}>
+                  <span className="w-5 font-mono text-[10.5px] font-bold text-mute">{i + 1}</span>
+                  <input
+                    value={s.name}
+                    onChange={(e) => setSeg(s.id, { name: e.target.value })}
+                    className="min-w-[140px] flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-[12.5px] font-semibold text-ink outline-none transition-all hover:border-line focus:border-steel focus:bg-paper"
+                  />
+                  <span className="text-[10.5px] font-bold tracking-wide text-mute uppercase">перегородки</span>
+                  <Stepper value={s.partitions} onChange={(v) => setSeg(s.id, { partitions: Math.max(0, Math.min(4, Math.round(v))) })} />
+                  <IconBtn title="Убрать отсек" danger onClick={() => onSegments(segments.filter((x) => x.id !== s.id))}>
+                    <IcTrash size={14} />
+                  </IconBtn>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* превью комплекта и применение */}
+          {segments.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-card px-3.5 py-2.5">
+              <div className="text-[11.5px] text-ink2">
+                {preview.partitionQty > 0 ? (
+                  <>Перегородки: <b className="font-mono text-ink">{preview.partitionQty} шт × {fmtMoney(preview.lines.find((l) => l.eqId === "seg-partition")?.purchase ?? 0)}</b></>
+                ) : (
+                  <span className="text-mute">Перегородок нет — задайте количество в отсеках</span>
+                )}
+                <span className="mx-2 text-line2">·</span>
+                комплекты отсеков: <b className="font-mono text-ink">{preview.lines.length - (preview.partitionQty > 0 ? 1 : 0)} поз</b>
+                <span className="mx-2 text-line2">·</span>
+                сборка: <b className="font-mono text-ink">+{preview.hours} ч</b>
+              </div>
+              <Btn size="sm" onClick={apply} disabled={preview.lines.length === 0}>
+                <IcCheck size={14} /> {inItems ? "Добавить комплект ещё раз" : "Добавить комплект в состав"}
+              </Btn>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

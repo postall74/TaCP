@@ -3,6 +3,7 @@ import { useStore } from "../store";
 import type { Project } from "../types";
 import { DIRECTIONS } from "../types";
 import { calcProject, downloadText, fmtDate, fmtMoney, fmtNum } from "../utils";
+import { FORM_META } from "../utils/segments";
 import { Btn, Toggle } from "./ui";
 import { IcBolt, IcDownload, IcPrinter } from "./icons";
 
@@ -139,6 +140,12 @@ h1{font-size:19px}h3{font-size:13.5px}</style></head><body>${inner}</body></html
               <h3 style={{ margin: "16px 0 6px", fontSize: 13.5, fontWeight: 700 }}>
                 {ci + 1}. {cc.cab.name} <span style={{ fontWeight: 400, color: "#666" }}>({cc.cab.kind})</span>
               </h3>
+              {cc.cab.segments && cc.cab.segments.length > 0 && (
+                <p style={{ fontSize: 11, color: "#444", margin: "0 0 6px" }}>
+                  <b>Отсеки:</b> {cc.cab.segments.map((s) => s.name).join(", ")}
+                  {cc.cab.form && <> · внутреннее разделение — {FORM_META[cc.cab.form].label} (ГОСТ IEC 61439-2)</>}
+                </p>
+              )}
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr>
@@ -313,7 +320,12 @@ h1{font-size:19px}h3{font-size:13.5px}</style></head><body>${inner}</body></html
           {appScheme && hasPlc && (
             <>
               <h3 style={{ margin: "26px 0 6px", fontSize: 13.5, fontWeight: 700 }}>Приложение Б. Структурная схема системы</h3>
-              <SchemeSvg cabs={calc.cabs.map((c) => ({ name: c.cab.name, kind: c.cab.kind }))} />
+              <SchemeSvg
+                cabs={calc.cabs.map((c) => ({
+                  name: c.cab.name, kind: c.cab.kind,
+                  segCount: c.cab.segments?.length ?? 0, form: c.cab.form,
+                }))}
+              />
               <p style={{ fontSize: 10.5, color: "#666", margin: "6px 0 0" }}>
                 Связь — промышленный Ethernet (резервирование по запросу). Схема предварительная и уточняется на стадии РД.
               </p>
@@ -341,30 +353,51 @@ function signalHint(name: string): string {
   return "—";
 }
 
-/** Простейшая структурная схема: шкафы-узлы и линии связи. */
-function SchemeSvg({ cabs }: { cabs: { name: string; kind: string }[] }) {
+/** Структурная схема: шкафы-узлы, линии связи, отсеки секционирования. */
+function SchemeSvg({ cabs }: { cabs: { name: string; kind: string; segCount: number; form?: string }[] }) {
   const W = 190;
   const total = 20 + cabs.length * W + 10;
+  const H = (c: { segCount: number }) => (c.segCount > 0 ? 66 : 50);
   const tone = (kind: string) =>
     /плк|асу|it/i.test(kind) ? "#1f8a5b" : /св|связ/i.test(kind) ? "#2e5fa3" : /обогрев|щуо/i.test(kind) ? "#ce4432" : "#141b24";
+  const tall = cabs.some((c) => c.segCount > 0);
   return (
-    <svg width="100%" viewBox={`0 0 ${total} 110`} style={{ maxWidth: total, display: "block" }}>
+    <svg width="100%" viewBox={`0 0 ${total} ${tall ? 112 : 110}`} style={{ maxWidth: total, display: "block" }}>
       {cabs.map((c, i) => {
         const x = 15 + i * W;
+        const h = H(c);
         const fill = tone(c.kind);
         const short = c.name.length > 26 ? c.name.slice(0, 25) + "…" : c.name;
+        const cy = 18 + h / 2;
+        const cyPrev = i > 0 ? 18 + H(cabs[i - 1]) / 2 : cy;
+        const ly = Math.min(cy, cyPrev);
+        const segs = Math.min(c.segCount, 4);
         return (
           <g key={i}>
             {i > 0 && (
               <>
-                <line x1={x - 30} y1={42} x2={x - 6} y2={42} stroke="#8a8a8a" strokeWidth={1.5} />
-                <path d={`M ${x - 12} 38 L ${x - 5} 42 L ${x - 12} 46 Z`} fill="#8a8a8a" />
+                <line x1={x - 30} y1={ly} x2={x - 6} y2={ly} stroke="#8a8a8a" strokeWidth={1.5} />
+                <path d={`M ${x - 12} ${ly - 4} L ${x - 5} ${ly} L ${x - 12} ${ly + 4} Z`} fill="#8a8a8a" />
               </>
             )}
-            <rect x={x} y={18} width={160} height={50} rx={4} fill="#fff" stroke={fill} strokeWidth={2} />
+            <rect x={x} y={18} width={160} height={h} rx={4} fill="#fff" stroke={fill} strokeWidth={2} />
             <rect x={x} y={18} width={160} height={7} rx={2} fill={fill} />
-            <text x={x + 80} y={46} textAnchor="middle" fontSize={10.5} fontWeight={700} fill="#171717">{short}</text>
-            <text x={x + 80} y={60} textAnchor="middle" fontSize={9} fill="#666">{c.kind}</text>
+            <text x={x + 80} y={segs > 0 ? 38 : 46} textAnchor="middle" fontSize={10.5} fontWeight={700} fill="#171717">{short}</text>
+            <text x={x + 80} y={segs > 0 ? 50 : 60} textAnchor="middle" fontSize={9} fill="#666">{c.kind}</text>
+            {segs > 0 && (
+              <>
+                {Array.from({ length: segs }, (_, k) => (
+                  <rect
+                    key={k}
+                    x={x + 6} y={54 + k * 6} width={148} height={5} rx={1.5}
+                    fill={fill} opacity={k % 2 === 0 ? 0.22 : 0.4}
+                  />
+                ))}
+                <text x={x + 80} y={96} textAnchor="middle" fontSize={8} fill="#666">
+                  {c.form ? FORM_META[c.form as keyof typeof FORM_META]?.label : `${segs} ${segs === 1 ? "отсек" : segs < 5 ? "отсека" : "отсеков"}`}
+                </text>
+              </>
+            )}
           </g>
         );
       })}

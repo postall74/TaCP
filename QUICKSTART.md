@@ -31,7 +31,9 @@ npm run dev
 Откройте **http://localhost:3000**. Приложение работает в **локальном режиме**
 (данные в localStorage) — бэкенд не обязателен.
 
-Тесты: `npx vitest run`. Продакшен-сборка: `npm run build`.
+Тесты: `npx vitest run` (расчётное ядро, правила совместимости и
+секционирования, комплекты CQE / CQE N, отсеки шкафов). Продакшен-сборка:
+`npm run build`.
 
 > `vitest` должен быть в `devDependencies` (если нет — `npm i -D vitest` и
 > закоммитьте `package.json` + `package-lock.json`): и для локального запуска,
@@ -134,6 +136,7 @@ JWT в Swagger: `POST /api/auth/login` → скопировать `token` → к
 
 | Симптом | Причина | Решение |
 |---|---|---|
+| `"vite" не является внутренней или внешней командой` | Зависимости не установлены (нет `node_modules`) | `npm install` в корне проекта, затем `npm run dev`. Если не помогло: `Remove-Item -Recurse -Force node_modules, package-lock.json; npm install` |
 | `WARN EBADENGINE` при `npm install`; `npm run dev` падает на oxide | Node 18 (устарел) | Node 22 LTS; затем `Remove-Item -Recurse -Force node_modules, package-lock.json; npm install` |
 | `createdb: имя не распознано` | Утилиты PostgreSQL не в PATH | Полный путь `& "C:\Program Files\PostgreSQL\16\bin\createdb.exe" -U postgres tkp` или pgAdmin |
 | `MSB1003: не удалось найти проект` | `dotnet run` запущен не из `backend/TkpApi` | `cd backend/TkpApi` и только потом `dotnet run` |
