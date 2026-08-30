@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
@@ -103,12 +104,20 @@ app.MapGet("/api/projects/{id}", async (string id, TkpDbContext db) =>
    .RequireAuthorization("Staff");
 
 /* Полная синхронизация: скаляры проекта + замена состава шкафов одним пакетом.
-   Именно этот эндпоинт использует фронтенд после каждой локальной мутации. */
-app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext db) =>
+   Именно этот эндпоинт использует фронтенд после каждой локальной мутации.
+   Смена статуса валидируется по матрице прав (Rights.cs — зеркало roles.ts):
+   «выиграно/проиграно» — только менеджер/админ, иначе 403 с причиной. */
+app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext db, ClaimsPrincipal user) =>
 {
     var p = await db.Projects.Include(x => x.Cabinets).ThenInclude(c => c.Items)
                              .FirstOrDefaultAsync(x => x.Id == id);
     if (p is null) return Results.NotFound();
+
+    if (patch.Status != p.Status)
+    {
+        var perm = Rights.PermForStatus(patch.Status);
+        if (!Rights.Can(user, perm)) return Rights.Forbid(user, perm);
+    }
 
     var created = p.CreatedAt;
     db.Entry(p).CurrentValues.SetValues(patch);
@@ -122,8 +131,11 @@ app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext d
     return Results.Ok(p);
 }).RequireAuthorization("Staff");
 
-app.MapDelete("/api/projects/{id}", async (string id, TkpDbContext db) =>
+/* Удаление ТКП — по матрице прав: менеджер/админ (инженеру — 403 с причиной).
+   Политика Staff здесь сознательно недостаточна: она лишь подтверждает вход. */
+app.MapDelete("/api/projects/{id}", async (string id, TkpDbContext db, ClaimsPrincipal user) =>
 {
+    if (!Rights.Can(user, Rights.ProjectDelete)) return Rights.Forbid(user, Rights.ProjectDelete);
     var p = await db.Projects.FindAsync(id);
     if (p is null) return Results.NotFound();
     db.Projects.Remove(p);
