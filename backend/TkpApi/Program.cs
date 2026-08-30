@@ -74,6 +74,12 @@ await app.SeedRolesAndAdminAsync();
 
 /* ---------------- Projects ---------------- */
 
+/* Проверка доступности — ОТКРЫТЫЙ эндпоинт (без авторизации).
+   Кнопка «Проверить» на фронтенде ходит сюда до входа: прежний ping
+   на /api/rates всегда давал 401 без токена. */
+app.MapGet("/api/health", () =>
+    Results.Ok(new { status = "ok", service = "tkp-api", time = DateTime.UtcNow }));
+
 app.MapGet("/api/projects", async (TkpDbContext db) =>
     await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
                      .Include(p => p.Versions)

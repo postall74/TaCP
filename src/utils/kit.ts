@@ -1,58 +1,22 @@
+import type { LineItem } from "../types";
+
 /* ============================================================
-   КОНФИГУРАТОР СОСТАВНЫХ ШКАФОВ (чистая логика, без React).
-   По образцу PROVENTO и конфигуратора DKC CQE / CQE N: корпус
-   собирается как комплект — каркас (стойки), крыша/основание,
-   боковые и монтажные панели, двери, траверсы, цоколи.
+   КОНФИГУРАТОР СОСТАВНЫХ ШКАФОВ — чистая логика (без React/HTTP).
+   По образцу PROVENTO и конфигуратора DKC CQE N: корпус шкафа —
+   это комплект узлов (каркас, крыша, основание, траверсы, панели,
+   двери, цоколи). CQE снят с производства — актуальная серия CQE N
+   (напольная IP54 и навесная IP66); из напольных также доступен
+   PROVENTO ШРС (EKF).
 
-   «Стена к стене»: на ряд из N шкафов нужно N+1 боковых панелей
-   (вместо 2×N по отдельности) и N−1 комплектов соединения.
-
-   Модуль не знает про React и HTTP — при переносе на сервер
-   зеркалируется в C# (KitEngine.cs) без изменений контракта
-   (см. DOCS.md, принципы архитектуры).
+   Порядок подбора (см. Wizard): тип (напольный/навесной) →
+   система → габариты (нет типового — ближайшие или ручной ввод) →
+   составной ряд (2+ корпусов, «стена к стене»: панели = N+1,
+   стыки = N−1, цоколи = N) → дополнительные траверсы.
    ============================================================ */
-
-export interface KitInput {
-  systemId: string;
-  h: number;
-  w: number;
-  d: number;
-  /** дверей на шкаф (для напольных 1 или 2; настенные — всегда 1) */
-  doors: number;
-  /** шкафы стыкуются в ряд «стена к стене» */
-  wallRow: boolean;
-  /** шкафов в ряду (учитывается при wallRow) */
-  rowSize: number;
-  /** нужны ли цоколи (только напольные системы) */
-  pedestal: boolean;
-}
-
-export type KitGroup = "frame" | "skin" | "door" | "mount" | "base" | "joint";
-
-export const KIT_GROUP_LABEL: Record<KitGroup, string> = {
-  frame: "Каркас",
-  skin: "Обшивка",
-  door: "Двери",
-  mount: "Монтаж",
-  base: "Цоколь",
-  joint: "Стыковка ряда",
-};
-
-/** Позиция комплекта — готова к превращению в LineItem (snapshot закупочной цены). */
-export interface KitLine {
-  key: string; // стабильный ключ (eqId для LineItem-снимка)
-  sku: string;
-  name: string;
-  unit: string;
-  qty: number;
-  purchase: number; // закупочная цена за единицу, ₽
-  group: KitGroup;
-}
 
 export interface KitSystem {
   id: string;
   name: string;
-  short: string; // для имени шкафа: «CQE 1800×600×400»
   brand: string;
   mount: "floor" | "wall";
   ip: number;
@@ -61,231 +25,187 @@ export interface KitSystem {
   widths: number[];
   depths: number[];
   maxDoors: number;
-  prices: KitPrices;
+  k: number; // ценовой коэффициент серии
 }
 
-export interface KitPrices {
-  /** каркас/рама, за комплект на один шкаф */
-  frame: (h: number) => number;
-  /** крыша (напольные) */
-  roof?: (w: number) => number;
-  /** основание с кабельным вводом (напольные) */
-  base?: (w: number) => number;
-  /** боковая панель, за штуку */
-  panelSide: (h: number, d: number) => number;
-  /** монтажная панель, за штуку */
-  panelMount: (w: number, h: number) => number;
-  /** дверь, за штуку */
-  door: (w: number, h: number) => number;
-  /** траверса (задняя), за штуку — 2 на шкаф */
-  traverse?: (w: number) => number;
-  /** цоколь 100 мм, за штуку */
-  pedestal?: (w: number, d: number) => number;
-  /** комплект соединения шкафов в ряд, за стык */
-  joint?: number;
+export const KIT_SYSTEMS: KitSystem[] = [
+  {
+    id: "cqen-floor", name: "CQE N", brand: "DKC", mount: "floor", ip: 54, maxDoors: 2, k: 1,
+    note: "Напольный, актуальное поколение (прежний CQE снят с производства)",
+    heights: [1800, 2000, 2200], widths: [600, 800, 1000, 1200], depths: [400, 600, 800],
+  },
+  {
+    id: "cqen-wall", name: "CQE N", brand: "DKC", mount: "wall", ip: 66, maxDoors: 1, k: 1,
+    note: "Навесной, повышенная защита для уличной установки",
+    heights: [400, 600, 800, 1000], widths: [300, 400, 600, 800], depths: [150, 200, 250, 300],
+  },
+  {
+    id: "provento", name: "PROVENTO ШРС", brand: "EKF", mount: "floor", ip: 54, maxDoors: 2, k: 0.85,
+    note: "Напольный модульной сборки — экономичная альтернатива",
+    heights: [1800, 2000, 2200], widths: [600, 800, 1000], depths: [400, 600],
+  },
+];
+
+export interface KitInput {
+  systemId: string;
+  h: number;
+  w: number;
+  d: number;
+  doors: number;
+  /** Корпусов в составном шкафу («стена к стене»): 1 — одиночный, 2+ — ряд. */
+  joined: number;
+  pedestal: boolean;
+  /** Дополнительные монтажные траверсы сверх базовых двух (верх/низ), шт. */
+  extraTraverses: number;
 }
 
-/* ---------------- вспомогательное: ближайший типоразмер ---------------- */
+export type KitGroup = "frame" | "skin" | "mount" | "door" | "base" | "joint";
 
-const nearest = (m: Record<number, number>, v: number): number => {
-  const keys = Object.keys(m).map(Number);
-  let best = keys[0];
-  for (const k of keys) if (Math.abs(k - v) < Math.abs(best - v)) best = k;
-  return m[best];
+export interface KitLine {
+  key: string;
+  sku: string;
+  name: string;
+  qty: number;
+  purchase: number; // закупочная за ед.
+  group: KitGroup;
+}
+
+export const KIT_GROUP_LABEL: Record<KitGroup, string> = {
+  frame: "Каркас",
+  skin: "Обшивка",
+  mount: "Монтаж",
+  door: "Двери",
+  base: "Цоколь",
+  joint: "Соединение",
 };
 
-const round10 = (x: number) => Math.round(x / 10) * 10;
-
-/* ---------------- ценовые таблицы (закупочные, ₽) ---------------- */
-
-const CQE: KitSystem = {
-  id: "cqe",
-  name: "CQE — напольный сборный",
-  short: "CQE",
-  brand: "DKC",
-  mount: "floor",
-  ip: 54,
-  note: "Сборный каркас 1800–2200 мм, IP54. Для ГРЩ, ВРУ, АВР и шкафов АСУ, стыкуется в ряд.",
-  heights: [1800, 2000, 2200],
-  widths: [600, 800, 1000, 1200],
-  depths: [400, 600, 800],
-  maxDoors: 2,
-  prices: {
-    frame: (h) => nearest({ 1800: 5400, 2000: 5900, 2200: 6400 }, h),
-    roof: (w) => nearest({ 600: 2100, 800: 2500, 1000: 2950, 1200: 3400 }, w),
-    base: (w) => nearest({ 600: 2400, 800: 2850, 1000: 3350, 1200: 3900 }, w),
-    panelSide: (h, d) =>
-      nearest(
-        {
-          1800: nearest({ 400: 1450, 600: 1700, 800: 1950 }, d),
-          2000: nearest({ 400: 1600, 600: 1900, 800: 2150 }, d),
-          2200: nearest({ 400: 1750, 600: 2050, 800: 2350 }, d),
-        },
-        h
-      ),
-    panelMount: (w, h) =>
-      round10(nearest({ 600: 2050, 800: 2550, 1000: 3050, 1200: 3550 }, w) * nearest({ 1800: 1, 2000: 1.08, 2200: 1.16 }, h)),
-    door: (w, h) =>
-      round10(nearest({ 600: 3100, 800: 3700, 1000: 4400, 1200: 5100 }, w) * nearest({ 1800: 1, 2000: 1.07, 2200: 1.14 }, h)),
-    traverse: (w) => nearest({ 600: 430, 800: 540, 1000: 660, 1200: 780 }, w),
-    pedestal: (w, d) =>
-      nearest(
-        {
-          600: nearest({ 400: 1900, 600: 2200, 800: 2500 }, d),
-          800: nearest({ 400: 2300, 600: 2650, 800: 3000 }, d),
-          1000: nearest({ 400: 2700, 600: 3100, 800: 3500 }, d),
-          1200: nearest({ 400: 3100, 600: 3550, 800: 4000 }, d),
-        },
-        w
-      ),
-    joint: 890,
-  },
-};
-
-const CQEN: KitSystem = {
-  id: "cqen",
-  name: "CQE N — навесной",
-  short: "CQE N",
-  brand: "DKC",
-  mount: "wall",
-  ip: 66,
-  note: "Навесной корпус 400–1000 мм, IP66. Для щитов управления, учёта и локальной автоматики.",
-  heights: [400, 600, 800, 1000],
-  widths: [300, 400, 500, 600, 800],
-  depths: [150, 200, 250, 300],
-  maxDoors: 1,
-  prices: {
-    /* рама + задняя стенка — единый корпус */
-    frame: (h) => nearest({ 400: 1900, 600: 2600, 800: 3300, 1000: 4100 }, h),
-    /* цена от площади, базовая точка 300×400 */
-    panelSide: (h, d) => round10(((h * d) / (600 * 200)) * 640),
-    panelMount: (w, h) => round10(((w * h) / (300 * 400)) * 480),
-    door: (w, h) => round10(((w * h) / (300 * 400)) * 780),
-    joint: 490,
-  },
-};
-
-export const KIT_SYSTEMS: KitSystem[] = [CQE, CQEN];
+const r10 = (x: number) => Math.max(10, Math.round(x / 10) * 10);
 
 export const findKitSystem = (id: string): KitSystem =>
-  KIT_SYSTEMS.find((s) => s.id === id) ?? CQE;
+  KIT_SYSTEMS.find((s) => s.id === id) ?? KIT_SYSTEMS[0];
 
-export const defaultKitInput = (systemId: string): Pick<KitInput, "h" | "w" | "d" | "doors"> => {
-  const s = findKitSystem(systemId);
+interface NodePrices {
+  corpus: number; frame: number; roof: number; base: number; trav: number;
+  side: number; mount: number; door: number; ped: number; joint: number;
+}
+
+/** Цены узлов по габаритам (закупочные, ₽). Напольный и навесной — разные составы. */
+function nodePrices(sys: KitSystem, h: number, w: number, d: number): NodePrices {
+  const k = sys.k;
+  if (sys.mount === "wall") {
+    return {
+      corpus: r10((3600 + 2.2 * (h - 400) + 2.6 * (w - 300) + 1.4 * (d - 150)) * k),
+      side: r10((1050 + 1.3 * (h - 400) + 1.6 * (d - 150)) * k),
+      mount: r10((950 + 1.2 * (h - 400) + 1.4 * (w - 300)) * k),
+      door: r10((1500 + 1.5 * (h - 400) + 1.8 * (w - 300)) * k),
+      joint: r10((900 + 1.1 * (w - 300) + 0.8 * (d - 150)) * k),
+      frame: 0, roof: 0, base: 0, trav: 0, ped: 0,
+    };
+  }
   return {
-    h: s.heights[Math.floor(s.heights.length / 2)],
-    w: s.widths[0],
-    d: s.depths[0],
-    doors: 1,
+    corpus: 0,
+    frame: r10((8200 + 22 * (h - 1800)) * k),
+    roof: r10((2400 + 3.2 * (w - 600) + 2.1 * (d - 400)) * k),
+    base: r10((2900 + 3.4 * (w - 600) + 2.2 * (d - 400)) * k),
+    trav: r10((1150 + 1.9 * (w - 600)) * k),
+    side: r10((1900 + 1.6 * (h - 1800) + 2.4 * (d - 400)) * k),
+    mount: r10((1700 + 1.5 * (h - 1800) + 1.8 * (w - 600)) * k),
+    door: r10((3200 + 1.7 * (h - 1800) + 2.0 * (w - 600)) * k),
+    ped: r10((1900 + 2.0 * (w - 600) + 1.5 * (d - 400)) * k),
+    joint: r10((1400 + 1.6 * (w - 600) + 1.2 * (d - 400)) * k),
   };
-};
+}
 
-/* ---------------- сборка комплекта ---------------- */
-
+/**
+ * Состав комплекта. Составной ряд из N корпусов («стена к стене»):
+ * каркасы/крыши/основания/траверсы/монтажные панели/двери — по числу
+ * корпусов; боковых панелей N+1 (вместо 2N); стыковых комплектов N−1;
+ * цоколей N. Дополнительные траверсы — отдельной строкой.
+ */
 export function buildKit(input: KitInput): KitLine[] {
-  const s = findKitSystem(input.systemId);
-  const P = s.prices;
-  const rows = Math.max(1, Math.round(input.rowSize));
-  const inRow = input.wallRow && rows > 1;
-  const out: KitLine[] = [];
-  const push = (l: KitLine) => l.qty > 0 && out.push(l);
+  const sys = findKitSystem(input.systemId);
+  const n = Math.max(1, Math.min(6, Math.round(input.joined)));
+  const extra = Math.max(0, Math.min(20, Math.round(input.extraTraverses)));
+  const p = nodePrices(sys, input.h, input.w, input.d);
+  const tag = `${sys.name} ${input.h}×${input.w}×${input.d}`;
+  const lines: KitLine[] = [];
 
-  const sku = (suffix: string) => `${s.short.replace(/\s+/g, "").toUpperCase()}-${suffix}`;
-  const dims = `${input.h}×${input.w}×${input.d}`;
-
-  /* ---- каркас ---- */
-  if (s.mount === "floor") {
-    push({
-      key: `kit-${s.id}-frame-${input.h}`, sku: sku(`${input.h}-KRK`),
-      name: `Каркас ${s.short} ${input.h} мм (комплект 4 стойки)`,
-      unit: "компл.", qty: 1, purchase: P.frame(input.h), group: "frame",
-    });
-    push({
-      key: `kit-${s.id}-roof-${input.w}`, sku: sku(`${input.w}-KRSH`),
-      name: `Крыша ${s.short} ${input.w} мм`,
-      unit: "шт", qty: 1, purchase: P.roof!(input.w), group: "frame",
-    });
-    push({
-      key: `kit-${s.id}-base-${input.w}`, sku: sku(`${input.w}-OSN`),
-      name: `Основание ${s.short} ${input.w} мм (с кабельным вводом)`,
-      unit: "шт", qty: 1, purchase: P.base!(input.w), group: "frame",
-    });
-    push({
-      key: `kit-${s.id}-trav-${input.w}`, sku: sku(`${input.w}-TRV`),
-      name: `Траверса задняя ${s.short} ${input.w} мм`,
-      unit: "шт", qty: 2, purchase: P.traverse!(input.w), group: "frame",
-    });
-  } else {
-    push({
-      key: `kit-${s.id}-frame-${input.h}`, sku: sku(`${input.h}-KRP`),
-      name: `Корпус ${s.short} ${input.h} мм (рама + задняя стенка)`,
-      unit: "компл.", qty: 1, purchase: P.frame(input.h), group: "frame",
-    });
+  if (sys.mount === "wall") {
+    lines.push({ key: `wall-${input.h}-${input.w}-${input.d}`, sku: `${sys.name} КОРПУС ${input.h}×${input.w}×${input.d}`, name: `Корпус ${tag} (рама + задняя стенка), IP${sys.ip}`, qty: n, purchase: p.corpus, group: "frame" });
+    lines.push({ key: `side-${input.h}-${input.d}`, sku: `${sys.name} ПБ ${input.h}×${input.d}`, name: `Панель боковая ${tag}`, qty: n + 1, purchase: p.side, group: "skin" });
+    lines.push({ key: `mount-${input.h}-${input.w}`, sku: `${sys.name} МП ${input.h}×${input.w}`, name: `Панель монтажная ${tag}`, qty: n, purchase: p.mount, group: "mount" });
+    lines.push({ key: `door-${input.h}-${input.w}`, sku: `${sys.name} ДВ ${input.h}×${input.w}`, name: `Дверь ${tag}`, qty: n, purchase: p.door, group: "door" });
+    if (n > 1) lines.push({ key: `joint-${input.w}-${input.d}`, sku: `${sys.name} СТЫК ${input.w}`, name: `Комплект стыковой (соединение корпусов)`, qty: n - 1, purchase: p.joint, group: "joint" });
+    return lines;
   }
 
-  /* ---- обшивка: боковые панели, «стена к стене» → ряд+1 ---- */
-  push({
-    key: `kit-${s.id}-side-${input.h}-${input.d}`, sku: sku(`PB-${input.h}-${input.d}`),
-    name: `Панель боковая ${s.short} ${input.h}×${input.d} мм`,
-    unit: "шт",
-    qty: inRow ? rows + 1 : 2,
-    purchase: P.panelSide(input.h, input.d),
-    group: "skin",
-  });
-
-  /* ---- монтаж ---- */
-  push({
-    key: `kit-${s.id}-mount-${input.w}-${input.h}`, sku: sku(`PM-${input.w}-${input.h}`),
-    name: `Панель монтажная ${s.short} ${input.w}×${input.h} мм`,
-    unit: "шт", qty: 1, purchase: P.panelMount(input.w, input.h), group: "mount",
-  });
-
-  /* ---- двери ---- */
-  const doors = Math.min(Math.max(1, Math.round(input.doors)), s.maxDoors);
-  push({
-    key: `kit-${s.id}-door-${input.w}-${input.h}`, sku: sku(`DR-${input.w}-${input.h}`),
-    name: `Дверь ${s.short} ${input.w}×${input.h} мм (петли, замок, уплотнение)`,
-    unit: "шт", qty: doors, purchase: P.door(input.w, input.h), group: "door",
-  });
-
-  /* ---- цоколи (напольные, по числу шкафов ряда) ---- */
-  if (s.mount === "floor" && input.pedestal && P.pedestal) {
-    push({
-      key: `kit-${s.id}-ped-${input.w}-${input.d}`, sku: sku(`COK-${input.w}-${input.d}`),
-      name: `Цоколь ${s.short} ${input.w}×${input.d} мм, 100 мм, с фланцами`,
-      unit: "шт", qty: inRow ? rows : 1, purchase: P.pedestal(input.w, input.d), group: "base",
-    });
-  }
-
-  /* ---- стыковка ряда ---- */
-  if (inRow && P.joint) {
-    push({
-      key: `kit-${s.id}-joint`, sku: sku("JOIN"),
-      name: `Комплект соединения ${s.short} (шины, метизы, стыковые уплотнения)`,
-      unit: "компл.", qty: rows - 1, purchase: P.joint, group: "joint",
-    });
-  }
-
-  return out;
+  lines.push({ key: `frame-${input.h}`, sku: `${sys.name} КАРКАС ${input.h}`, name: `Каркас (4 стойки) ${tag}`, qty: n, purchase: p.frame, group: "frame" });
+  lines.push({ key: `roof-${input.w}-${input.d}`, sku: `${sys.name} КРЫША ${input.w}×${input.d}`, name: `Крыша ${tag}`, qty: n, purchase: p.roof, group: "frame" });
+  lines.push({ key: `base-${input.w}-${input.d}`, sku: `${sys.name} ДНО ${input.w}×${input.d}`, name: `Основание с кабельным вводом ${tag}`, qty: n, purchase: p.base, group: "frame" });
+  lines.push({ key: `trav-${input.w}`, sku: `${sys.name} ТРАВЕРСА ${input.w}`, name: `Траверса монтажная ${tag}`, qty: 2 * n, purchase: p.trav, group: "frame" });
+  if (extra > 0) lines.push({ key: `trav-x-${input.w}`, sku: `${sys.name} ТРАВЕРСА ${input.w} (доп.)`, name: `Траверса монтажная (дополнительная) ${tag}`, qty: extra, purchase: p.trav, group: "frame" });
+  lines.push({ key: `side-${input.h}-${input.d}`, sku: `${sys.name} ПБ ${input.h}×${input.d}`, name: `Панель боковая ${tag}`, qty: n + 1, purchase: p.side, group: "skin" });
+  lines.push({ key: `mount-${input.h}-${input.w}`, sku: `${sys.name} МП ${input.h}×${input.w}`, name: `Панель монтажная ${tag}`, qty: n, purchase: p.mount, group: "mount" });
+  const doors = Math.max(1, Math.min(sys.maxDoors, Math.round(input.doors)));
+  lines.push({ key: `door-${input.h}-${input.w}`, sku: `${sys.name} ДВ ${input.h}×${input.w}`, name: `Дверь ${tag}`, qty: n * doors, purchase: p.door, group: "door" });
+  if (input.pedestal) lines.push({ key: `ped-${input.w}-${input.d}`, sku: `${sys.name} ЦОКОЛЬ ${input.w}×${input.d}`, name: `Цоколь 100 мм ${tag}`, qty: n, purchase: p.ped, group: "base" });
+  if (n > 1) lines.push({ key: `joint-${input.w}-${input.d}`, sku: `${sys.name} СТЫК ${input.w}`, name: `Комплект стыковой (соединение корпусов)`, qty: n - 1, purchase: p.joint, group: "joint" });
+  return lines;
 }
 
-/** Итоговая закупочная стоимость комплекта. */
-export const kitTotal = (lines: KitLine[]): number =>
-  lines.reduce((sum, l) => sum + l.purchase * l.qty, 0);
+export const kitTotal = (lines: KitLine[]): number => lines.reduce((s, l) => s + l.qty * l.purchase, 0);
 
-/** Человекочасы на сборку комплекта (растет с габаритом и стыковкой ряда). */
+/** Рекомендованные часы сборки комплекта (ориентир для шага «Работы»). */
 export function kitAssemblyHours(input: KitInput): number {
-  const s = findKitSystem(input.systemId);
-  const rows = input.wallRow ? Math.max(2, Math.round(input.rowSize)) : 1;
-  const size = (input.h * input.w) / 1e6; // м² фронтальной проекции
-  const perCab = s.mount === "floor" ? 1.6 + size * 1.4 : 0.8 + size * 1.1;
-  const joints = rows > 1 ? (rows - 1) * 0.6 : 0;
-  const pedestals = s.mount === "floor" && input.pedestal ? rows * 0.4 : 0;
-  return Math.round((perCab * rows + joints + pedestals) * 10) / 10;
+  const sys = findKitSystem(input.systemId);
+  const n = Math.max(1, Math.min(6, Math.round(input.joined)));
+  const doors = sys.mount === "wall" ? n : n * Math.max(1, Math.min(sys.maxDoors, Math.round(input.doors)));
+  const per = sys.mount === "wall" ? 1.5 : 3.5;
+  const h =
+    per * n +
+    (n + 1) * 0.3 + // боковые панели
+    doors * 0.4 +
+    (input.pedestal ? n * 0.3 : 0) +
+    (n > 1 ? (n - 1) * 0.3 : 0) +
+    Math.max(0, Math.round(input.extraTraverses)) * 0.15;
+  return Math.round(h * 2) / 2;
 }
 
-/** Человекочитаемое имя собранного корпуса (для названия шкафа). */
+/** Человекочитаемая метка корпуса для названий и документов. */
 export function kitLabel(input: KitInput): string {
-  const s = findKitSystem(input.systemId);
-  return `${s.short} ${input.h}×${input.w}×${input.d}, IP${s.ip}`;
+  const sys = findKitSystem(input.systemId);
+  const base = `${sys.name} ${input.h}×${input.w}×${input.d}, IP${sys.ip}`;
+  const n = Math.max(1, Math.min(6, Math.round(input.joined)));
+  return n > 1 ? `${base} · составной, ${n} корп.` : base;
+}
+
+/** Ближайший типовой габарит из сетки системы (когда запрашиваемого нет). */
+export function nearestDims(sys: KitSystem, h: number, w: number, d: number): { h: number; w: number; d: number } {
+  let best = { h: sys.heights[0], w: sys.widths[0], d: sys.depths[0], dist: Infinity };
+  for (const hh of sys.heights)
+    for (const ww of sys.widths)
+      for (const dd of sys.depths) {
+        const dist = Math.abs(hh - h) / 100 + Math.abs(ww - w) / 100 + Math.abs(dd - d) / 100;
+        if (dist < best.dist) best = { h: hh, w: ww, d: dd, dist };
+      }
+  return { h: best.h, w: best.w, d: best.d };
+}
+
+/** Есть ли в сетке системы точный габарит. */
+export function hasExactDims(sys: KitSystem, h: number, w: number, d: number): boolean {
+  return sys.heights.includes(h) && sys.widths.includes(w) && sys.depths.includes(d);
+}
+
+/** Преобразование комплекта в позиции шкафа (снапшоты, как справочные). */
+export function kitLinesToItems(lines: KitLine[]): LineItem[] {
+  return lines.map((l) => ({
+    id: l.key,
+    eqId: `kit-${l.key}`,
+    sku: l.sku,
+    name: l.name,
+    brand: "Комплект шкафа",
+    unit: "шт",
+    qty: l.qty,
+    purchase: l.purchase,
+  }));
 }
