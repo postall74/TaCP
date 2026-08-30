@@ -89,4 +89,40 @@ public class RightsTests
         Assert.Contains("выиграно/проиграно", Rights.DenyReason(Roles.Manager, Rights.StatusDecide));
         Assert.Contains("только администратору", Rights.DenyReason(Roles.Manager, Rights.RatesEdit));
     }
+
+    /* ---------------- защита последнего администратора ---------------- */
+
+    [Fact]
+    public void CanChangeRole_LastAdminCannotBeDemoted()
+    {
+        var (ok, reason) = Rights.CanChangeRole(new[] { Roles.Admin }, Roles.Engineer, adminCount: 1);
+        Assert.False(ok);
+        Assert.Equal(Rights.LastAdminDeny, reason);
+
+        (ok, _) = Rights.CanChangeRole(new[] { Roles.Admin }, Roles.Manager, adminCount: 1);
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void CanChangeRole_LastAdminMayKeepOrReassignAdmin()
+    {
+        // admin → admin (переназначение) при одном админе — разрешено
+        var (ok, _) = Rights.CanChangeRole(new[] { Roles.Admin }, Roles.Admin, adminCount: 1);
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void CanChangeRole_SecondAdminCanBeDemoted()
+    {
+        var (ok, reason) = Rights.CanChangeRole(new[] { Roles.Admin }, Roles.Engineer, adminCount: 2);
+        Assert.True(ok);
+        Assert.Null(reason);
+    }
+
+    [Fact]
+    public void CanChangeRole_NonAdminIsAlwaysAllowed()
+    {
+        Assert.True(Rights.CanChangeRole(new[] { Roles.Engineer }, Roles.Manager, adminCount: 1).Ok);
+        Assert.True(Rights.CanChangeRole(new[] { Roles.Manager }, Roles.Admin, adminCount: 1).Ok);
+    }
 }
