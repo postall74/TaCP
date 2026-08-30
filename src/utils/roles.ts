@@ -23,9 +23,12 @@ export type Perm =
   | "project.duplicate"// дублировать
   | "status.workflow"  // черновик → на расчёте → отправлено
   | "status.decide"    // отправлено → выиграно/проиграно (и обратно)
-  | "catalog.edit"     // CRUD справочника + импорт прайсов
+  | "catalog.add"      // добавление позиций в справочник (все сотрудники)
+  | "catalog.edit"     // правка позиций справочника (все сотрудники)
+  | "catalog.delete"   // удаление позиций — менеджер/админ
+  | "catalog.import"   // импорт прайсов CSV — менеджер/админ
   | "rates.edit"       // тарифы нормо-часов
-  | "settings.edit"    // реквизиты компании
+  | "settings.edit"    // реквизиты компании — менеджер/админ
   | "users.manage";    // страница пользователей
 
 export const ROLE_LABEL: Record<Role, string> = {
@@ -37,17 +40,20 @@ export const ROLE_LABEL: Record<Role, string> = {
 const ADMIN: Perm[] = [
   "project.create", "project.edit", "project.delete", "project.duplicate",
   "status.workflow", "status.decide",
-  "catalog.edit", "rates.edit", "settings.edit", "users.manage",
+  "catalog.add", "catalog.edit", "catalog.delete", "catalog.import",
+  "rates.edit", "settings.edit", "users.manage",
 ];
 const MANAGER: Perm[] = [
   "project.create", "project.edit", "project.delete", "project.duplicate",
   "status.workflow", "status.decide",
-  "catalog.edit",
+  "catalog.add", "catalog.edit", "catalog.delete", "catalog.import",
+  "settings.edit", // реквизиты компании — менеджер + админ
 ];
 const ENGINEER: Perm[] = [
   "project.create", "project.edit", "project.duplicate",
   "status.workflow",
-  "catalog.edit",
+  // справочник: инженер добавляет и правит, но НЕ удаляет и НЕ импортирует прайсы
+  "catalog.add", "catalog.edit",
 ];
 
 const MATRIX: Record<Role, Perm[]> = { admin: ADMIN, manager: MANAGER, engineer: ENGINEER };
@@ -72,8 +78,13 @@ export const denyReason = (user: AuthUser | null, perm: Perm): string => {
       return `Удаление ТКП доступно менеджеру и администратору (вы — ${role})`;
     case "status.decide":
       return `Решение «выиграно/проиграно» принимает менеджер или администратор (вы — ${role})`;
-    case "rates.edit":
+    case "catalog.delete":
+      return `Удалять позиции из общего справочника могут менеджер и администратор (вы — ${role})`;
+    case "catalog.import":
+      return `Импорт прайсов доступен менеджеру и администратору (вы — ${role})`;
     case "settings.edit":
+      return `Реквизиты компании заполняют менеджер и администратор (вы — ${role})`;
+    case "rates.edit":
     case "users.manage":
       return `Раздел доступен только администратору (вы — ${role})`;
     default:

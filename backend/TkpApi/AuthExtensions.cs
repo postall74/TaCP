@@ -79,6 +79,7 @@ public static class AuthExtensions
         {
             // именованные политики — их используют эндпоинты через RequireAuthorization("…")
             o.AddPolicy("AdminOnly", p => p.RequireRole(Roles.Admin));
+            o.AddPolicy("ManagerUp", p => p.RequireRole(Roles.Admin, Roles.Manager)); // реквизиты компании
             o.AddPolicy("Staff", p => p.RequireRole(Roles.Admin, Roles.Manager, Roles.Engineer));
         });
 
@@ -109,6 +110,7 @@ public static class AuthExtensions
             {
                 UserName = dto.Email, Email = dto.Email,
                 FullName = dto.FullName, Position = dto.Position ?? "",
+                PhoneNumber = dto.Phone ?? "",
             };
             var res = await users.CreateAsync(user, dto.Password);
             if (!res.Succeeded)
@@ -171,6 +173,34 @@ public static class AuthExtensions
             var add = await users.AddToRoleAsync(user, NormalizeRole(dto.Role));
             if (!add.Succeeded)
                 return Results.BadRequest(new { errors = add.Errors.Select(e => e.Description) });
+            return Results.Ok(ToDto(user, await users.GetRolesAsync(user)));
+        }).RequireAuthorization("AdminOnly");
+
+        // Свой профиль (любой сотрудник): ФИО, должность, телефон — сам сервис
+        // «у инженера сменился мобильный» закрывается без участия администратора.
+        app.MapPut("/api/auth/me", async (UpdateProfileDto dto, ClaimsPrincipal cp, UserManager<AppUser> users) =>
+        {
+            var id = cp.FindFirstValue(ClaimTypes.NameIdentifier);
+            var user = id is null ? null : await users.FindByIdAsync(id);
+            if (user is null) return Results.Unauthorized();
+            if (dto.FullName is not null) user.FullName = dto.FullName.Trim();
+            if (dto.Position is not null) user.Position = dto.Position.Trim();
+            if (dto.Phone is not null) user.PhoneNumber = dto.Phone.Trim();
+            await users.UpdateAsync(user);
+            var roles = await users.GetRolesAsync(user);
+            return Results.Ok(ToDto(user, roles));
+        }).RequireAuthorization("Staff");
+
+        // Правка профиля любого пользователя — только админ (страница «Пользователи»):
+        // контактные данные инженеров может актуализировать и руководство.
+        app.MapPut("/api/auth/users/{id}", async (string id, UpdateProfileDto dto, UserManager<AppUser> users) =>
+        {
+            var user = await users.FindByIdAsync(id);
+            if (user is null) return Results.NotFound();
+            if (dto.FullName is not null) user.FullName = dto.FullName.Trim();
+            if (dto.Position is not null) user.Position = dto.Position.Trim();
+            if (dto.Phone is not null) user.PhoneNumber = dto.Phone.Trim();
+            await users.UpdateAsync(user);
             return Results.Ok(ToDto(user, await users.GetRolesAsync(user)));
         }).RequireAuthorization("AdminOnly");
 
@@ -262,6 +292,7 @@ public static class AuthExtensions
         email = u.Email,
         fullName = u.FullName,
         position = u.Position,
+        phone = u.PhoneNumber ?? "",
         roles,
     };
 }
@@ -269,5 +300,7 @@ public static class AuthExtensions
 /* ---------------- DTO ---------------- */
 
 public sealed record LoginDto(string Email, string Password);
-public sealed record RegisterDto(string Email, string Password, string FullName, string? Position, string? Role);
+public sealed record RegisterDto(string Email, string Password, string FullName, string? Position, string? Role, string? Phone);
 public sealed record ChangeRoleDto(string Role);
+/// <summary>Правка профиля: ФИО, должность, телефон. Пустая строка = очистить поле.</summary>
+public sealed record UpdateProfileDto(string? FullName, string? Position, string? Phone);

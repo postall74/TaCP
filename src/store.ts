@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { restApi, toCompany, getToken, setToken, type AuthUser, type RestApi } from "./api/client";
+import { ApiError, restApi, toCompany, getToken, setToken, type AuthUser, type ProfilePatch, type RestApi } from "./api/client";
 import { CATALOG } from "./data/catalog";
 import { buildTemplateCabinets } from "./data/templates";
 import type {
@@ -10,6 +10,7 @@ import { calcProject, genId } from "./utils";
 import { can, denyReason, type Role } from "./utils/roles";
 import {
   ensureLocalAdmin, localListUsers, localLogin, localLogout, localMe, localRegister, localSetUserRole,
+  localUpdateProfile,
 } from "./utils/localAuth";
 
 /* ============================================================
@@ -96,7 +97,12 @@ interface StoreState {
   updateSettings: (patch: Partial<Settings>) => void;
 
   pingApi: (url?: string) => Promise<boolean>;
+  /** Тихая проверка связи (heartbeat): обновляет apiOnline без тостов. */
+  checkApi: () => Promise<boolean>;
   hydrateFromApi: () => Promise<void>;
+
+  /** Правка своего профиля (ФИО, должность, телефон) — доступно всем ролям. */
+  updateProfile: (patch: { fullName?: string; position?: string; phone?: string }) => Promise<void>;
 
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, fullName: string, role: string) => Promise<void>;
@@ -149,14 +155,45 @@ export const useStore = create<StoreState>()(
       };
 
       let lastErrTs = 0;
-      const syncFail = () => {
-        set((s) => ({ settings: { ...s.settings, apiOnline: false } }));
-        if (Date.now() - lastErrTs > 6000) {
-          lastErrTs = Date.now();
-          get().toast("Бэкенд недоступен — изменения сохранены локально", "err");
+      let failStreak = 0;
+      /** Ошибка синхронизации. ВАЖНО различать два класса:
+          • ApiError (любой HTTP-ответ, даже 4xx) — сервер ДОСТУПЕН, он ответил:
+            показываем причину и НЕ роняем индикатор «онлайн» (иначе отказ прав
+            или валидации выглядел бы как обрыв связи);
+          • сетевой сбой (fetch не выполнился) — офлайн, но только после двух
+            подряд, чтобы одиночный «чих» сети не переключал индикатор. */
+      const syncFail = (err?: unknown) => {
+        if (err instanceof ApiError) {
+          if (Date.now() - lastErrTs > 6000) {
+            lastErrTs = Date.now();
+            get().toast(err.message || `Сервер ответил ошибкой ${err.status}`, "err");
+          }
+          return;
+        }
+        failStreak += 1;
+        if (failStreak >= 2) {
+          set((s) => ({ settings: { ...s.settings, apiOnline: false } }));
+          if (Date.now() - lastErrTs > 6000) {
+            lastErrTs = Date.now();
+            get().toast("Бэкенд недоступен — изменения сохранены локально", "err");
+          }
         }
       };
-      const syncOk = () => set((s) => (s.settings.apiOnline === true ? s : { settings: { ...s.settings, apiOnline: true } }));
+      const syncOk = () => {
+        failStreak = 0;
+        set((s) => (s.settings.apiOnline === true ? s : { settings: { ...s.settings, apiOnline: true } }));
+      };
+
+      /* Heartbeat: раз в 45 с тихо проверяем /api/health и возвращаем индикатор
+         «онлайн», как только сервер снова отвечает. Закрывает сценарий «связь
+         восстановилась, а режим так и остался офлайновым до разлогина». */
+      if (typeof window !== "undefined") {
+        window.setInterval(() => {
+          const base = (get().settings.apiBaseUrl ?? "").trim();
+          if (!base || get().settings.apiOnline === true) return; // онлайн — не дёргаем лишний раз
+          void restApi(base).ping().then(syncOk).catch(() => { /* уже офлайн */ });
+        }, 45_000);
+      }
 
       const syncTimers = new Map<string, number>();
       /** Дебаунс-отправка проекта на сервер после каждой локальной мутации. */
@@ -216,6 +253,20 @@ export const useStore = create<StoreState>()(
           } catch {
             set((s) => ({ settings: { ...s.settings, apiOnline: false } }));
             get().toast(`Не удалось подключиться к ${base}`, "err");
+            return false;
+          }
+        },
+
+        /* тихая проверка — для heartbeat и ручного переподключения из сайдбара */
+        checkApi: async () => {
+          const base = (get().settings.apiBaseUrl ?? "").trim();
+          if (!base) return false;
+          try {
+            await restApi(base).ping();
+            syncOk();
+            return true;
+          } catch {
+            syncFail();
             return false;
           }
         },
@@ -303,6 +354,23 @@ export const useStore = create<StoreState>()(
             const u = get().user && { ...get().user!, roles: [role] };
             if (u) set({ user: u });
           }
+        },
+
+        /* Свой профиль: смена телефона/ФИО — сам пользователь, без админа.
+           Сервер: PUT /api/auth/me; локально: localStorage. Ошибки (в т.ч.
+           сетевые) пробрасываем — UI показывает причину тостом. */
+        updateProfile: async (patch: ProfilePatch) => {
+          const me = get().user;
+          if (!me) throw new Error("Профиль не загружен");
+          const a = api();
+          let next: AuthUser;
+          if (a) {
+            next = await a.updateProfile(patch);
+            syncOk();
+          } else {
+            next = localUpdateProfile(me.id, patch);
+          }
+          set({ user: { ...me, ...next } });
         },
 
         /* ---------- проекты ---------- */
@@ -528,15 +596,34 @@ export const useStore = create<StoreState>()(
             return { catalog: ex ? s.catalog.map((x) => (x.id === e.id ? e : x)) : [...s.catalog, e] };
           });
           const a = api();
-          if (a) (isNew ? a.createEquipment(e) : a.putEquipment(e)).then(syncOk).catch(syncFail);
+          if (a)
+            (isNew ? a.createEquipment(e) : a.putEquipment(e)).then(syncOk).catch((err) => {
+              // сервер вернул 409 «уже есть в справочнике» — убираем локальный дубль
+              if (err instanceof ApiError && err.status === 409) {
+                set((s) => ({ catalog: s.catalog.filter((x) => x.id !== e.id) }));
+                get().toast("Такая позиция уже есть в общем справочнике — дубль не добавлен", "err");
+                return;
+              }
+              syncFail(err);
+            });
         },
 
+        /* Удаление позиции — только менеджер/админ (инженер лишь пополняет справочник). */
         deleteEquipment: (id) => {
+          if (!can(get().user, "catalog.delete")) {
+            get().toast(denyReason(get().user, "catalog.delete"), "err");
+            return;
+          }
           set((s) => ({ catalog: s.catalog.filter((e) => e.id !== id) }));
           api()?.deleteEquipment(id).catch(syncFail);
         },
 
+        /* Импорт прайсов — массовая перезапись цен: только менеджер/админ. */
         importEquipment: (items, csv) => {
+          if (!can(get().user, "catalog.import")) {
+            get().toast(denyReason(get().user, "catalog.import"), "err");
+            return 0;
+          }
           let added = 0;
           set((s) => {
             const bySku = new Map(s.catalog.map((e) => [e.sku.toLowerCase(), e] as const));
