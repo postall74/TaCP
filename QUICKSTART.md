@@ -86,8 +86,15 @@ dotnet run
   (или baseline/Migrate, если миграции уже сгенерированы — см. `backend/MIGRATIONS.md`)
 
 Проверка: **http://localhost:5085/swagger**. Данные теперь **защищены**:
-- `POST /api/auth/login` (`admin@tkp.local` / `Admin#12345`) → скопировать `token` →
-  кнопка **Authorize** → вставить токен;
+- `POST /api/auth/login` → **Try it out** → в «Request body» вставьте **целиком**
+  (тело обязано оставаться валидным JSON — иначе сервер вернёт `400`):
+  ```json
+  {
+    "email": "admin@tkp.local",
+    "password": "Admin#12345"
+  }
+  ```
+  → **Execute** → из ответа 200 скопировать `token` → кнопка **Authorize** → вставить токен;
 - после этого `GET /api/catalog` → 200 (~80 позиций **без поля price** — только `purchase`).
 
 ### 3.4. F5 в VS Code (опционально)
