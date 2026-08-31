@@ -43,9 +43,16 @@ builder.Services.AddSwaggerGen(o =>
 });
 // Аутентификация и роли: Identity + JWT, политики AdminOnly/Staff (см. AuthExtensions.cs)
 builder.Services.AddTkpAuth(builder.Configuration);
-// enum'ы Direction/ProjectStatus в JSON как "nku"/"draft" — ровно как у фронтенда
+// Контракт JSON с фронтендом (src/types.ts):
+//  • enum'ы Direction/ProjectStatus — строками "nku"/"draft";
+//  • даты — unix-миллисекундами (число). Без UnixMsDateTimeConverter сервер
+//    отвечал 400 на POST/PUT проектов: фронтенд шлёт createdAt как number,
+//    а DateTime из числа не десериализуется (см. JsonConverters.cs).
 builder.Services.ConfigureHttpJsonOptions(o =>
-    o.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
+{
+    o.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+    o.SerializerOptions.Converters.Add(new UnixMsDateTimeConverter());
+});
 
 var app = builder.Build();
 app.UseCors();
@@ -107,9 +114,12 @@ _ = new Timer(_ =>
 app.MapGet("/api/health", () =>
     Results.Ok(new { status = "ok", service = "tkp-api", time = DateTime.UtcNow }));
 
+/* AsSplitQuery: два дочерних набора (шкафы+позиции и версии) читаются
+   отдельными SQL-запросами — без декартова произведения и предупреждения EF. */
 app.MapGet("/api/projects", async (TkpDbContext db) =>
     await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
                      .Include(p => p.Versions)
+                     .AsSplitQuery()
                      .OrderByDescending(p => p.UpdatedAt).ToListAsync())
    .RequireAuthorization("Staff");
 
