@@ -19,6 +19,8 @@ public class TkpDbContext(DbContextOptions<TkpDbContext> options) : IdentityDbCo
     public DbSet<Cabinet> Cabinets => Set<Cabinet>();
     public DbSet<LineItem> Items => Set<LineItem>();
     public DbSet<ProjectVersion> Versions => Set<ProjectVersion>();
+    public DbSet<CompanySettingsRow> CompanySettings => Set<CompanySettingsRow>();
+    public DbSet<DeletedEquipment> DeletedEquipment => Set<DeletedEquipment>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -53,6 +55,21 @@ public class TkpDbContext(DbContextOptions<TkpDbContext> options) : IdentityDbCo
             i.ToTable("project_items");
             i.Property(x => x.Qty).HasColumnType("numeric(12,3)");
             i.Property(x => x.Purchase).HasColumnType("numeric(12,2)");
+        });
+
+        mb.Entity<CompanySettingsRow>(s =>
+        {
+            s.ToTable("company_settings");
+            s.HasIndex(x => x.UserId).IsUnique(); // одна строка реквизитов на пользователя
+        });
+
+        mb.Entity<DeletedEquipment>(d =>
+        {
+            d.ToTable("deleted_equipment");
+            d.HasIndex(x => x.Sku);          // «воскрешение» при повторном добавлении артикула
+            d.HasIndex(x => x.DeletedAt);    // чистка по истечении 90 дней
+            d.Property(x => x.Purchase).HasColumnType("numeric(12,2)");
+            d.Property(x => x.RatedCurrent).HasColumnType("numeric(8,2)");
         });
 
         mb.Entity<ProjectVersion>(v =>

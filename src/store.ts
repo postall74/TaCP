@@ -4,7 +4,7 @@ import { ApiError, restApi, toCompany, getToken, setToken, type AuthUser, type P
 import { CATALOG } from "./data/catalog";
 import { buildTemplateCabinets } from "./data/templates";
 import type {
-  Cabinet, Direction, Equipment, LineItem, Project, ProjectStatus, ProjectVersion, Rates, Settings,
+  Cabinet, DeletedEquipment, Direction, Equipment, LineItem, Project, ProjectStatus, ProjectVersion, Rates, Settings,
 } from "./types";
 import { calcProject, genId } from "./utils";
 import { can, denyReason, type Role } from "./utils/roles";
@@ -24,6 +24,15 @@ import {
 
 export type ToastKind = "ok" | "err" | "info";
 export interface Toast { id: string; kind: ToastKind; text: string }
+
+/** Операция отложенной синхронизации (офлайн-очередь). Пока сервер недоступен,
+    мутации копятся здесь (persist → localStorage) и отправляются при восстановлении
+    связи: новые и изменённые проекты, удалённые проекты, позиции справочника. */
+export type OutboxOp =
+  | { kind: "project.upsert"; id: string; ts: number }
+  | { kind: "project.delete"; id: string; ts: number }
+  | { kind: "equipment.upsert"; eqId: string; ts: number }
+  | { kind: "equipment.delete"; eqId: string; ts: number };
 
 const seedNumber = () => {
   const d = new Date();
@@ -86,6 +95,12 @@ const normalizeProject = (p: Project): Project => ({
 interface StoreState {
   projects: Project[];
   catalog: Equipment[];
+  /** «Корзина» справочника (удалённые позиции, хранятся 90 дней) — для пометок в ТКП. */
+  deletedCatalog: DeletedEquipment[];
+  /** Офлайн-очередь мутаций, отправляется при восстановлении связи. */
+  outbox: OutboxOp[];
+  /** true, пока идёт ручная проверка связи (индикатор «Проверка…»). */
+  apiChecking: boolean;
   settings: Settings;
   toasts: Toast[];
   remoteLoading: boolean;
@@ -97,8 +112,10 @@ interface StoreState {
   updateSettings: (patch: Partial<Settings>) => void;
 
   pingApi: (url?: string) => Promise<boolean>;
-  /** Тихая проверка связи (heartbeat): обновляет apiOnline без тостов. */
+  /** Тихая проверка связи (heartbeat и клик по индикатору): обновляет apiOnline. */
   checkApi: () => Promise<boolean>;
+  /** Отправить накопленные офлайн-мутации (проекты, справочник) на сервер. */
+  flushOutbox: () => Promise<void>;
   hydrateFromApi: () => Promise<void>;
 
   /** Правка своего профиля (ФИО, должность, телефон) — доступно всем ролям. */
@@ -190,13 +207,37 @@ export const useStore = create<StoreState>()(
       if (typeof window !== "undefined") {
         window.setInterval(() => {
           const base = (get().settings.apiBaseUrl ?? "").trim();
-          if (!base || get().settings.apiOnline === true) return; // онлайн — не дёргаем лишний раз
-          void restApi(base).ping().then(syncOk).catch(() => { /* уже офлайн */ });
+          if (!base) return;
+          if (get().settings.apiOnline === true) {
+            // онлайн: если в очереди что-то осталось (например, flush прервался) — доотправляем
+            if (get().outbox.length > 0) void get().flushOutbox();
+            return;
+          }
+          void get().checkApi(); // при успехе сам снимет очередь
         }, 45_000);
       }
 
+      /* ---------- офлайн-очередь (outbox) ----------
+         Каждая мутация, не сумевшая дойти до сервера из-за обрыва связи,
+         кладётся в очередь (persist → localStorage). При восстановлении связи
+         (heartbeat / ручной клик по индикатору / успешный ping) очередь
+         отправляется в порядке поступления. HTTP-ошибки (4xx/5xx) означают,
+         что сервер ДОСТУПЕН — такую операцию снимаем (иначе зациклимся). */
+      const opKey = (o: OutboxOp) =>
+        o.kind === "project.upsert" || o.kind === "project.delete"
+          ? `${o.kind}:${o.id}`
+          : `${o.kind}:${o.eqId}`;
+      const enqueue = (op: OutboxOp) =>
+        set((s) => {
+          const rest = s.outbox.filter((x) => opKey(x) !== opKey(op));
+          return { outbox: [...rest, op] };
+        });
+      const dequeue = (op: OutboxOp) =>
+        set((s) => ({ outbox: s.outbox.filter((x) => opKey(x) !== opKey(op)) }));
+
       const syncTimers = new Map<string, number>();
-      /** Дебаунс-отправка проекта на сервер после каждой локальной мутации. */
+      /** Дебаунс-отправка проекта на сервер после каждой локальной мутации.
+          При сетевом сбое операция остаётся в очереди и уйдёт позже. */
       const syncProject = (pid: string) => {
         const a = api();
         if (!a) return;
@@ -204,11 +245,15 @@ export const useStore = create<StoreState>()(
         syncTimers.set(pid, window.setTimeout(async () => {
           const p = get().projects.find((x) => x.id === pid);
           if (!p) return;
+          const op: OutboxOp = { kind: "project.upsert", id: pid, ts: Date.now() };
+          enqueue(op);
           try {
             await a.putProject(p);
+            dequeue(op);
             syncOk();
-          } catch {
-            syncFail();
+          } catch (e) {
+            if (e instanceof ApiError) { dequeue(op); syncFail(e); } // сервер ответил — не повторяем
+            else syncFail(e);                                         // сеть — операция в очереди
           }
         }, 700));
       };
@@ -216,6 +261,9 @@ export const useStore = create<StoreState>()(
       return {
         projects: [],
         catalog: CATALOG,
+        deletedCatalog: [],
+        outbox: [],
+        apiChecking: false,
         settings: DEFAULT_SETTINGS,
         toasts: [],
         remoteLoading: false,
@@ -249,6 +297,7 @@ export const useStore = create<StoreState>()(
             await restApi(base).ping();
             set((s) => ({ settings: { ...s.settings, apiOnline: true } }));
             get().toast("API доступен — подключение установлено");
+            if (get().outbox.length > 0) void get().flushOutbox();
             return true;
           } catch {
             set((s) => ({ settings: { ...s.settings, apiOnline: false } }));
@@ -257,17 +306,51 @@ export const useStore = create<StoreState>()(
           }
         },
 
-        /* тихая проверка — для heartbeat и ручного переподключения из сайдбара */
+        /* тихая проверка — для heartbeat и ручного переподключения из сайдбара.
+           При успехе доотправляет накопленные офлайн-мутации. */
         checkApi: async () => {
           const base = (get().settings.apiBaseUrl ?? "").trim();
           if (!base) return false;
           try {
             await restApi(base).ping();
             syncOk();
+            if (get().outbox.length > 0) {
+              get().toast(`Связь восстановлена — отправляем ${get().outbox.length} отложенных изменений`, "info");
+              void get().flushOutbox();
+            }
             return true;
           } catch {
             syncFail();
             return false;
+          }
+        },
+
+        /* Отложенная синхронизация: отправляем очередь в порядке поступления.
+           Сетевой сбой — останавливаемся (остальное доотправит следующий цикл);
+           HTTP-ошибка — снимаем операцию (сервер доступен, повтор бесполезен). */
+        flushOutbox: async () => {
+          const a = api();
+          if (!a) return;
+          const queue = [...get().outbox];
+          for (const op of queue) {
+            try {
+              if (op.kind === "project.upsert") {
+                const p = get().projects.find((x) => x.id === op.id);
+                if (p) await a.putProject(p);
+              } else if (op.kind === "project.delete") {
+                await a.deleteProject(op.id);
+              } else if (op.kind === "equipment.upsert") {
+                const eq = get().catalog.find((x) => x.id === op.eqId);
+                if (eq) await a.putEquipment(eq);
+              } else {
+                await a.deleteEquipment(op.eqId);
+              }
+              dequeue(op);
+              syncOk();
+            } catch (e) {
+              if (e instanceof ApiError) { dequeue(op); syncFail(e); }
+              else { syncFail(e); return; } // сеть всё ещё лежит — ждём следующего цикла
+            }
           }
         },
 
@@ -276,16 +359,21 @@ export const useStore = create<StoreState>()(
           if (!a) return;
           set({ remoteLoading: true });
           try {
-            const [projects, catalog, company, rates] = await Promise.all([
+            /* «корзина» справочника грузится отдельно и необязательно:
+               если эндпоинта нет (старый сервер) — просто пустой список */
+            const [projects, catalog, company, rates, deletedCatalog] = await Promise.all([
               a.projects(), a.catalog(), a.company(), a.rates(),
+              a.deletedEquipment().catch(() => [] as DeletedEquipment[]),
             ]);
             set((s) => ({
               projects: projects.map(normalizeProject),
               catalog,
+              deletedCatalog,
               remoteLoading: false,
               settings: { ...s.settings, ...company, rates, apiOnline: true },
             }));
             get().toast("Данные загружены с сервера C#", "info");
+            if (get().outbox.length > 0) void get().flushOutbox();
           } catch {
             set((s) => ({ remoteLoading: false, settings: { ...s.settings, apiOnline: false } }));
             get().toast("Сервер недоступен — работаем с локальной копией", "err");
@@ -406,7 +494,14 @@ export const useStore = create<StoreState>()(
             return false;
           }
           set((s) => ({ projects: s.projects.filter((p) => p.id !== id) }));
-          api()?.deleteProject(id).catch(syncFail);
+          const a = api();
+          if (a) {
+            const op: OutboxOp = { kind: "project.delete", id, ts: Date.now() };
+            enqueue(op);
+            a.deleteProject(id)
+              .then(() => { dequeue(op); syncOk(); })
+              .catch((e) => { if (e instanceof ApiError) { dequeue(op); syncFail(e); } else syncFail(e); });
+          }
           return true;
         },
 
@@ -596,16 +691,22 @@ export const useStore = create<StoreState>()(
             return { catalog: ex ? s.catalog.map((x) => (x.id === e.id ? e : x)) : [...s.catalog, e] };
           });
           const a = api();
-          if (a)
-            (isNew ? a.createEquipment(e) : a.putEquipment(e)).then(syncOk).catch((err) => {
-              // сервер вернул 409 «уже есть в справочнике» — убираем локальный дубль
+          if (a) {
+            /* putEquipment на сервере — upsert (создаёт, если нет), поэтому
+               идемпотентен и безопасен для повторной отправки из офлайн-очереди */
+            const op: OutboxOp = { kind: "equipment.upsert", eqId: e.id, ts: Date.now() };
+            enqueue(op);
+            a.putEquipment(e).then(() => { dequeue(op); syncOk(); }).catch((err) => {
               if (err instanceof ApiError && err.status === 409) {
-                set((s) => ({ catalog: s.catalog.filter((x) => x.id !== e.id) }));
+                dequeue(op); // сервер доступен — дубль не добавлен, не повторяем
+                if (isNew) set((s) => ({ catalog: s.catalog.filter((x) => x.id !== e.id) }));
                 get().toast("Такая позиция уже есть в общем справочнике — дубль не добавлен", "err");
                 return;
               }
-              syncFail(err);
+              if (err instanceof ApiError) { dequeue(op); syncFail(err); }
+              else syncFail(err); // сетевой сбой — операция осталась в очереди
             });
+          }
         },
 
         /* Удаление позиции — только менеджер/админ (инженер лишь пополняет справочник). */
@@ -615,7 +716,14 @@ export const useStore = create<StoreState>()(
             return;
           }
           set((s) => ({ catalog: s.catalog.filter((e) => e.id !== id) }));
-          api()?.deleteEquipment(id).catch(syncFail);
+          const a = api();
+          if (a) {
+            const op: OutboxOp = { kind: "equipment.delete", eqId: id, ts: Date.now() };
+            enqueue(op);
+            a.deleteEquipment(id)
+              .then(() => { dequeue(op); syncOk(); })
+              .catch((e) => { if (e instanceof ApiError) { dequeue(op); syncFail(e); } else syncFail(e); });
+          }
         },
 
         /* Импорт прайсов — массовая перезапись цен: только менеджер/админ. */
@@ -655,11 +763,15 @@ export const useStore = create<StoreState>()(
       // v3: у settings появились apiBaseUrl/apiOnline. Старые сохранённые настройки
       // (без этих полей) приводили к краху при рендере — миграция дополняет их.
       version: 3,
-      // не сохраняем «летучие» поля: тосты, индикатор загрузки, статус соединения
+      // не сохраняем «летучие» поля: тосты, индикатор загрузки, статус соединения,
+      // apiChecking. outbox ОБЯЗАТЕЛЬНО сохраняем — иначе офлайн-мутации, сделанные
+      // перед перезагрузкой страницы, потеряются и не дойдут до сервера.
       partialize: (s) =>
         ({
           projects: s.projects,
           catalog: s.catalog,
+          outbox: s.outbox,
+          deletedCatalog: s.deletedCatalog,
           settings: { ...s.settings, apiOnline: null },
         }) as StoreState,
       // Миграция со старой структуры: дополняем проекты/настройки новыми полями.

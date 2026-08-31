@@ -179,3 +179,35 @@ public class CompanySettings
     public string Manager { get; set; } = "Сабаев А.В., руководитель проектов";
     public string Executor { get; set; } = "Султанов С.А., руководитель группы по подготовке ТКП";
 }
+
+/// <summary>Реквизиты компании, привязанные к учётной записи (таблица company_settings).
+/// У каждого пользователя — свой набор (исполнитель, контактный телефон и т.д.);
+/// GET/PUT /api/settings работают с настройками ТЕКУЩЕГО пользователя, при
+/// отсутствии строки возвращаются значения по умолчанию (ЗАО «Эталон-Прибор»).</summary>
+public class CompanySettingsRow : CompanySettings
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string UserId { get; set; } = "";
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>«Корзина» справочника (таблица deleted_equipment). Удалённая позиция
+/// не исчезает сразу: 90 дней хранится здесь, чтобы проекты, в которые она уже
+/// вошла, могли показать её с пометкой и предложить замену. Повторное добавление
+/// того же артикула возвращает позицию в справочник; по истечении срока строка
+/// удаляется безвозвратно (чистка при старте и каждые 6 часов).</summary>
+public class DeletedEquipment
+{
+    public string Id { get; set; } = "";            // id позиции из equipment_catalog
+    public string Sku { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Brand { get; set; } = "";
+    public string Category { get; set; } = "";
+    public Direction Direction { get; set; } = Direction.Uni;
+    public string Unit { get; set; } = "шт";
+    public decimal Purchase { get; set; }
+    public decimal RatedCurrent { get; set; }
+    public string Attrs { get; set; } = "";
+    public DateTime DeletedAt { get; set; } = DateTime.UtcNow;
+    public string DeletedBy { get; set; } = "";     // кто удалил (e-mail)
+}
