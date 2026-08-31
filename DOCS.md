@@ -81,6 +81,7 @@ Program.cs         — Minimal API: эндпоинты, Swagger (+Bearer Authori
                      раздача фронтенда из dist/ (UseStaticFiles + SPA-fallback),
                      «корзина» справочника (deleted_equipment, чистка через 90 дней)
 Models.cs          — доменная модель (строковые Id — совпадают с фронтом без конверсий)
+JsonConverters.cs  — UnixMsDateTimeConverter: даты в JSON — unix-мс (контракт фронтенда)
 TkpDbContext.cs    — IdentityDbContext<AppUser>: проекты/шкафы/позиции/версии + Identity,
                      company_settings (реквизиты на пользователя), deleted_equipment
 AuthExtensions.cs  — весь auth: Identity+JWT, политики AdminOnly/ManagerUp/Staff,
@@ -90,6 +91,13 @@ CatalogCsv.cs      — разбор прайсов: чистые ParseLine/Parse
 CalcEngine.cs      — серверное зеркало calcProject (закупочная модель)
 seed-catalog.csv   — стартовый справочник, 8 колонок
 ```
+
+**Контракт JSON.** Идентификаторы — строки (генерирует фронтенд), enum'ы —
+строками (`"nku"`, `"draft"` — `JsonStringEnumConverter`), **даты — unix-мс**
+(`UnixMsDateTimeConverter` читает число или ISO-строку, пишет число — ровно то,
+что хранит `src/types.ts`). До появления конвертера `POST/PUT /api/projects`
+отвечали `400`: фронтенд слал `createdAt: 1735689600000`, а `DateTime` из числа
+не десериализуется — проект создавался локально, но не долетал до БД.
 
 **Схема БД — через EF-миграции.** При старте `EnsureSchema()` (в `Program.cs`):
 нет файлов миграций → `EnsureCreated()` (dev); БД уже заполнена, но журнала нет →
@@ -441,6 +449,13 @@ Enum'ы в JSON — строки (`"nku"`, `"draft"`), Id — строки: се
 
 Записи — по веткам (регламент — `GIT_WORKFLOW.md`); свежие сверху.
 
+- **`fix/datetime-contract`** — устранён «HTTP 400 Bad Request» при создании/
+  синхронизации проектов: фронтенд хранит даты unix-миллисекундами, а бэкенд
+  десериализовал их в `DateTime` и падал. Добавлен `UnixMsDateTimeConverter`
+  (`JsonConverters.cs`, читает unix-мс или ISO, пишет unix-мс) и подключён в
+  `ConfigureHttpJsonOptions`; запросы проектов теперь читаются split-запросами
+  (`AsSplitQuery`) — ушло предупреждение EF о нескольких Include. Обновлены
+  §2.2 (контракт JSON), §13; QUICKSTART §7 (строка диагностики).
 - **`fix/online-mode-lan`** — онлайн-режим в локальной сети: (1) фронтенд при
   пустом `apiBaseUrl` сам находит API на текущем origin (`autoDetectApi`,
   проверка `/api/health`) и включает онлайн-режим — участникам достаточно
