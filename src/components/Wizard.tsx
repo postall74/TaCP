@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useStore } from "../store";
 import { findEq } from "../data/catalog";
 import type { Cabinet, CabinetSegment, Equipment, LineItem, Project, SeparationForm } from "../types";
@@ -71,10 +71,14 @@ interface Draft {
   uzpKind: "none" | "t2" | "t12";
   uzpRs: number; uzpEth: number; uzpIo: number;
 
-  /* кнопки и индикация (+ визуальная дверца) */
+  /* кнопки и индикация (+ интерактивная дверца) */
   buttons: number; btnStop: number; lamps: number; switches: number;
   lineBtns: number;
   avrInd: boolean;
+  /** Позиции элементов на дверце (нормированные 0…1), ключ — стабильный id элемента. */
+  doorPos: Record<string, { x: number; y: number }>;
+  /** Подписи элементов: сверху или снизу. */
+  doorLabelSide: "below" | "above";
 
   /* приборы */
   ammIn: number; voltIn: number; ammOut: number;
