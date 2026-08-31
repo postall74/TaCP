@@ -9,6 +9,7 @@ import {
   parseCatalogCsv,
   plural,
 } from "../utils";
+import { can } from "../utils/roles";
 import { Badge, Btn, Field, IconBtn, Input, Modal, NumInput, Select, Textarea, cx } from "./ui";
 import {
   IcBox,
@@ -37,10 +38,15 @@ const dirBadge = (d: Direction | "uni") =>
 
 export default function CatalogPage() {
   const catalog = useStore((s) => s.catalog);
+  const user = useStore((s) => s.user);
   const upsertEquipment = useStore((s) => s.upsertEquipment);
   const deleteEquipment = useStore((s) => s.deleteEquipment);
   const importEquipment = useStore((s) => s.importEquipment);
   const toast = useStore((s) => s.toast);
+
+  /* Права: инженер добавляет/правит, но не удаляет и не импортирует (§8.1 DOCS). */
+  const canImport = can(user, "catalog.import");
+  const canDelete = can(user, "catalog.delete");
 
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("all");
@@ -49,6 +55,32 @@ export default function CatalogPage() {
   const [editTarget, setEditTarget] = useState<Equipment | "new" | null>(null);
   const [delTarget, setDelTarget] = useState<Equipment | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  /** Подсветка строки, на которую указали при обнаружении дубля. */
+  const [flashId, setFlashId] = useState<string | null>(null);
+
+  /* Проверка на дубликат перед добавлением: артикул (или название+бренд) уже
+     могли завести другие сотрудники в общую БД. Дубль не создаём — показываем
+     существующую позицию: фильтр по артикулу + подсветка строки. */
+  const findDuplicate = (e: Equipment): Equipment | undefined => {
+    const sku = e.sku.trim().toLowerCase();
+    const name = e.name.trim().toLowerCase();
+    const brandL = e.brand.trim().toLowerCase();
+    return catalog.find(
+      (x) =>
+        x.id !== e.id &&
+        (x.sku.trim().toLowerCase() === sku ||
+          (x.name.trim().toLowerCase() === name && x.brand.trim().toLowerCase() === brandL))
+    );
+  };
+  const revealDuplicate = (dup: Equipment) => {
+    setCat("all"); setBrand("all"); setDir("all");
+    setQ(dup.sku); // фильтр укажет на искомое
+    setFlashId(dup.id);
+    window.setTimeout(() => setFlashId(null), 4000);
+    requestAnimationFrame(() =>
+      document.getElementById(`cat-row-${dup.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" })
+    );
+  };
 
   const cats = useMemo(() => [...new Set(catalog.map((e) => e.category))].sort((a, b) => a.localeCompare(b, "ru")), [catalog]);
   const brands = useMemo(() => [...new Set(catalog.map((e) => e.brand))].sort((a, b) => a.localeCompare(b, "ru")), [catalog]);
@@ -77,9 +109,11 @@ export default function CatalogPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Btn variant="outline" size="sm" onClick={() => setImportOpen(true)}>
-            <IcUpload size={14} /> Импорт CSV
-          </Btn>
+          {canImport && (
+            <Btn variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+              <IcUpload size={14} /> Импорт CSV
+            </Btn>
+          )}
           <Btn
             variant="outline"
             size="sm"
@@ -130,7 +164,14 @@ export default function CatalogPage() {
             </thead>
             <tbody>
               {list.map((e) => (
-                <tr key={e.id} className="group border-b border-line/60 transition-colors last:border-b-0 hover:bg-paper/70">
+                <tr
+                  key={e.id}
+                  id={`cat-row-${e.id}`}
+                  className={cx(
+                    "group border-b border-line/60 transition-colors last:border-b-0 hover:bg-paper/70",
+                    flashId === e.id && "row-flash"
+                  )}
+                >
                   <td className="py-2.5 pl-4 font-mono text-[11.5px] font-semibold whitespace-nowrap text-ink2">{e.sku}</td>
                   <td className="max-w-[340px] py-2.5 pr-3">
                     <div className="truncate text-[13px] font-semibold text-ink">{e.name}</div>
@@ -146,9 +187,11 @@ export default function CatalogPage() {
                       <IconBtn title="Редактировать" onClick={() => setEditTarget(e)}>
                         <IcPencil size={14} />
                       </IconBtn>
-                      <IconBtn title="Удалить" danger onClick={() => setDelTarget(e)}>
-                        <IcTrash size={14} />
-                      </IconBtn>
+                      {canDelete && (
+                        <IconBtn title="Удалить" danger onClick={() => setDelTarget(e)}>
+                          <IcTrash size={14} />
+                        </IconBtn>
+                      )}
                     </span>
                   </td>
                 </tr>
@@ -169,8 +212,18 @@ export default function CatalogPage() {
       </div>
 
       <EquipmentModal target={editTarget} onClose={() => setEditTarget(null)} onSave={(e) => {
+        const isNew = editTarget === "new";
+        if (isNew) {
+          const dup = findDuplicate(e);
+          if (dup) {
+            toast(`«${dup.sku}» уже есть в справочнике — позиция подсвечена ниже`, "err");
+            revealDuplicate(dup);
+            setEditTarget(null);
+            return;
+          }
+        }
         upsertEquipment(e);
-        toast(editTarget === "new" ? `Позиция «${e.sku}» добавлена` : "Позиция обновлена");
+        toast(isNew ? `Позиция «${e.sku}» добавлена` : "Позиция обновлена");
         setEditTarget(null);
       }} />
 

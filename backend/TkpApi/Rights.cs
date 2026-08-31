@@ -26,7 +26,10 @@ public static class Rights
     public const string ProjectDuplicate = "project.duplicate";
     public const string StatusWorkflow   = "status.workflow";  // черновик → на расчёте → отправлено
     public const string StatusDecide     = "status.decide";    // отправлено → выиграно/проиграно
-    public const string CatalogEdit      = "catalog.edit";
+    public const string CatalogAdd       = "catalog.add";      // добавление позиций (все сотрудники)
+    public const string CatalogEdit      = "catalog.edit";     // правка своих/общих позиций (все)
+    public const string CatalogDelete    = "catalog.delete";   // удаление — менеджер/админ
+    public const string CatalogImport    = "catalog.import";   // импорт прайсов — менеджер/админ
     public const string RatesEdit        = "rates.edit";
     public const string SettingsEdit     = "settings.edit";
     public const string UsersManage      = "users.manage";
@@ -37,19 +40,21 @@ public static class Rights
         {
             ProjectCreate, ProjectEdit, ProjectDelete, ProjectDuplicate,
             StatusWorkflow, StatusDecide,
-            CatalogEdit, RatesEdit, SettingsEdit, UsersManage,
+            CatalogAdd, CatalogEdit, CatalogDelete, CatalogImport,
+            RatesEdit, SettingsEdit, UsersManage,
         },
         [Roles.Manager] = new[]
         {
             ProjectCreate, ProjectEdit, ProjectDelete, ProjectDuplicate,
             StatusWorkflow, StatusDecide,
-            CatalogEdit,
+            CatalogAdd, CatalogEdit, CatalogDelete, CatalogImport,
+            SettingsEdit, // реквизиты компании — менеджер + админ
         },
         [Roles.Engineer] = new[]
         {
             ProjectCreate, ProjectEdit, ProjectDuplicate,
             StatusWorkflow,
-            CatalogEdit,
+            CatalogAdd, CatalogEdit, // инженер пополняет справочник, но НЕ удаляет и НЕ импортирует
         },
     };
 

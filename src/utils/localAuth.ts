@@ -45,7 +45,7 @@ function writeUsers(users: LocalUser[]) {
 }
 
 const toAuthUser = (u: LocalUser): AuthUser => ({
-  id: u.id, email: u.email, fullName: u.fullName, position: u.position, roles: u.roles,
+  id: u.id, email: u.email, fullName: u.fullName, position: u.position, phone: u.phone ?? "", roles: u.roles,
 });
 
 /** При первом запуске создаёт администратора (идемпотентно, как серверный сид). */
@@ -106,6 +106,23 @@ export function localLogout(): void {
 export async function localListUsers(): Promise<AuthUser[]> {
   await ensureLocalAdmin();
   return readUsers().map(toAuthUser).sort((a, b) => a.email.localeCompare(b.email, "ru"));
+}
+
+/** Правка профиля (зеркало PUT /api/auth/me): свои ФИО, должность, телефон. */
+export function localUpdateProfile(id: string, patch: { fullName?: string; position?: string; phone?: string }): AuthUser {
+  const users = readUsers();
+  const u = users.find((x) => x.id === id);
+  if (!u) throw new Error("Пользователь не найден");
+  if (patch.fullName !== undefined) u.fullName = patch.fullName.trim();
+  if (patch.position !== undefined) u.position = patch.position.trim();
+  if (patch.phone !== undefined) u.phone = patch.phone.trim();
+  writeUsers(users);
+  return toAuthUser(u);
+}
+
+/** Правка профиля любого пользователя админом (зеркало PUT /api/auth/users/{id}). */
+export function localUpdateUser(id: string, patch: { fullName?: string; position?: string; phone?: string }): void {
+  localUpdateProfile(id, patch);
 }
 
 export async function localSetUserRole(id: string, role: Role): Promise<void> {

@@ -26,7 +26,16 @@ export interface AuthUser {
   email: string;
   fullName: string;
   position: string;
+  /** Контактный телефон; у старых локальных записей может отсутствовать. */
+  phone?: string;
   roles: string[];
+}
+
+/** Правка профиля (своего — PUT /api/auth/me, чужого — PUT /api/auth/users/{id}). */
+export interface ProfilePatch {
+  fullName?: string;
+  position?: string;
+  phone?: string;
 }
 
 /** Причина ошибки из тела ответа: { errors: [] } (регистрация), { detail } / { title }
@@ -115,6 +124,12 @@ export const restApi = (base: string) => ({
       body: JSON.stringify({ email, password, fullName, position: "", role }),
     }),
   me: () => req<AuthUser>(base, "/api/auth/me"),
+  /* свой профиль: смена телефона/ФИО доступна каждому сотруднику */
+  updateProfile: (p: ProfilePatch) =>
+    req<AuthUser>(base, "/api/auth/me", { method: "PUT", body: JSON.stringify(p) }),
+  /* правка профиля любого пользователя — админ на странице «Пользователи» */
+  putUser: (id: string, p: ProfilePatch) =>
+    req<AuthUser>(base, `/api/auth/users/${id}`, { method: "PUT", body: JSON.stringify(p) }),
 
   /* пользователи (только админ) */
   users: () => req<AuthUser[]>(base, "/api/auth/users"),

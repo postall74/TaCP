@@ -31,6 +31,9 @@ public class AppUser : IdentityUser
     public string FullName { get; set; } = "";
     /// <summary>Должность.</summary>
     public string Position { get; set; } = "";
+    /* Контактный телефон — встроенное поле IdentityUser.PhoneNumber:
+       колонка уже есть в схеме, миграция не нужна. Меняет сам пользователь
+       (PUT /api/auth/me) или админ на странице «Пользователи». */
 }
 
 /* ---------------- Справочник и проекты ---------------- */
@@ -160,15 +163,19 @@ public class Rates
     public decimal Pnr { get; set; } = 1800;
 }
 
-/// <summary>Реквизиты компании для документов (settings.company jsonb).</summary>
+/// <summary>Реквизиты компании для документов (settings.company jsonb).
+/// Дефолт — ЗАО «Эталон-Прибор», чтобы шапка документов не была пустой
+/// до заполнения администратором/менеджером (PUT /api/settings, политика ManagerUp).</summary>
 public class CompanySettings
 {
-    public string CompanyName { get; set; } = "";
-    public string Tagline { get; set; } = "";
-    public string Address { get; set; } = "";
-    public string Phone { get; set; } = "";
-    public string Email { get; set; } = "";
-    public string Requisites { get; set; } = "";
-    public string Manager { get; set; } = "";
-    public string Executor { get; set; } = "";
+    public string CompanyName { get; set; } = "ЗАО «Эталон-Прибор»";
+    public string Tagline { get; set; } = "Комплектация · сборка НКУ · автоматизация · электрообогрев";
+    public string Address { get; set; } = "г. Челябинск, пр. Победы, 288";
+    public string Phone { get; set; } = "+7 (351) 267-47-10";
+    public string Email { get; set; } = "s.a.sultanov@etalon-chel.ru";
+    public string Requisites { get; set; } = "ИНН 7452023246 / КПП 74480100 / ОГРН 1027403767500\n" +
+        "Филиал «Корпоративный» ПАО «Совкомбанк», г. Москва\n" +
+        "р/с 40702810300230800179, к/с 30101810445250000360, БИК 044525360";
+    public string Manager { get; set; } = "Сабаев А.В., руководитель проектов";
+    public string Executor { get; set; } = "Султанов С.А., руководитель группы по подготовке ТКП";
 }

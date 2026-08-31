@@ -38,11 +38,13 @@ export default function App() {
   const hydrateFromApi = useStore((s) => s.hydrateFromApi);
   const createProject = useStore((s) => s.createProject);
   const updateSettings = useStore((s) => s.updateSettings);
+  const checkApi = useStore((s) => s.checkApi);
   const toast = useStore((s) => s.toast);
 
   const [route, setRoute] = useState<Route>("board");
   const [editorId, setEditorId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const apiBase = (settings.apiBaseUrl ?? "").trim();
   const editorProject = projects.find((p) => p.id === editorId);
@@ -153,9 +155,19 @@ export default function App() {
               </span>
             </div>
             <div className="truncate text-[10px] text-darkmute">{user.email}</div>
-            <button onClick={logout} className="mt-1.5 flex cursor-pointer items-center gap-1 text-[10.5px] font-semibold text-heat transition-colors hover:text-white">
-              <IcX size={11} /> Выйти
-            </button>
+            {user.phone && <div className="truncate text-[10px] text-darkmute">{user.phone}</div>}
+            <div className="mt-1.5 flex items-center gap-3">
+              <button
+                onClick={() => setProfileOpen(true)}
+                title="Изменить ФИО, должность, телефон"
+                className="flex cursor-pointer items-center gap-1 text-[10.5px] font-semibold text-steel transition-colors hover:text-white"
+              >
+                <IcGear size={11} /> Профиль
+              </button>
+              <button onClick={logout} className="flex cursor-pointer items-center gap-1 text-[10.5px] font-semibold text-heat transition-colors hover:text-white">
+                <IcX size={11} /> Выйти
+              </button>
+            </div>
           </div>
         )}
 

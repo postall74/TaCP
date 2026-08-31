@@ -207,8 +207,19 @@ app.MapGet("/api/catalog", async (TkpDbContext db) =>
     await db.Equipment.OrderBy(e => e.Category).ThenBy(e => e.Sku).ToListAsync())
    .RequireAuthorization("Staff");
 
+/* Добавление позиции — все сотрудники (catalog.add), но с защитой от дублей:
+   справочник общий, и позиция с тем же артикулом (или названием+брендом) уже
+   могла быть заведена кем-то другим. Дубль не создаём — отвечаем 409 с данными
+   существующей позиции, клиент подсвечивает её в таблице. */
 app.MapPost("/api/catalog", async (Equipment e, TkpDbContext db) =>
 {
+    var sku = e.Sku.Trim();
+    var existing = await db.Equipment.FirstOrDefaultAsync(x =>
+        x.Sku.ToLower() == sku.ToLower() ||
+        (x.Name.ToLower() == e.Name.Trim().ToLower() && x.Brand.ToLower() == e.Brand.Trim().ToLower()));
+    if (existing is not null)
+        return Results.Conflict(new { detail = "Такая позиция уже есть в справочнике", existing });
+
     if (string.IsNullOrEmpty(e.Id)) e.Id = Guid.NewGuid().ToString();
     db.Equipment.Add(e);
     await db.SaveChangesAsync();
@@ -223,8 +234,11 @@ app.MapPut("/api/catalog/{id}", async (string id, Equipment e, TkpDbContext db) 
     return Results.Ok(e);
 }).RequireAuthorization("Staff");
 
-app.MapDelete("/api/catalog/{id}", async (string id, TkpDbContext db) =>
+/* Удаление позиции — только менеджер/админ (catalog.delete). Инженер пополняет
+   справочник, но не удаляет из общей базы — защита от случайной потери данных. */
+app.MapDelete("/api/catalog/{id}", async (string id, TkpDbContext db, ClaimsPrincipal user) =>
 {
+    if (!Rights.Can(user, Rights.CatalogDelete)) return Rights.Forbid(user, Rights.CatalogDelete);
     var e = await db.Equipment.FindAsync(id);
     if (e is null) return Results.NotFound();
     db.Equipment.Remove(e);
@@ -232,9 +246,11 @@ app.MapDelete("/api/catalog/{id}", async (string id, TkpDbContext db) =>
     return Results.NoContent();
 }).RequireAuthorization("Staff");
 
-/* Импорт прайса: CSV «артикул;наименование;бренд;категория;направление;ед;закупка;цена;характеристики». */
-app.MapPost("/api/catalog/import", async (HttpRequest req, TkpDbContext db) =>
+/* Импорт прайса: CSV «артикул;наименование;бренд;категория;направление;ед;закупка;цена;характеристики».
+   Массовая операция с перезаписью цен — только менеджер/админ (catalog.import). */
+app.MapPost("/api/catalog/import", async (HttpRequest req, TkpDbContext db, ClaimsPrincipal user) =>
 {
+    if (!Rights.Can(user, Rights.CatalogImport)) return Rights.Forbid(user, Rights.CatalogImport);
     using var reader = new StreamReader(req.Body);
     var text = await reader.ReadToEndAsync();
     var (added, updated, skipped) = CatalogCsv.Import(db, text);
@@ -250,7 +266,9 @@ var company = new CompanySettings();
 app.MapGet("/api/rates", () => rates).RequireAuthorization("Staff");
 app.MapPut("/api/rates", (Rates r) => { rates = r; return Results.Ok(rates); }).RequireAuthorization("AdminOnly");
 app.MapGet("/api/settings", () => company).RequireAuthorization("Staff");
-app.MapPut("/api/settings", (CompanySettings c) => { company = c; return Results.Ok(company); }).RequireAuthorization("AdminOnly");
+/* Реквизиты компании заполняют менеджер и админ (политика ManagerUp) —
+   инженер видит их только для чтения (реквизиты — общие данные компании). */
+app.MapPut("/api/settings", (CompanySettings c) => { company = c; return Results.Ok(company); }).RequireAuthorization("ManagerUp");
 
 app.Run();
 
