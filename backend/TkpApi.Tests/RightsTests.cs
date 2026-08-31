@@ -32,22 +32,33 @@ public class RightsTests
 
     /* ---------------- матрица: кто что может ---------------- */
 
+    /* Матрица синхронизирована с src/utils/roles.ts (обе реализации прав).
+       SettingsEdit у менеджера — реквизиты компании (п. «менеджер+админ»).
+       Каталог: add/edit — все, delete/import — менеджер/админ. */
     [Theory]
     [InlineData(Roles.Admin, Rights.ProjectDelete, true)]
     [InlineData(Roles.Admin, Rights.StatusDecide, true)]
     [InlineData(Roles.Admin, Rights.RatesEdit, true)]
     [InlineData(Roles.Admin, Rights.SettingsEdit, true)]
     [InlineData(Roles.Admin, Rights.UsersManage, true)]
+    [InlineData(Roles.Admin, Rights.CatalogDelete, true)]
+    [InlineData(Roles.Admin, Rights.CatalogImport, true)]
     [InlineData(Roles.Manager, Rights.ProjectDelete, true)]
     [InlineData(Roles.Manager, Rights.StatusDecide, true)]
     [InlineData(Roles.Manager, Rights.RatesEdit, false)]
-    [InlineData(Roles.Manager, Rights.SettingsEdit, false)]
+    [InlineData(Roles.Manager, Rights.SettingsEdit, true)]   // реквизиты компании
     [InlineData(Roles.Manager, Rights.UsersManage, false)]
+    [InlineData(Roles.Manager, Rights.CatalogDelete, true)]
+    [InlineData(Roles.Manager, Rights.CatalogImport, true)]
     [InlineData(Roles.Engineer, Rights.ProjectDelete, false)]
     [InlineData(Roles.Engineer, Rights.StatusDecide, false)]
     [InlineData(Roles.Engineer, Rights.StatusWorkflow, true)]
+    [InlineData(Roles.Engineer, Rights.CatalogAdd, true)]
     [InlineData(Roles.Engineer, Rights.CatalogEdit, true)]
+    [InlineData(Roles.Engineer, Rights.CatalogDelete, false)]  // инженер не удаляет
+    [InlineData(Roles.Engineer, Rights.CatalogImport, false)]  // и не импортирует прайсы
     [InlineData(Roles.Engineer, Rights.RatesEdit, false)]
+    [InlineData(Roles.Engineer, Rights.SettingsEdit, false)]
     public void Can_MatchesFrontendMatrix(string role, string perm, bool expected) =>
         Assert.Equal(expected, Rights.Can(role, perm));
 
@@ -88,6 +99,10 @@ public class RightsTests
         Assert.Contains("Инженер", Rights.DenyReason(Roles.Engineer, Rights.ProjectDelete));
         Assert.Contains("выиграно/проиграно", Rights.DenyReason(Roles.Manager, Rights.StatusDecide));
         Assert.Contains("только администратору", Rights.DenyReason(Roles.Manager, Rights.RatesEdit));
+        // реквизиты компании и каталог: менеджер+админ (тексты = denyReason в roles.ts)
+        Assert.Contains("менеджер и администратор", Rights.DenyReason(Roles.Engineer, Rights.SettingsEdit));
+        Assert.Contains("справочника", Rights.DenyReason(Roles.Engineer, Rights.CatalogDelete));
+        Assert.Contains("Импорт прайсов", Rights.DenyReason(Roles.Engineer, Rights.CatalogImport));
     }
 
     /* ---------------- защита последнего администратора ---------------- */

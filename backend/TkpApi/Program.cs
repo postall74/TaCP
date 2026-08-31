@@ -297,13 +297,13 @@ static void EnsureSchema(TkpDbContext db, ILogger logger)
 
     if (applied.Count == 0 && db.Database.CanConnect() && HasAnyTable(db))
     {
-        // Существующая БД от EnsureCreated: baseline — помечаем все миграции применёнными
-        var history = "__EFMigrationsHistory";
+        // Существующая БД от EnsureCreated: baseline — помечаем все миграции применёнными.
+        // Имя таблицы — константа (не интерполяция), поэтому EF1002 (SQL-injection) не срабатывает.
         db.Database.ExecuteSqlRaw(
-            $"CREATE TABLE IF NOT EXISTS \"{history}\" (\"MigrationId\" varchar(150) NOT NULL PRIMARY KEY, \"ProductVersion\" varchar(32) NOT NULL)");
+            "CREATE TABLE IF NOT EXISTS \"__EFMigrationsHistory\" (\"MigrationId\" varchar(150) NOT NULL PRIMARY KEY, \"ProductVersion\" varchar(32) NOT NULL)");
         foreach (var m in pending)
             db.Database.ExecuteSqlRaw(
-                $"INSERT INTO \"{history}\" (\"MigrationId\", \"ProductVersion\") VALUES (@p0, @p1)", m, "8.0.8");
+                "INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES (@p0, @p1)", m, "8.0.8");
         logger.LogInformation("Baseline: {Count} миграций помечены как применённые (схема уже существовала)", pending.Count);
         return;
     }
