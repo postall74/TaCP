@@ -12,6 +12,14 @@ export type Theme = "light" | "dark";
 /** Справочник оборудования (EquipmentCatalog).
     НОВАЯ МОДЕЛЬ ЦЕН: единственная цена — закупочная (purchase).
     Цена продажи = purchase × (1 + проект.markup/100) — считается один раз при расчёте. */
+/** Позиция из «корзины» справочника: удалена, но хранится 90 дней (таблица
+    deleted_equipment). Проекты, где она использована, показывают пометку
+    «удалено из справочника · осталось N дней» и предлагают замену-аналог. */
+export interface DeletedEquipment extends Equipment {
+  deletedAt: number; // unix-мс
+  deletedBy?: string;
+}
+
 export interface Equipment {
   id: string;
   sku: string;

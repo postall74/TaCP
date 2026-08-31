@@ -35,16 +35,30 @@ export default function App() {
   const user = useStore((s) => s.user);
   const logout = useStore((s) => s.logout);
   const initAuth = useStore((s) => s.initAuth);
+  const autoDetectApi = useStore((s) => s.autoDetectApi);
   const hydrateFromApi = useStore((s) => s.hydrateFromApi);
   const createProject = useStore((s) => s.createProject);
   const updateSettings = useStore((s) => s.updateSettings);
   const checkApi = useStore((s) => s.checkApi);
+  const outboxCount = useStore((s) => s.outbox.length);
   const toast = useStore((s) => s.toast);
 
   const [route, setRoute] = useState<Route>("board");
   const [editorId, setEditorId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [checkingConn, setCheckingConn] = useState(false);
+
+  /* Клик по индикатору связи: явная проверка с визуальным откликом.
+     Между нажатием и ответом — «Проверка…», затем тост «ок» или «не удалось». */
+  const recheckConn = async () => {
+    if (!apiBase || checkingConn) return;
+    setCheckingConn(true);
+    toast("Проверяем связь с сервером…", "info");
+    const ok = await checkApi();
+    setCheckingConn(false);
+    toast(ok ? "Связь с сервером установлена" : `Сервер ${apiBase} не отвечает`, ok ? "ok" : "err");
+  };
 
   const apiBase = (settings.apiBaseUrl ?? "").trim();
   const editorProject = projects.find((p) => p.id === editorId);
@@ -59,10 +73,11 @@ export default function App() {
     document.documentElement.classList.toggle("dark", settings.theme === "dark");
   }, [settings.theme]);
 
-  /* при старте: восстановить профиль (токен на сервере или сессия в localStorage) */
+  /* при старте: автодетекция same-origin (запуск в локальной сети) → затем
+     восстановление профиля (токен на сервере или сессия в localStorage) */
   useEffect(() => {
-    void initAuth();
-  }, [initAuth]);
+    void autoDetectApi().then(() => initAuth());
+  }, [autoDetectApi, initAuth]);
 
   /* серверные данные подтягиваем только после входа:
      проекты/каталог защищены политикой Staff и требуют Bearer-токен */
@@ -172,26 +187,47 @@ export default function App() {
         )}
 
         <div className="mt-auto flex flex-col gap-1.5 border-t border-darkline px-3 py-4">
-          {/* режим работы: локально (localStorage) или C#-бэкенд */}
-          <div
-            className={cx(
-              "mx-0.5 mb-1 flex items-center gap-2 rounded-md border px-2.5 py-1.5 font-mono text-[10px] font-bold tracking-wide uppercase",
-              !apiBase && "border-darkline text-darkmute",
-              apiBase && settings.apiOnline === true && "border-ok/40 text-ok",
-              apiBase && settings.apiOnline !== true && "border-heat/40 text-heat"
-            )}
-            title={apiBase ? apiBase : "Данные хранятся в браузере. URL бэкенда — в «Реквизитах компании»."}
-          >
-            <span
+          {/* режим работы: локально (localStorage) или C#-бэкенд.
+              В сетевом режиме — кликабельная кнопка повторной проверки связи. */}
+          {apiBase ? (
+            <button
+              type="button"
+              onClick={() => void recheckConn()}
+              disabled={checkingConn}
+              title={`${apiBase} — нажмите, чтобы проверить связь и отправить отложенные изменения`}
               className={cx(
-                "h-1.5 w-1.5 shrink-0 rounded-full",
-                !apiBase && "bg-darkmute",
-                apiBase && settings.apiOnline === true && "blink-dot bg-ok",
-                apiBase && settings.apiOnline !== true && "bg-heat"
+                "mx-0.5 mb-1 flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 font-mono text-[10px] font-bold tracking-wide uppercase transition-all duration-150 active:scale-[0.98]",
+                checkingConn && "border-warn/50 text-warn",
+                !checkingConn && settings.apiOnline === true && "border-ok/40 text-ok hover:bg-ok/10",
+                !checkingConn && settings.apiOnline !== true && "border-heat/40 text-heat hover:bg-heat/10"
               )}
-            />
-            {!apiBase ? "Локальный режим" : settings.apiOnline === true ? "C# API · онлайн" : "C# API · офлайн"}
-          </div>
+            >
+              {checkingConn ? (
+                <span className="shrink-0 animate-spin"><IcRefresh size={11} /></span>
+              ) : (
+                <span
+                  className={cx(
+                    "h-1.5 w-1.5 shrink-0 rounded-full",
+                    settings.apiOnline === true ? "blink-dot bg-ok" : "bg-heat"
+                  )}
+                />
+              )}
+              {checkingConn ? "Проверка…" : settings.apiOnline === true ? "C# API · онлайн" : "C# API · офлайн"}
+              {!checkingConn && outboxCount > 0 && (
+                <span className="ml-auto rounded bg-warn px-1 py-px font-mono text-[9px] font-bold text-dark" title={`Отложенных изменений: ${outboxCount}`}>
+                  {outboxCount}
+                </span>
+              )}
+            </button>
+          ) : (
+            <div
+              className="mx-0.5 mb-1 flex items-center gap-2 rounded-md border border-darkline px-2.5 py-1.5 font-mono text-[10px] font-bold tracking-wide text-darkmute uppercase"
+              title="Данные хранятся в браузере. URL бэкенда — в «Реквизитах компании»."
+            >
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-darkmute" />
+              Локальный режим
+            </div>
+          )}
           <button onClick={addDemo} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-[12px] font-semibold text-darkmute transition-colors hover:bg-dark2 hover:text-white">
             <IcWand size={15} /> Демо-проект
           </button>

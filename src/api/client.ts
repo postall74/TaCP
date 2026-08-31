@@ -1,4 +1,4 @@
-import type { Equipment, Project, Rates, Settings } from "../types";
+import type { DeletedEquipment, Equipment, Project, Rates, Settings } from "../types";
 
 /* ============================================================
    REST-КЛИЕНТ для C#-бэкенда (backend/TkpApi, ASP.NET Core).
@@ -154,6 +154,8 @@ export const restApi = (base: string) => ({
   createEquipment: (e: Equipment) => req<Equipment>(base, "/api/catalog", { method: "POST", body: JSON.stringify(e) }),
   putEquipment: (e: Equipment) => req<Equipment>(base, `/api/catalog/${e.id}`, { method: "PUT", body: JSON.stringify(e) }),
   deleteEquipment: (id: string) => req<void>(base, `/api/catalog/${id}`, { method: "DELETE" }),
+  /* «корзина» справочника: удалённые позиции (хранятся 90 дней) */
+  deletedEquipment: () => req<DeletedEquipment[]>(base, "/api/catalog/deleted"),
   importCsv: (csv: string) =>
     req<{ added: number; updated: number; skipped: number }>(base, "/api/catalog/import", {
       method: "POST",

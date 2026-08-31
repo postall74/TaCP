@@ -30,11 +30,14 @@ describe("can: инженер", () => {
     expect(can(eng, "project.edit")).toBe(true);
     expect(can(eng, "project.duplicate")).toBe(true);
     expect(can(eng, "status.workflow")).toBe(true);
+    expect(can(eng, "catalog.add")).toBe(true);   // пополняет общий справочник
     expect(can(eng, "catalog.edit")).toBe(true);
   });
-  it("не может удалять, решать исход и управлять конфигами", () => {
+  it("не может удалять, решать исход, чистить справочник и управлять конфигами", () => {
     expect(can(eng, "project.delete")).toBe(false);
     expect(can(eng, "status.decide")).toBe(false);
+    expect(can(eng, "catalog.delete")).toBe(false); // удаление — менеджер/админ
+    expect(can(eng, "catalog.import")).toBe(false); // импорт прайсов — менеджер/админ
     expect(can(eng, "rates.edit")).toBe(false);
     expect(can(eng, "settings.edit")).toBe(false);
     expect(can(eng, "users.manage")).toBe(false);
@@ -43,9 +46,12 @@ describe("can: инженер", () => {
 
 describe("can: менеджер", () => {
   const mgr = u(["manager"]);
-  it("удаляет и решает исход, но без конфигов и пользователей", () => {
+  it("удаляет, решает исход, ведёт справочник и реквизиты — но не тарифы и пользователей", () => {
     expect(can(mgr, "project.delete")).toBe(true);
     expect(can(mgr, "status.decide")).toBe(true);
+    expect(can(mgr, "catalog.delete")).toBe(true);
+    expect(can(mgr, "catalog.import")).toBe(true);
+    expect(can(mgr, "settings.edit")).toBe(true); // реквизиты компании — менеджер+админ
     expect(can(mgr, "rates.edit")).toBe(false);
     expect(can(mgr, "users.manage")).toBe(false);
   });

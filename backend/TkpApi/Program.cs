@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.OpenApi.Models;
 using TkpApi;
 
@@ -53,12 +54,29 @@ app.UseSwaggerUI();
 app.UseTkpAuth();        // UseAuthentication + UseAuthorization (до Map*)
 app.MapAuthEndpoints();  // /api/auth/register|login|me|users
 
+/* ---------------- раздача фронтенда (работа в локальной сети) ----------------
+   npm run build складывает приложение в dist/; API отдаёт его сам, поэтому
+   все участники сети открывают ОДИН адрес — http://<сервер>:5085 — без
+   отдельного веб-сервера. Путь настраивается StaticFilesPath в appsettings. */
+var staticDir = Path.GetFullPath(Path.Combine(
+    app.Environment.ContentRootPath,
+    builder.Configuration["StaticFilesPath"] ?? "../../dist"));
+if (Directory.Exists(staticDir))
+{
+    var provider = new PhysicalFileProvider(staticDir);
+    app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = provider, DefaultFileNames = new[] { "index.html" } });
+    app.UseStaticFiles(new StaticFileOptions { FileProvider = provider });
+    app.Logger.LogInformation("Фронтенд раздаётся из {Dir} — единый адрес для сети", staticDir);
+}
+
 /* ---------------- запуск: схема + сид каталога ---------------- */
 
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<TkpDbContext>();
     EnsureSchema(db, app.Logger);
+    EnsureExtraTables(db); // company_settings + deleted_equipment для существующих БД
+    PurgeDeleted(db);      // сразу удаляем позиции корзины старше 90 дней
     if (!db.Equipment.Any())
     {
         var seedPath = Path.Combine(app.Environment.ContentRootPath, "seed-catalog.csv");
@@ -72,6 +90,14 @@ using (var scope = app.Services.CreateScope())
 }
 // Роли (admin/manager/engineer) и администратор из appsettings:Admin — идемпотентно
 await app.SeedRolesAndAdminAsync();
+
+// Фоновая чистка «корзины» справочника: каждые 6 часов удаляем позиции старше 90 дней
+_ = new Timer(_ =>
+{
+    using var scope = app.Services.CreateScope();
+    try { PurgeDeleted(scope.ServiceProvider.GetRequiredService<TkpDbContext>()); }
+    catch (Exception ex) { app.Logger.LogWarning(ex, "Чистка deleted_equipment не выполнена"); }
+}, null, TimeSpan.FromHours(6), TimeSpan.FromHours(6));
 
 /* ---------------- Projects ---------------- */
 
@@ -220,31 +246,80 @@ app.MapPost("/api/catalog", async (Equipment e, TkpDbContext db) =>
     if (existing is not null)
         return Results.Conflict(new { detail = "Такая позиция уже есть в справочнике", existing });
 
+    // повторное добавление артикула возвращает позицию из «корзины»
+    var tomb = await db.DeletedEquipment.FirstOrDefaultAsync(x => x.Sku.ToLower() == sku.ToLower());
+    if (tomb is not null) db.DeletedEquipment.Remove(tomb);
+
     if (string.IsNullOrEmpty(e.Id)) e.Id = Guid.NewGuid().ToString();
     db.Equipment.Add(e);
     await db.SaveChangesAsync();
     return Results.Created("/api/catalog", e);
 }).RequireAuthorization("Staff");
 
+/* PUT — upsert: позиция могла быть создана офлайн и прийти при восстановлении
+   связи (отложенная синхронизация клиента). Если строки с таким id нет —
+   создаём (с проверкой дубля артикула); правка/создание возвращают позицию
+   из «корзины», если она там лежала. */
 app.MapPut("/api/catalog/{id}", async (string id, Equipment e, TkpDbContext db) =>
 {
     e.Id = id;
-    db.Equipment.Update(e);
+    var ex = await db.Equipment.FindAsync(id);
+    if (ex is null)
+    {
+        var sku = e.Sku.Trim().ToLower();
+        var dup = await db.Equipment.AnyAsync(x => x.Id != id && x.Sku.ToLower() == sku);
+        if (dup) return Results.Conflict(new { detail = "Позиция с таким артикулом уже есть в справочнике" });
+        db.Equipment.Add(e);
+    }
+    else db.Equipment.Update(e);
+
+    var tomb = await db.DeletedEquipment.FirstOrDefaultAsync(x => x.Id == id || x.Sku.ToLower() == e.Sku.Trim().ToLower());
+    if (tomb is not null) db.DeletedEquipment.Remove(tomb); // «воскрешение»
+
     await db.SaveChangesAsync();
     return Results.Ok(e);
 }).RequireAuthorization("Staff");
 
 /* Удаление позиции — только менеджер/админ (catalog.delete). Инженер пополняет
-   справочник, но не удаляет из общей базы — защита от случайной потери данных. */
+   справочник, но не удаляет из общей базы — защита от случайной потери данных.
+   Позиция не исчезает: копируется в «корзину» (deleted_equipment) на 90 дней —
+   проекты, где она использована, видят пометку и срок, а повторное добавление
+   того же артикула возвращает её в справочник. Идемпотентно (повтор → 204). */
 app.MapDelete("/api/catalog/{id}", async (string id, TkpDbContext db, ClaimsPrincipal user) =>
 {
     if (!Rights.Can(user, Rights.CatalogDelete)) return Rights.Forbid(user, Rights.CatalogDelete);
     var e = await db.Equipment.FindAsync(id);
-    if (e is null) return Results.NotFound();
+    if (e is null) return Results.NoContent(); // уже удалена (например, офлайн-очередью)
+
+    var old = await db.DeletedEquipment.FindAsync(id); // повторное удаление той же позиции
+    if (old is not null) db.DeletedEquipment.Remove(old);
+    db.DeletedEquipment.Add(new DeletedEquipment
+    {
+        Id = e.Id, Sku = e.Sku, Name = e.Name, Brand = e.Brand, Category = e.Category,
+        Direction = e.Direction, Unit = e.Unit, Purchase = e.Purchase,
+        RatedCurrent = e.RatedCurrent, Attrs = e.Attrs ?? "",
+        DeletedAt = DateTime.UtcNow,
+        DeletedBy = user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name ?? "?",
+    });
     db.Equipment.Remove(e);
     await db.SaveChangesAsync();
     return Results.NoContent();
 }).RequireAuthorization("Staff");
+
+/* «Корзина» справочника: удалённые позиции с датой удаления (unix-мс) и автором.
+   Клиент помечает ими позиции в ТКП («удалено из справочника, осталось N дней»)
+   и предлагает замену из аналогов той же категории. */
+app.MapGet("/api/catalog/deleted", async (TkpDbContext db) =>
+    (await db.DeletedEquipment.OrderByDescending(x => x.DeletedAt).ToListAsync())
+        .Select(x => new
+        {
+            id = x.Id, sku = x.Sku, name = x.Name, brand = x.Brand, category = x.Category,
+            direction = x.Direction, unit = x.Unit, purchase = x.Purchase,
+            ratedCurrent = x.RatedCurrent, attrs = x.Attrs,
+            deletedAt = new DateTimeOffset(DateTime.SpecifyKind(x.DeletedAt, DateTimeKind.Utc)).ToUnixTimeMilliseconds(),
+            deletedBy = x.DeletedBy,
+        }))
+   .RequireAuthorization("Staff");
 
 /* Импорт прайса: CSV «артикул;наименование;бренд;категория;направление;ед;закупка;цена;характеристики».
    Массовая операция с перезаписью цен — только менеджер/админ (catalog.import). */
@@ -260,17 +335,91 @@ app.MapPost("/api/catalog/import", async (HttpRequest req, TkpDbContext db, Clai
 
 /* ---------------- Тарифы и настройки ---------------- */
 
-// Боевая схема — таблицы rate_cards / settings; здесь singleton для краткости.
+// Тарифы — общие для всех (единые нормо-часы компании), админ.
 var rates = new Rates();
-var company = new CompanySettings();
 app.MapGet("/api/rates", () => rates).RequireAuthorization("Staff");
 app.MapPut("/api/rates", (Rates r) => { rates = r; return Results.Ok(rates); }).RequireAuthorization("AdminOnly");
-app.MapGet("/api/settings", () => company).RequireAuthorization("Staff");
-/* Реквизиты компании заполняют менеджер и админ (политика ManagerUp) —
-   инженер видит их только для чтения (реквизиты — общие данные компании). */
-app.MapPut("/api/settings", (CompanySettings c) => { company = c; return Results.Ok(company); }).RequireAuthorization("ManagerUp");
+
+/* Реквизиты компании ПРИВЯЗАНЫ К УЧЁТНОЙ ЗАПИСИ и хранятся в БД (company_settings):
+   у каждого пользователя свой исполнитель/контакты в документах. Строки нет —
+   возвращаются значения по умолчанию (ЗАО «Эталон-Прибор»). */
+app.MapGet("/api/settings", async (ClaimsPrincipal user, TkpDbContext db) =>
+{
+    var uid = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+    var row = await db.CompanySettings.FirstOrDefaultAsync(x => x.UserId == uid);
+    return Results.Ok(row is null ? new CompanySettings() : (CompanySettings)row);
+}).RequireAuthorization("Staff");
+
+/* Заполняют менеджер и админ (политика ManagerUp); инженер видит только для чтения. */
+app.MapPut("/api/settings", async (CompanySettings c, ClaimsPrincipal user, TkpDbContext db) =>
+{
+    var uid = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+    var row = await db.CompanySettings.FirstOrDefaultAsync(x => x.UserId == uid);
+    if (row is null)
+    {
+        row = new CompanySettingsRow { UserId = uid };
+        db.CompanySettings.Add(row);
+    }
+    row.CompanyName = c.CompanyName; row.Tagline = c.Tagline; row.Address = c.Address;
+    row.Phone = c.Phone; row.Email = c.Email; row.Requisites = c.Requisites;
+    row.Manager = c.Manager; row.Executor = c.Executor;
+    row.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+    return Results.Ok((CompanySettings)row);
+}).RequireAuthorization("ManagerUp");
+
+/* SPA-fallback: все маршруты, кроме /api и существующих файлов, отдают index.html —
+   фронтенд роутится на клиенте. Регистрируется последним. */
+app.MapFallback(async ctx =>
+{
+    if (ctx.Request.Path.StartsWithSegments("/api") || !Directory.Exists(staticDir))
+    {
+        ctx.Response.StatusCode = 404;
+        return;
+    }
+    ctx.Response.ContentType = "text/html; charset=utf-8";
+    await ctx.Response.SendFileAsync(Path.Combine(staticDir, "index.html"));
+});
 
 app.Run();
+
+/* ---------------- доп. таблицы и «корзина» справочника ---------------- */
+
+/// <summary>Создаёт company_settings и deleted_equipment в уже существующей БД
+/// (EnsureCreated не добавляет таблицы в готовую базу, а миграций может не быть).</summary>
+static void EnsureExtraTables(TkpDbContext db)
+{
+    db.Database.ExecuteSqlRaw("""
+        CREATE TABLE IF NOT EXISTS "company_settings" (
+            "Id" text NOT NULL PRIMARY KEY,
+            "UserId" text NOT NULL,
+            "UpdatedAt" timestamptz NOT NULL,
+            "CompanyName" text NOT NULL, "Tagline" text NOT NULL, "Address" text NOT NULL,
+            "Phone" text NOT NULL, "Email" text NOT NULL, "Requisites" text NOT NULL,
+            "Manager" text NOT NULL, "Executor" text NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS "ix_company_settings_UserId" ON "company_settings" ("UserId");
+
+        CREATE TABLE IF NOT EXISTS "deleted_equipment" (
+            "Id" text NOT NULL PRIMARY KEY,
+            "Sku" text NOT NULL, "Name" text NOT NULL, "Brand" text NOT NULL,
+            "Category" text NOT NULL, "Direction" integer NOT NULL, "Unit" text NOT NULL,
+            "Purchase" numeric(12,2) NOT NULL, "RatedCurrent" numeric(8,2) NOT NULL,
+            "Attrs" text NOT NULL, "DeletedAt" timestamptz NOT NULL, "DeletedBy" text NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS "ix_deleted_equipment_Sku" ON "deleted_equipment" ("Sku");
+        CREATE INDEX IF NOT EXISTS "ix_deleted_equipment_DeletedAt" ON "deleted_equipment" ("DeletedAt");
+        """);
+}
+
+/// <summary>Безвозвратно удаляет позиции «корзины» старше 90 дней.
+/// ExecuteSql (не Raw) параметризует cutoff — без предупреждений EF1002.</summary>
+static void PurgeDeleted(TkpDbContext db)
+{
+    var cutoff = DateTime.UtcNow.AddDays(-90);
+    var n = db.Database.ExecuteSql($"DELETE FROM \"deleted_equipment\" WHERE \"DeletedAt\" < {cutoff}");
+    if (n > 0) Console.WriteLine($"[корзина] безвозвратно удалено позиций старше 90 дней: {n}");
+}
 
 /* ---------------- схема БД: миграции + авто-baseline ---------------- */
 
@@ -297,13 +446,13 @@ static void EnsureSchema(TkpDbContext db, ILogger logger)
 
     if (applied.Count == 0 && db.Database.CanConnect() && HasAnyTable(db))
     {
-        // Существующая БД от EnsureCreated: baseline — помечаем все миграции применёнными
-        var history = "__EFMigrationsHistory";
+        // Существующая БД от EnsureCreated: baseline — помечаем все миграции применёнными.
+        // Имя таблицы — константа (не интерполяция), поэтому EF1002 (SQL-injection) не срабатывает.
         db.Database.ExecuteSqlRaw(
-            $"CREATE TABLE IF NOT EXISTS \"{history}\" (\"MigrationId\" varchar(150) NOT NULL PRIMARY KEY, \"ProductVersion\" varchar(32) NOT NULL)");
+            "CREATE TABLE IF NOT EXISTS \"__EFMigrationsHistory\" (\"MigrationId\" varchar(150) NOT NULL PRIMARY KEY, \"ProductVersion\" varchar(32) NOT NULL)");
         foreach (var m in pending)
             db.Database.ExecuteSqlRaw(
-                $"INSERT INTO \"{history}\" (\"MigrationId\", \"ProductVersion\") VALUES (@p0, @p1)", m, "8.0.8");
+                "INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES (@p0, @p1)", m, "8.0.8");
         logger.LogInformation("Baseline: {Count} миграций помечены как применённые (схема уже существовала)", pending.Count);
         return;
     }
