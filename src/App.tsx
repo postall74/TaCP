@@ -35,6 +35,7 @@ export default function App() {
   const user = useStore((s) => s.user);
   const logout = useStore((s) => s.logout);
   const initAuth = useStore((s) => s.initAuth);
+  const autoDetectApi = useStore((s) => s.autoDetectApi);
   const hydrateFromApi = useStore((s) => s.hydrateFromApi);
   const createProject = useStore((s) => s.createProject);
   const updateSettings = useStore((s) => s.updateSettings);
@@ -72,10 +73,11 @@ export default function App() {
     document.documentElement.classList.toggle("dark", settings.theme === "dark");
   }, [settings.theme]);
 
-  /* при старте: восстановить профиль (токен на сервере или сессия в localStorage) */
+  /* при старте: автодетекция same-origin (запуск в локальной сети) → затем
+     восстановление профиля (токен на сервере или сессия в localStorage) */
   useEffect(() => {
-    void initAuth();
-  }, [initAuth]);
+    void autoDetectApi().then(() => initAuth());
+  }, [autoDetectApi, initAuth]);
 
   /* серверные данные подтягиваем только после входа:
      проекты/каталог защищены политикой Staff и требуют Bearer-токен */

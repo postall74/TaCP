@@ -114,6 +114,9 @@ interface StoreState {
   pingApi: (url?: string) => Promise<boolean>;
   /** Тихая проверка связи (heartbeat и клик по индикатору): обновляет apiOnline. */
   checkApi: () => Promise<boolean>;
+  /** Автодетекция same-origin: при пустом apiBaseUrl проверяет /api/health на
+      текущем origin и сам включает онлайн-режим (запуск в локальной сети). */
+  autoDetectApi: () => Promise<void>;
   /** Отправить накопленные офлайн-мутации (проекты, справочник) на сервер. */
   flushOutbox: () => Promise<void>;
   hydrateFromApi: () => Promise<void>;
@@ -235,6 +238,18 @@ export const useStore = create<StoreState>()(
       const dequeue = (op: OutboxOp) =>
         set((s) => ({ outbox: s.outbox.filter((x) => opKey(x) !== opKey(op)) }));
 
+      /** Отправка проекта: PUT, а при 404 — POST (проект, созданный офлайн,
+          может ещё не существовать на сервере). Идемпотентна — безопасна для
+          повторных попыток из офлайн-очереди. */
+      const sendProject = async (a: RestApi, p: Project) => {
+        try {
+          await a.putProject(p);
+        } catch (e) {
+          if (e instanceof ApiError && e.status === 404) await a.createProject(p);
+          else throw e;
+        }
+      };
+
       const syncTimers = new Map<string, number>();
       /** Дебаунс-отправка проекта на сервер после каждой локальной мутации.
           При сетевом сбое операция остаётся в очереди и уйдёт позже. */
@@ -248,7 +263,7 @@ export const useStore = create<StoreState>()(
           const op: OutboxOp = { kind: "project.upsert", id: pid, ts: Date.now() };
           enqueue(op);
           try {
-            await a.putProject(p);
+            await sendProject(a, p);
             dequeue(op);
             syncOk();
           } catch (e) {
@@ -325,6 +340,26 @@ export const useStore = create<StoreState>()(
           }
         },
 
+        /* Автодетекция same-origin — ключ к запуску в локальной сети.
+           API сам раздаёт фронтенд из dist/ (UseStaticFiles), поэтому для
+           пользователя, открывшего http://<сервер>:5085, правильный apiBaseUrl —
+           это текущий origin. Если URL не задан, проверяем /api/health на origin:
+           ответил — автоматически переходим в онлайн (и подтягиваем данные после
+           входа); не ответил (vite-dev на :3000 или file://) — остаёмся локально. */
+        autoDetectApi: async () => {
+          if ((get().settings.apiBaseUrl ?? "").trim()) return; // уже настроен — не трогаем
+          if (typeof window === "undefined") return;
+          const origin = window.location.origin;
+          if (!/^https?:$/.test(window.location.protocol)) return; // file:// — локальный режим
+          try {
+            await restApi(origin).ping();
+            set((s) => ({ settings: { ...s.settings, apiBaseUrl: origin, apiOnline: true } }));
+            get().toast("Сервер ТКП обнаружен — включён онлайн-режим", "info");
+          } catch {
+            /* на этом origin API нет — остаёмся в локальном режиме */
+          }
+        },
+
         /* Отложенная синхронизация: отправляем очередь в порядке поступления.
            Сетевой сбой — останавливаемся (остальное доотправит следующий цикл);
            HTTP-ошибка — снимаем операцию (сервер доступен, повтор бесполезен). */
@@ -336,7 +371,7 @@ export const useStore = create<StoreState>()(
             try {
               if (op.kind === "project.upsert") {
                 const p = get().projects.find((x) => x.id === op.id);
-                if (p) await a.putProject(p);
+                if (p) await sendProject(a, p);
               } else if (op.kind === "project.delete") {
                 await a.deleteProject(op.id);
               } else if (op.kind === "equipment.upsert") {
@@ -476,7 +511,16 @@ export const useStore = create<StoreState>()(
             validDays, notes: "", versions: [],
           });
           set((s) => ({ projects: [p, ...s.projects] }));
-          api()?.createProject(p).then(syncOk).catch(syncFail);
+          const a = api();
+          if (a) {
+            /* при обрыве связи проект останется в очереди и будет создан на
+               сервере при восстановлении (sendProject: PUT → 404 → POST) */
+            const op: OutboxOp = { kind: "project.upsert", id, ts: Date.now() };
+            enqueue(op);
+            a.createProject(p)
+              .then(() => { dequeue(op); syncOk(); })
+              .catch((e) => { if (e instanceof ApiError) { dequeue(op); syncFail(e); } else syncFail(e); });
+          }
           return id;
         },
 

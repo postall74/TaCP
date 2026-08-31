@@ -56,13 +56,36 @@ src/
 данные не теряются (локальная копия). При старте с заданным `apiBaseUrl`:
 `initAuth()` (профиль по токену) + `hydrateFromApi()` (проекты/каталог/тарифы/реквизиты).
 
+**Автодетекция same-origin (запуск в локальной сети).** Бэкенд сам раздаёт
+собранный фронтенд из `dist/` (`UseStaticFiles` в `Program.cs`), поэтому все
+участники сети открывают один адрес — `http://<сервер>:5085`. Чтобы каждому не
+вводить URL вручную, при пустом `apiBaseUrl` фронтенд на старте проверяет
+`/api/health` на **текущем origin** (`autoDetectApi()` в `store.ts`): ответил —
+автоматически включает онлайн-режим и подставляет origin как `apiBaseUrl`; не
+ответил (vite-dev на :3000) — остаётся локальным. Это делает развёртывание «один
+сервер — вся команда» бесшовным (подробнее — QUICKSTART §5).
+
+**Офлайн-очередь (`outbox`).** Если связь оборвалась, мутации (создание/правка/
+удаление проектов, добавление/удаление позиций справочника) складываются в
+персистную очередь, а при восстановлении связи отправляются по порядку
+(`flushOutbox()`: проекты — идемпотентно «PUT, при 404 → POST», справочник —
+upsert). Очередь запускают heartbeat (каждые 45 с), ручная перепроверка
+(клик по индикатору в сайдбаре) и гидратация. «Корзина» справочника
+(`deleted_equipment`, 90 дней) позволяет пометить в ТКП позицию, удалённую из
+общего справочника, пока пользователь был офлайн (§3).
+
 ### 2.2. Backend (`backend/TkpApi`, ASP.NET Core 8)
 
 ```
-Program.cs         — Minimal API: эндпоинты, Swagger (+Bearer Authorize), сид каталога
+Program.cs         — Minimal API: эндпоинты, Swagger (+Bearer Authorize), сид каталога,
+                     раздача фронтенда из dist/ (UseStaticFiles + SPA-fallback),
+                     «корзина» справочника (deleted_equipment, чистка через 90 дней)
 Models.cs          — доменная модель (строковые Id — совпадают с фронтом без конверсий)
-TkpDbContext.cs    — IdentityDbContext<AppUser>: проекты/шкафы/позиции/версии + Identity
-AuthExtensions.cs  — весь auth: Identity+JWT, политики AdminOnly/Staff, /api/auth/*, сид
+TkpDbContext.cs    — IdentityDbContext<AppUser>: проекты/шкафы/позиции/версии + Identity,
+                     company_settings (реквизиты на пользователя), deleted_equipment
+AuthExtensions.cs  — весь auth: Identity+JWT, политики AdminOnly/ManagerUp/Staff,
+                     /api/auth/* (включая PUT /api/auth/me — свой профиль), сид
+Rights.cs          — серверная матрица прав (зеркало roles.ts), отказ 403 + RFC 7807
 CatalogCsv.cs      — разбор прайсов: чистые ParseLine/Parse + тонкий Import (в БД)
 CalcEngine.cs      — серверное зеркало calcProject (закупочная модель)
 seed-catalog.csv   — стартовый справочник, 8 колонок
@@ -338,8 +361,9 @@ MarkupPct     = Profit / totalCost × 100         (наценка к себес�
 | POST | `/api/cabinets/{id}/items?equipmentId=&qty=` | позиция (цена — снимок из справочника) |
 | POST | `/api/projects/{id}/versions?label=` | снимок версии (jsonb) |
 | GET/POST | `/api/catalog`, `POST /api/catalog/import` (CSV) | справочник |
-| PUT/DELETE | `/api/catalog/{id}` | обновить / удалить |
-| GET/PUT | `/api/rates`, `/api/settings` | тарифы, реквизиты |
+| PUT/DELETE | `/api/catalog/{id}` | обновить (upsert для офлайн-синхронизации) / удалить **в «корзину»** (`deleted_equipment`, 90 дней) |
+| GET | `/api/catalog/deleted` | «корзина» справочника (для пометок в ТКП) |
+| GET/PUT | `/api/rates`, `/api/settings` | тарифы, реквизиты **текущего пользователя** (company_settings) |
 | POST | `/api/auth/register`, `/api/auth/login` | открытые |
 | GET | `/api/auth/me` (Staff), `/api/auth/users` (AdminOnly) | защищённые |
 | PUT | `/api/auth/users/{id}/role` (AdminOnly) | смена роли (действует со следующего входа) |
@@ -417,6 +441,16 @@ Enum'ы в JSON — строки (`"nku"`, `"draft"`), Id — строки: се
 
 Записи — по веткам (регламент — `GIT_WORKFLOW.md`); свежие сверху.
 
+- **`fix/online-mode-lan`** — онлайн-режим в локальной сети: (1) фронтенд при
+  пустом `apiBaseUrl` сам находит API на текущем origin (`autoDetectApi`,
+  проверка `/api/health`) и включает онлайн-режим — участникам достаточно
+  открыть `http://<сервер>:5085`; (2) бэкенд раздаёт собранный `dist/`
+  (`UseStaticFiles` + SPA-fallback, `StaticFilesPath` в appsettings) — один
+  адрес на всю команду; (3) офлайн-очередь доведена до конца: создание
+  проектов тоже ставится в очередь, flush идемпотентен («PUT → 404 → POST»);
+  (4) индикатор связи в сайдбаре кликабелен (проверка + доотправка очереди).
+  Обновлены §2.1, §2.2, §9, §13; QUICKSTART §5 (запуск в сети, брандмауэр,
+  диагностика) и §6/§7.
 - **`fix/ci-rights-test`** — зелёный CI: тест `Can_MatchesFrontendMatrix`
   падал (1 из 49), потому что матрица в `Rights.cs` получила
   `settings.edit` для менеджера (реквизиты компании), а тест всё ещё ждал
