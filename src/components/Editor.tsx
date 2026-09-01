@@ -297,15 +297,15 @@ function VersionsTab({ project }: { project: Project }) {
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] font-bold text-ink">{v.label}</div>
                 <div className="font-mono text-[10.5px] text-mute">
-                  {fmtDateTime(v.ts)} · {v.cabinets.length} шкаф(ов) · оборудование {fmtMoney(v.calc.eqBase)}
+                  {fmtDateTime(v.ts)} · {v.cabinets?.length ?? 0} шкаф(ов) · оборудование {fmtMoney(v.calc?.eqBase ?? 0)}
                 </div>
               </div>
-              <span className={cx("font-mono text-[12.5px] font-bold tabular-nums", Math.abs(v.calc.total - currentTotal) < 1 ? "text-mute" : v.calc.total >= currentTotal ? "text-ok" : "text-heat")}>
-                {fmtMoney(v.calc.total)}
-                {Math.abs(v.calc.total - currentTotal) >= 1 && (
+              <span className={cx("font-mono text-[12.5px] font-bold tabular-nums", Math.abs((v.calc?.total ?? 0) - currentTotal) < 1 ? "text-mute" : (v.calc?.total ?? 0) >= currentTotal ? "text-ok" : "text-heat")}>
+                {fmtMoney(v.calc?.total ?? 0)}
+                {Math.abs((v.calc?.total ?? 0) - currentTotal) >= 1 && (
                   <span className="ml-1 text-[10px] font-semibold">
-                    ({v.calc.total >= currentTotal ? "+" : "−"}
-                    {fmtMoney(Math.abs(v.calc.total - currentTotal))} к тек.)
+                    ({(v.calc?.total ?? 0) >= currentTotal ? "+" : "−"}
+                    {fmtMoney(Math.abs((v.calc?.total ?? 0) - currentTotal))} к тек.)
                   </span>
                 )}
               </span>
