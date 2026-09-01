@@ -72,8 +72,31 @@ if (Directory.Exists(staticDir))
 {
     var provider = new PhysicalFileProvider(staticDir);
     app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = provider, DefaultFileNames = new[] { "index.html" } });
-    app.UseStaticFiles(new StaticFileOptions { FileProvider = provider });
-    app.Logger.LogInformation("Фронтенд раздаётся из {Dir} — единый адрес для сети", staticDir);
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = provider,
+        /* Политика кэша — чтобы «старый фронтенд» больше не показывался:
+           • index.html — никогда не кэшируется (браузер при каждом открытии
+             запрашивает свежий, а он ссылается на хэшированные ассеты);
+           • /assets/* (файлы с хэшем в имени) — кэш навсегда: новый билд =
+             новые имена, коллизий нет. */
+        OnPrepareResponse = ctx =>
+        {
+            if (ctx.File.Name.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
+                ctx.Context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+            else if (ctx.Context.Request.Path.StartsWithSegments("/assets"))
+                ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        },
+    });
+
+    /* Видно сразу, какой сборки фронтенд раздаётся (дата index.html).
+       Если он старше ваших правок — в корне проекта: npm run build. */
+    var idx = Path.Combine(staticDir, "index.html");
+    if (File.Exists(idx))
+        app.Logger.LogInformation("Фронтенд раздаётся из {Dir} — index.html от {Time:dd.MM HH:mm} (пересборка: npm run build)",
+            staticDir, File.GetLastWriteTime(idx));
+    else
+        app.Logger.LogWarning("В {Dir} нет index.html — выполните npm run build в корне проекта", staticDir);
 }
 
 /* ---------------- запуск: схема + сид каталога ---------------- */
@@ -388,6 +411,7 @@ app.MapFallback(async ctx =>
         return;
     }
     ctx.Response.ContentType = "text/html; charset=utf-8";
+    ctx.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate"; // SPA-вход — всегда свежий
     await ctx.Response.SendFileAsync(Path.Combine(staticDir, "index.html"));
 });
 
