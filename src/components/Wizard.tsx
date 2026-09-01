@@ -83,8 +83,16 @@ interface Draft {
   /** Подписи элементов: под элементом или над ним. */
   doorLabelSide: "below" | "above";
 
-  /* приборы */
+  /* измерительные приборы */
   ammIn: number; voltIn: number; ammOut: number;
+  /** Измерители параметров сети на вводе (Wiren Board WB-MAP), шт. */
+  netIn: number;
+  netInKind: "map3e" | "map12h";
+  /** Тип амперметра на отходящих: DIN-рейка или панельный (под ТТ). */
+  ammOutKind: "din" | "panel";
+  /** ТТ на канал: 3 — трёхфазный (поканально на каждую фазу), 1 — однофазный. */
+  ctPerChannel: 1 | 3;
+  ctId: "ct-63" | "ct-100" | "ct-150";
 
   /* шины */
   busNeed: boolean; busCurrent: number; busSections: number;
@@ -123,7 +131,7 @@ const STEP_META: { id: StepId; title: string; desc: string }[] = [
   { id: "breakers", title: "Ввод и линии", desc: "автоматы, учёт, заземление" },
   { id: "uzp", title: "УЗИП", desc: "силовые, RS-485, Ethernet, I/O" },
   { id: "controls", title: "Кнопки и индикация", desc: "опросник + макет дверцы" },
-  { id: "meters", title: "Приборы", desc: "амперметры, вольтметры" },
+  { id: "meters", title: "Измерительные приборы", desc: "WB, ТТ, амперметры" },
   { id: "busbars", title: "Шинные сборки", desc: "по току, секции" },
   { id: "layout", title: "Компоновка", desc: "стенки, цоколи" },
   { id: "climate", title: "Микроклимат", desc: "вентиляция, обогрев" },
@@ -207,6 +215,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
     buttons: 2, btnStop: 1, lamps: 2, switches: 1, lineBtns: 0, avrInd: true,
     doorPos: {}, doorLabels: {}, doorLabelSide: "below",
     ammIn: 0, voltIn: 0, ammOut: 0,
+    netIn: 0, netInKind: "map3e", ammOutKind: "din", ctPerChannel: 3, ctId: "ct-100",
     busNeed: true, busCurrent: 100, busSections: 1,
     wallRow: false, rowSize: 2, pedestal: false,
     fans: 0, grilles: 0, heaters: 0, thermos: 0, acOn: false,
@@ -331,8 +340,13 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
       if (d.avrInd && d.on.avr) items.push(li("lamp-1", 3)); // Сеть 1 / Сеть 2 / Авария
     }
     if (d.on.meters) {
-      items.push(li("amm-din", d.ammIn + d.ammOut));
+      /* вводные средства измерения */
+      items.push(li(d.netInKind === "map3e" ? "wb-map3e" : "wb-map12h", d.netIn));
+      items.push(li("amm-din", d.ammIn));
       items.push(li("volt-din", d.voltIn));
+      /* отходящие линии: амперметры + трансформаторы тока поканально */
+      items.push(li(d.ammOutKind === "panel" ? "amm-panel" : "amm-din", d.ammOut));
+      items.push(li(d.ctId, d.ammOut * d.ctPerChannel));
     }
     if (d.on.busbars && d.busNeed) {
       const sel = busSelection(d.busCurrent);
@@ -728,21 +742,82 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                 </StepShell>
               )}
               {meta.id === "meters" && (
-                <StepShell on={d.on.meters} setOn={(v) => setOn("meters", v)} hint="Приборы не добавляются">
-                  <div className="grid max-w-2xl grid-cols-3 gap-3">
-                    <Field label="Амперметры на вводе, шт">
-                      <NumInput value={d.ammIn} step={1} onChange={(v) => set({ ammIn: Math.max(0, Math.round(v)) })} />
-                    </Field>
-                    <Field label="Вольтметры на вводе, шт">
-                      <NumInput value={d.voltIn} step={1} onChange={(v) => set({ voltIn: Math.max(0, Math.round(v)) })} />
-                    </Field>
-                    <Field label="Амперметры на отходящих линиях, шт">
-                      <NumInput value={d.ammOut} step={1} onChange={(v) => set({ ammOut: Math.max(0, Math.round(v)) })} />
-                    </Field>
+                <StepShell on={d.on.meters} setOn={(v) => setOn("meters", v)} hint="Измерительные приборы не добавляются">
+                  <div className="max-w-2xl">
+                    {/* ---- вводные средства измерения ---- */}
+                    <div className="mb-1.5 text-[11px] font-bold tracking-wide text-mute uppercase">Вводные средства измерения</div>
+                    <SelectRow
+                      label="Измеритель параметров сети на вводе (Wiren Board WB-MAP), тип"
+                      hint="U/I/P/E по фазам, cos φ, гармоника — передача по RS-485 Modbus RTU"
+                      value={d.netInKind}
+                      onChange={(v) => set({ netInKind: v as Draft["netInKind"] })}
+                      options={[
+                        { value: "map3e", label: "WB-MAP3E — трёхфазный" },
+                        { value: "map12h", label: "WB-MAP12H — однофазный" },
+                      ]}
+                    />
+                    <CountRow label="Измерителей параметров сети WB-MAP на вводе, шт" value={d.netIn} onChange={(v) => set({ netIn: Math.max(0, Math.round(v)) })} />
+                    <CountRow label="Амперметры на вводе, шт" value={d.ammIn} onChange={(v) => set({ ammIn: Math.max(0, Math.round(v)) })} />
+                    <CountRow label="Вольтметры на вводе, шт" value={d.voltIn} onChange={(v) => set({ voltIn: Math.max(0, Math.round(v)) })} />
+
+                    {/* ---- средства измерения на отходящих линиях ---- */}
+                    <div className="mt-5 mb-1.5 text-[11px] font-bold tracking-wide text-mute uppercase">Средства измерения на отходящих линиях</div>
+                    <CountRow
+                      label="Каналов с контролем тока, шт"
+                      hint="Ответственные потребители: насосы, вентиляция, контуры электрообогрева"
+                      value={d.ammOut}
+                      onChange={(v) => set({ ammOut: Math.max(0, Math.round(v)) })}
+                    />
+                    <SelectRow
+                      label="Тип амперметра на канал"
+                      value={d.ammOutKind}
+                      onChange={(v) => set({ ammOutKind: v as Draft["ammOutKind"] })}
+                      options={[
+                        { value: "din", label: "DIN-рейка (DM-100)" },
+                        { value: "panel", label: "Панельный (Э378 100/5, под ТТ)" },
+                      ]}
+                    />
+                    <SelectRow
+                      label="Трансформатор тока, тип"
+                      hint="Первичный ток подбирается под номинал отходящего аппарата"
+                      value={d.ctId}
+                      onChange={(v) => set({ ctId: v as Draft["ctId"] })}
+                      options={[
+                        { value: "ct-63", label: "Т-0666 63/5 А" },
+                        { value: "ct-100", label: "Т-0666 100/5 А" },
+                        { value: "ct-150", label: "Т-0666 150/5 А" },
+                      ]}
+                    />
+                    <SelectRow
+                      label="Фаз на канал (ТТ на канал)"
+                      hint="3 — поканально на каждую фазу (трёхфазный), 1 — однофазный"
+                      value={String(d.ctPerChannel)}
+                      onChange={(v) => set({ ctPerChannel: (Number(v) === 1 ? 1 : 3) as Draft["ctPerChannel"] })}
+                      options={[
+                        { value: "3", label: "3 — трёхфазный" },
+                        { value: "1", label: "1 — однофазный" },
+                      ]}
+                    />
+
+                    {/* ---- авторасчёт ---- */}
+                    {d.ammOut > 0 && (
+                      <div className="anim-scale mt-4 rounded-lg border border-ok/30 bg-ok-soft px-4 py-3">
+                        <div className="text-[13px] font-bold text-ok">
+                          Итого на отходящие: амперметров — {d.ammOut} шт, трансформаторов тока — {d.ammOut * d.ctPerChannel} шт
+                        </div>
+                        <div className="text-[11.5px] text-ink2">
+                          {d.ctPerChannel === 3
+                            ? "По одному ТТ на каждую фазу каждого канала (поканальный контроль тока)."
+                            : "По одному ТТ на канал (однофазные линии)."}
+                        </div>
+                      </div>
+                    )}
+
+                    <p className="mt-3 text-[12px] leading-relaxed text-mute">
+                      Все позиции — из справочника. ТТ на отходящих линиях применяются в основном в системах
+                      электрообогрева для поканального измерения тока по каждой фазе.
+                    </p>
                   </div>
-                  <p className="mt-3 max-w-2xl text-[12px] leading-relaxed text-mute">
-                    Приборы — щитовые, на DIN-рейку. На отходящих линиях амперметры ставят для ответственных потребителей (насосы, вентиляция) — по требованию заказчика.
-                  </p>
                 </StepShell>
               )}
               {meta.id === "busbars" && (
@@ -1288,6 +1363,27 @@ function CountRow({ label, value, onChange, hint }: { label: string; value: numb
       </div>
       <div className="w-[110px] shrink-0">
         <NumInput value={value} step={1} onChange={onChange} />
+      </div>
+    </div>
+  );
+}
+
+/** Выровненная строка опросника «вопрос — выпадающий выбор» (единая сетка шага). */
+function SelectRow({ label, value, onChange, options, hint }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  hint?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-line/50 py-2">
+      <div className="min-w-0">
+        <div className="text-[12.5px] font-semibold text-ink">{label}</div>
+        {hint && <div className="text-[10.5px] leading-snug text-mute">{hint}</div>}
+      </div>
+      <div className="w-[170px] shrink-0">
+        <Select value={value} onChange={onChange} options={options} />
       </div>
     </div>
   );
