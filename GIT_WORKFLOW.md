@@ -51,7 +51,8 @@ git pull --rebase origin main
 ```
 
 Типы: `feat` · `fix` · `docs` · `refactor` · `test` · `chore` · `perf`.
-Области: `rules`, `calc`, `wizard`, `auth`, `db`, `ci`, `docs`…
+Области: `rules`, `calc`, `wizard`, `auth`, `db`, `ci`, `docs`, `catalog`,
+`online`, `rights`, `cabinet`, `api`…
 
 ## 4. Pull Request
 
@@ -114,3 +115,6 @@ git push origin --tags
 2. Одна задача — одна ветка; не чиним попутно «ещё три вещи» в той же ветке.
 3. Перед push: тесты зелёные (`npx vitest run`, `dotnet test backend/TkpApi.Tests`).
 4. Коммит-сообщение отвечает на вопрос «что и зачем», а не «поправил файлы».
+5. **Документация — часть задачи**: каждая фича/фикс обновляет затронутые разделы
+   `DOCS.md` (архитектура, контракт, дорожная карта) и `README.md` в том же PR;
+   запись о ветке — в «Журнал изменений» (`DOCS.md § 13`).
