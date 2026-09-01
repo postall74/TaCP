@@ -4,9 +4,10 @@ import { ApiError, restApi, toCompany, getToken, setToken, type AuthUser, type P
 import { CATALOG } from "./data/catalog";
 import { buildTemplateCabinets } from "./data/templates";
 import type {
-  Cabinet, DeletedEquipment, Direction, Equipment, LineItem, Project, ProjectStatus, ProjectVersion, Rates, Settings,
+  Cabinet, CabinetTemplate, DeletedEquipment, Direction, Equipment, LineItem, Project, ProjectStatus, ProjectVersion, Rates, Settings,
 } from "./types";
 import { calcProject, genId } from "./utils";
+import { baseKit } from "./utils/cabinetTemplates";
 import { can, denyReason, type Role } from "./utils/roles";
 import {
   ensureLocalAdmin, localListUsers, localLogin, localLogout, localMe, localRegister, localSetUserRole,
@@ -32,7 +33,9 @@ export type OutboxOp =
   | { kind: "project.upsert"; id: string; ts: number }
   | { kind: "project.delete"; id: string; ts: number }
   | { kind: "equipment.upsert"; eqId: string; ts: number }
-  | { kind: "equipment.delete"; eqId: string; ts: number };
+  | { kind: "equipment.delete"; eqId: string; ts: number }
+  | { kind: "template.upsert"; id: string; ts: number }
+  | { kind: "template.delete"; id: string; ts: number };
 
 const seedNumber = () => {
   const d = new Date();
@@ -41,6 +44,32 @@ const seedNumber = () => {
 };
 
 const DEFAULT_RATES: Rates = { design: 1800, production: 1800, software: 2200, smr: 1800, pnr: 1800 };
+
+/* Демонстрационные шаблоны конфигуратора (локальный режим; на сервере — сид в Program.cs). */
+const DEFAULT_TEMPLATES: CabinetTemplate[] = (() => {
+  const now = Date.now();
+  return [
+    {
+      id: "tpl-demo-1", orderCode: "ШН-2000.800.600-IP54-П", name: "Шкаф напольный распределительный",
+      direction: "nku" as Direction, brand: "ПРОВЕНТО", mount: "floor", h: 2000, w: 800, d: 600, ip: 54,
+      kit: baseKit("floor", 2000, 800, 600),
+      fillItems: [
+        { id: "fill-av-1", eqId: "brk-c16", sku: "ВА47-29 C16", name: "Автоматический выключатель 1P C16 (освещение)", brand: "IEK", unit: "шт", qty: 1, purchase: 180 },
+        { id: "fill-av-2", eqId: "brk-c10", sku: "ВА47-29 C10", name: "Автоматический выключатель 1P C10 (микроклимат)", brand: "IEK", unit: "шт", qty: 1, purchase: 180 },
+      ],
+      assemblyHours: 5.5, notes: "Преднаполненный: АВ на микроклимат и освещение. Демонстрационный шаблон.",
+      createdAt: now, updatedAt: now,
+    },
+    {
+      id: "tpl-demo-2", orderCode: "ЩН-600.400.200-IP66", name: "Шкаф навесной распределительный",
+      direction: "nku" as Direction, brand: "DKC", mount: "wall", h: 600, w: 400, d: 200, ip: 66,
+      kit: baseKit("wall", 600, 400, 200),
+      fillItems: [],
+      assemblyHours: 1.5, notes: "Пустой навесной шкаф. Демонстрационный шаблон.",
+      createdAt: now, updatedAt: now,
+    },
+  ];
+})();
 
 export const DEFAULT_SETTINGS: Settings = {
   companyName: "ЗАО «Эталон-Прибор»",
@@ -111,6 +140,8 @@ const normalizeProject = (p: Project): Project => ({
 interface StoreState {
   projects: Project[];
   catalog: Equipment[];
+  /** Шаблоны шкафов конфигуратора (пустые/преднаполненные, с заказным шифром). */
+  templates: CabinetTemplate[];
   /** «Корзина» справочника (удалённые позиции, хранятся 90 дней) — для пометок в ТКП. */
   deletedCatalog: DeletedEquipment[];
   /** Офлайн-очередь мутаций, отправляется при восстановлении связи. */
@@ -177,6 +208,11 @@ interface StoreState {
   upsertEquipment: (e: Equipment) => void;
   deleteEquipment: (id: string) => void;
   importEquipment: (items: Omit<Equipment, "id">[], csv?: string) => number;
+
+  /** Шаблоны шкафов (конфигуратор): добавить/обновить. */
+  upsertTemplate: (t: CabinetTemplate) => void;
+  /** false — отказано по правам (тост уже показан). */
+  deleteTemplate: (id: string) => boolean;
 }
 
 export const useStore = create<StoreState>()(
@@ -243,7 +279,8 @@ export const useStore = create<StoreState>()(
          отправляется в порядке поступления. HTTP-ошибки (4xx/5xx) означают,
          что сервер ДОСТУПЕН — такую операцию снимаем (иначе зациклимся). */
       const opKey = (o: OutboxOp) =>
-        o.kind === "project.upsert" || o.kind === "project.delete"
+        o.kind === "project.upsert" || o.kind === "project.delete" ||
+        o.kind === "template.upsert" || o.kind === "template.delete"
           ? `${o.kind}:${o.id}`
           : `${o.kind}:${o.eqId}`;
       const enqueue = (op: OutboxOp) =>
@@ -292,6 +329,7 @@ export const useStore = create<StoreState>()(
       return {
         projects: [],
         catalog: CATALOG,
+        templates: DEFAULT_TEMPLATES,
         deletedCatalog: [],
         outbox: [],
         apiChecking: false,
@@ -393,8 +431,13 @@ export const useStore = create<StoreState>()(
               } else if (op.kind === "equipment.upsert") {
                 const eq = get().catalog.find((x) => x.id === op.eqId);
                 if (eq) await a.putEquipment(eq);
-              } else {
+              } else if (op.kind === "equipment.delete") {
                 await a.deleteEquipment(op.eqId);
+              } else if (op.kind === "template.upsert") {
+                const t = get().templates.find((x) => x.id === op.id);
+                if (t) await a.putTemplate(t);
+              } else {
+                await a.deleteTemplate(op.id);
               }
               dequeue(op);
               syncOk();
@@ -412,14 +455,17 @@ export const useStore = create<StoreState>()(
           try {
             /* «корзина» справочника грузится отдельно и необязательно:
                если эндпоинта нет (старый сервер) — просто пустой список */
-            const [projects, catalog, company, rates, deletedCatalog] = await Promise.all([
+            const [projects, catalog, company, rates, deletedCatalog, templates] = await Promise.all([
               a.projects(), a.catalog(), a.company(), a.rates(),
               a.deletedEquipment().catch(() => [] as DeletedEquipment[]),
+              /* шаблоны конфигуратора: если эндпоинта нет (старый сервер) — оставляем локальные */
+              a.templates().catch(() => get().templates),
             ]);
             set((s) => ({
               projects: projects.map(normalizeProject),
               catalog,
               deletedCatalog,
+              templates,
               remoteLoading: false,
               settings: { ...s.settings, ...company, rates, apiOnline: true },
             }));
@@ -786,6 +832,42 @@ export const useStore = create<StoreState>()(
           }
         },
 
+        /* ---------- шаблоны шкафов (конфигуратор, Б.1) ---------- */
+
+        upsertTemplate: (t) => {
+          set((s) => {
+            const ex = s.templates.some((x) => x.id === t.id);
+            return { templates: ex ? s.templates.map((x) => (x.id === t.id ? t : x)) : [...s.templates, t] };
+          });
+          const a = api();
+          if (a) {
+            /* putTemplate на сервере — upsert, идемпотентен для офлайн-очереди */
+            const op: OutboxOp = { kind: "template.upsert", id: t.id, ts: Date.now() };
+            enqueue(op);
+            a.putTemplate(t).then(() => { dequeue(op); syncOk(); }).catch((err) => {
+              if (err instanceof ApiError) { dequeue(op); syncFail(err); }
+              else syncFail(err);
+            });
+          }
+        },
+
+        deleteTemplate: (id) => {
+          if (!can(get().user, "catalog.delete")) {
+            get().toast(denyReason(get().user, "catalog.delete"), "err");
+            return false;
+          }
+          set((s) => ({ templates: s.templates.filter((t) => t.id !== id) }));
+          const a = api();
+          if (a) {
+            const op: OutboxOp = { kind: "template.delete", id, ts: Date.now() };
+            enqueue(op);
+            a.deleteTemplate(id)
+              .then(() => { dequeue(op); syncOk(); })
+              .catch((e) => { if (e instanceof ApiError) { dequeue(op); syncFail(e); } else syncFail(e); });
+          }
+          return true;
+        },
+
         /* Импорт прайсов — массовая перезапись цен: только менеджер/админ. */
         importEquipment: (items, csv) => {
           if (!can(get().user, "catalog.import")) {
@@ -830,6 +912,7 @@ export const useStore = create<StoreState>()(
         ({
           projects: s.projects,
           catalog: s.catalog,
+          templates: s.templates,
           outbox: s.outbox,
           deletedCatalog: s.deletedCatalog,
           settings: { ...s.settings, apiOnline: null },
