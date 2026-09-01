@@ -185,6 +185,7 @@ const ZIP_CATS = [
 
 export default function Wizard({ project, onClose }: { project: Project; onClose: () => void }) {
   const catalog = useStore((s) => s.catalog);
+  const rates = useStore((s) => s.settings.rates);
   const addCabinetsBulk = useStore((s) => s.addCabinetsBulk);
   const updateProject = useStore((s) => s.updateProject);
   const upsertEquipment = useStore((s) => s.upsertEquipment);
@@ -988,29 +989,79 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                   </div>
                 </StepShell>
               )}
-              {meta.id === "work" && (
-                <div>
-                  <div className="grid max-w-2xl grid-cols-1 gap-3 md:grid-cols-3">
-                    <Field label="Сборка (производство), ч">
-                      <NumInput value={d.hours} step={1} onChange={(v) => set({ hours: Math.max(0, v) })} />
-                    </Field>
-                    <Field label="Проектирование, ч">
-                      <NumInput value={d.designHours} step={1} onChange={(v) => set({ designHours: Math.max(0, v) })} />
-                    </Field>
-                    <Field label="Разработка ППО (ПЛК/HMI/сервер), ч">
-                      <NumInput value={d.softwareHours} step={1} onChange={(v) => set({ softwareHours: Math.max(0, v) })} />
-                    </Field>
+              {meta.id === "work" && (() => {
+                const kitH = d.cabMode === "kit" && !d.customDim ? kitAssemblyHours(kitInput) : 0;
+                const segH = segBuild?.hours ?? 0;
+                const guideAssembly = kitH + segH;
+                const totalCost =
+                  d.hours * rates.production + d.designHours * rates.design + d.softwareHours * rates.software;
+                return (
+                  <div className="max-w-2xl">
+                    {/* строки нормо-часов с живым расчётом стоимости */}
+                    <div className="rounded-lg border border-line bg-card px-4">
+                      <WorkRow
+                        label="Сборка (производство)"
+                        hint="Монтаж оборудования, ошиновка, маркировка — ставка «Производство»"
+                        hours={d.hours}
+                        rate={rates.production}
+                        onChange={(v) => set({ hours: Math.max(0, v) })}
+                      />
+                      <WorkRow
+                        label="Проектирование"
+                        hint="Схемы, компоновка, документация — ставка «Проектирование»"
+                        hours={d.designHours}
+                        rate={rates.design}
+                        onChange={(v) => set({ designHours: Math.max(0, v) })}
+                      />
+                      <WorkRow
+                        label="Разработка ППО (ПЛК / HMI / сервер)"
+                        hint="Программирование контроллера и визуализации — ставка «ППО»"
+                        hours={d.softwareHours}
+                        rate={rates.software}
+                        onChange={(v) => set({ softwareHours: Math.max(0, v) })}
+                      />
+                    </div>
+
+                    {/* итог по работам */}
+                    <div className="mt-3 flex items-center justify-between rounded-lg border border-accent/30 bg-accent-soft/50 px-4 py-2.5">
+                      <div className="text-[12px] font-semibold text-ink2">
+                        Итого трудозатраты:{" "}
+                        <span className="font-mono text-ink">{d.hours + d.designHours + d.softwareHours} ч</span>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-mono text-[14px] font-bold tabular-nums text-accent-deep">{fmtMoney(Math.round(totalCost))}</div>
+                        <div className="text-[9.5px] text-mute">в продаже — с наценкой на работы {project.workMarkup} %</div>
+                      </div>
+                    </div>
+
+                    {/* автозаполнение из ориентиров */}
+                    {guideAssembly > 0 && (
+                      <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-dashed border-line2 bg-card/60 px-4 py-2.5">
+                        <div className="text-[11.5px] leading-snug text-mute">
+                          Ориентир сборки: комплект корпуса {kitH > 0 && <b className="text-ink2">{kitH} ч</b>}
+                          {kitH > 0 && segH > 0 && " + "}
+                          {segH > 0 && <>секционирование <b className="text-ink2">{segH} ч</b></>}
+                        </div>
+                        <button
+                          onClick={() => set({ hours: guideAssembly })}
+                          className="shrink-0 cursor-pointer rounded-md border border-accent px-2.5 py-1.5 text-[11px] font-bold text-accent-deep transition-colors hover:bg-accent hover:text-white"
+                        >
+                          Подставить в «Сборку»
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="mt-4">
+                      <Toggle on={d.separateLine} onChange={(v) => set({ separateLine: v })} label="Показывать работы отдельной строкой в документе ТКП" />
+                    </div>
+                    <p className="mt-3 text-[12px] leading-relaxed text-mute">
+                      Стоимость работ = часы × ставки со страницы «Тарифы»; в итог продажи добавляется наценка на работы
+                      из параметров проекта. Ставки: производство {fmtMoney(rates.production)}/ч, проектирование{" "}
+                      {fmtMoney(rates.design)}/ч, ППО {fmtMoney(rates.software)}/ч.
+                    </p>
                   </div>
-                  <div className="mt-4 max-w-2xl">
-                    <Toggle on={d.separateLine} onChange={(v) => set({ separateLine: v })} label="Показывать работы отдельной строкой в документе ТКП" />
-                  </div>
-                  <p className="mt-3 max-w-2xl text-[12px] leading-relaxed text-mute">
-                    Стоимость работ = часы × ставки со страницы «Тарифы», в продаже — с наценкой на работы из параметров проекта.
-                    {d.cabMode === "kit" && !d.customDim && ` Ориентир сборки комплекта: ${kitAssemblyHours(kitInput)} ч;`}
-                    {segBuild && segBuild.hours > 0 && ` секционирование добавит ${segBuild.hours} ч.`}
-                  </p>
-                </div>
-              )}
+                );
+              })()}
               {meta.id === "zip" && (
                 <div className="max-w-2xl">
                   <Toggle on={d.zipOn} onChange={(v) => set({ zipOn: v })} label="ЗИП для проекта (автоматы, реле, ПЛК, блоки питания…)" />
@@ -1384,6 +1435,35 @@ function SelectRow({ label, value, onChange, options, hint }: {
       </div>
       <div className="w-[170px] shrink-0">
         <Select value={value} onChange={onChange} options={options} />
+      </div>
+    </div>
+  );
+}
+
+/** Строка «нормо-часы» шага «Работы и ППО»: часы + живой расчёт стоимости
+    по тарифу (часы × ставка) — единая сетка с остальными шагами опросника. */
+function WorkRow({ label, hint, hours, rate, onChange }: {
+  label: string;
+  hint: string;
+  hours: number;
+  rate: number;
+  onChange: (v: number) => void;
+}) {
+  const cost = Math.round(hours * rate);
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-line/50 py-2">
+      <div className="min-w-0">
+        <div className="text-[12.5px] font-semibold text-ink">{label}</div>
+        <div className="text-[10.5px] leading-snug text-mute">{hint}</div>
+      </div>
+      <div className="flex shrink-0 items-center gap-3">
+        <div className="w-[90px]">
+          <NumInput value={hours} step={1} onChange={onChange} />
+        </div>
+        <div className="w-[110px] text-right">
+          <div className="font-mono text-[12.5px] font-bold tabular-nums text-ink">{fmtMoney(cost)}</div>
+          <div className="text-[9.5px] text-mute">× {fmtMoney(rate)}/ч</div>
+        </div>
       </div>
     </div>
   );
