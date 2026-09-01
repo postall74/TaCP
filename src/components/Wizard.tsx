@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { useStore } from "../store";
 import { findEq } from "../data/catalog";
 import type { Cabinet, CabinetSegment, Equipment, LineItem, Project, SeparationForm } from "../types";
@@ -75,9 +76,11 @@ interface Draft {
   buttons: number; btnStop: number; lamps: number; switches: number;
   lineBtns: number;
   avrInd: boolean;
-  /** Позиции элементов на дверце (нормированные 0…1), ключ — стабильный id элемента. */
+  /** Позиции элементов на дверце (координаты viewBox макета), ключ — стабильный id элемента. */
   doorPos: Record<string, { x: number; y: number }>;
-  /** Подписи элементов: сверху или снизу. */
+  /** Свои подписи элементов (переопределяют названия по умолчанию). */
+  doorLabels: Record<string, string>;
+  /** Подписи элементов: под элементом или над ним. */
   doorLabelSide: "below" | "above";
 
   /* приборы */
@@ -202,6 +205,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
     ground: "tn-s", peBuses: 1, itMonitor: true,
     uzpKind: "t2", uzpRs: 0, uzpEth: 0, uzpIo: 0,
     buttons: 2, btnStop: 1, lamps: 2, switches: 1, lineBtns: 0, avrInd: true,
+    doorPos: {}, doorLabels: {}, doorLabelSide: "below",
     ammIn: 0, voltIn: 0, ammOut: 0,
     busNeed: true, busCurrent: 100, busSections: 1,
     wallRow: false, rowSize: 2, pedestal: false,
@@ -396,20 +400,22 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
           : `${d.kind} №${project.cabinets.length + 1}`
     : `${d.kind} (корпус заказчика)`;
 
-  /* ---------- элементы на дверце (визуальный макет) ---------- */
-  const doorEls = useMemo(() => {
-    const els: DoorEl[] = [];
+  /* ---------- элементы на дверце (интерактивный макет) ----------
+     Ключи стабильны, поэтому заданные вручную позиции (doorPos) и подписи
+     (doorLabels) сохраняются при изменении количества. */
+  const doorItems = useMemo(() => {
+    const els: DoorItem[] = [];
     if (d.on.controls) {
       if (d.on.avr && d.avrInd) {
-        els.push({ kind: "lamp", label: "Сеть 1", color: "#1f8a5b" });
-        els.push({ kind: "lamp", label: "Сеть 2", color: "#a8770e" });
-        els.push({ kind: "lamp", label: "Авария", color: "#ce4432" });
+        els.push({ key: "avr-0", kind: "lamp", label: "Сеть 1", color: "#1f8a5b" });
+        els.push({ key: "avr-1", kind: "lamp", label: "Сеть 2", color: "#a8770e" });
+        els.push({ key: "avr-2", kind: "lamp", label: "Авария", color: "#ce4432" });
       }
-      for (let i = 0; i < d.lamps; i++) els.push({ kind: "lamp", label: `Лампа ${i + 1}`, color: "#6f7b8b" });
-      for (let i = 0; i < d.switches; i++) els.push({ kind: "sel", label: "Режим" });
-      for (let i = 0; i < d.lineBtns; i++) els.push({ kind: "pair", label: `Л${i + 1} Пуск/Стоп` });
-      for (let i = 0; i < d.buttons; i++) els.push({ kind: "btn", label: `Кнопка ${i + 1}` });
-      for (let i = 0; i < d.btnStop; i++) els.push({ kind: "stop", label: "Авар. стоп" });
+      for (let i = 0; i < d.lamps; i++) els.push({ key: `lamp-${i}`, kind: "lamp", label: `Лампа ${i + 1}`, color: "#6f7b8b" });
+      for (let i = 0; i < d.switches; i++) els.push({ key: `sel-${i}`, kind: "sel", label: "Режим" });
+      for (let i = 0; i < d.lineBtns; i++) els.push({ key: `pair-${i}`, kind: "pair", label: `Л${i + 1} Пуск/Стоп` });
+      for (let i = 0; i < d.buttons; i++) els.push({ key: `btn-${i}`, kind: "btn", label: `Кнопка ${i + 1}` });
+      for (let i = 0; i < d.btnStop; i++) els.push({ key: `stop-${i}`, kind: "stop", label: "Авар. стоп" });
     }
     return els;
   }, [d.on.controls, d.on.avr, d.avrInd, d.lamps, d.switches, d.lineBtns, d.buttons, d.btnStop]);
@@ -691,30 +697,34 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
               )}
               {meta.id === "controls" && (
                 <StepShell on={d.on.controls} setOn={(v) => setOn("controls", v)} hint="Органы управления не добавляются">
-                  <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
-                    <div>
-                      <div className="grid max-w-xl grid-cols-2 gap-3 md:grid-cols-3">
-                        <Field label="Кнопки, шт"><NumInput value={d.buttons} step={1} onChange={(v) => set({ buttons: Math.max(0, Math.round(v)) })} /></Field>
-                        <Field label="«Авар. стоп», шт"><NumInput value={d.btnStop} step={1} onChange={(v) => set({ btnStop: Math.max(0, Math.round(v)) })} /></Field>
-                        <Field label="Лампы индикации, шт"><NumInput value={d.lamps} step={1} onChange={(v) => set({ lamps: Math.max(0, Math.round(v)) })} /></Field>
-                        <Field label="Переключатели 1-0-2, шт"><NumInput value={d.switches} step={1} onChange={(v) => set({ switches: Math.max(0, Math.round(v)) })} /></Field>
-                        <Field label="Пары «Пуск/Стоп» на линии, шт" hint="Для шкафов управления и АСУ ТП — по паре на двигатель/линию">
-                          <NumInput value={d.lineBtns} step={1} onChange={(v) => set({ lineBtns: Math.max(0, Math.round(v)) })} />
-                        </Field>
-                      </div>
-                      <div className="mt-4 max-w-xl">
-                        <Toggle
-                          on={d.avrInd && d.on.avr}
-                          onChange={(v) => set({ avrInd: v })}
-                          label={d.on.avr ? "Индикация АВР: «Сеть 1», «Сеть 2», «Авария» (3 лампы на дверце)" : "Индикация АВР (включите шаг «АВР», чтобы задать)"}
-                        />
-                      </div>
-                      <p className="mt-3 max-w-xl text-[12px] leading-relaxed text-mute">
-                        Отвечайте на вопросы — справа сразу видно, как элементы лягут на дверцу{doorsCount === 2 ? " (в составном шкафу органов управления — на левой двери)" : ""}.
-                      </p>
+                  {/* вопросы — выровненные строки в две колонки */}
+                  <div className="grid max-w-3xl grid-cols-1 gap-x-10 gap-y-1 md:grid-cols-2">
+                    <CountRow label="Кнопки, шт" value={d.buttons} onChange={(v) => set({ buttons: Math.max(0, Math.round(v)) })} />
+                    <CountRow label="«Аварийный стоп», шт" value={d.btnStop} onChange={(v) => set({ btnStop: Math.max(0, Math.round(v)) })} />
+                    <CountRow label="Лампы индикации, шт" value={d.lamps} onChange={(v) => set({ lamps: Math.max(0, Math.round(v)) })} />
+                    <CountRow label="Переключатели 1-0-2, шт" value={d.switches} onChange={(v) => set({ switches: Math.max(0, Math.round(v)) })} />
+                    <CountRow label="Пары «Пуск / Стоп» на линии, шт" value={d.lineBtns} onChange={(v) => set({ lineBtns: Math.max(0, Math.round(v)) })} hint="по паре на двигатель / линию (шкафы управления, АСУ ТП)" />
+                    <div className="flex items-center py-1.5">
+                      <Toggle
+                        on={d.avrInd && d.on.avr}
+                        onChange={(v) => set({ avrInd: v })}
+                        label={d.on.avr ? "Индикация АВР: «Сеть 1 / Сеть 2 / Авария»" : "Индикация АВР (нужен шаг «АВР»)"}
+                      />
                     </div>
-                    <DoorPreview els={doorEls} doors={doorsCount} />
                   </div>
+
+                  {/* интерактивная дверца — во всю ширину, под вопросами */}
+                  <DoorDesigner
+                    items={doorItems}
+                    doors={doorsCount}
+                    positions={d.doorPos}
+                    labels={d.doorLabels}
+                    labelSide={d.doorLabelSide}
+                    onMove={(key, xy) => set({ doorPos: { ...d.doorPos, [key]: xy } })}
+                    onLabel={(key, text) => set({ doorLabels: { ...d.doorLabels, [key]: text } })}
+                    onLabelSide={(side) => set({ doorLabelSide: side })}
+                    onReset={() => set({ doorPos: {} })}
+                  />
                 </StepShell>
               )}
               {meta.id === "meters" && (
@@ -1259,84 +1269,205 @@ function StepCab({
   );
 }
 
-/* ================= визуальный макет дверцы ================= */
+/* ================= интерактивный макет дверцы ================= */
 
-interface DoorEl {
+interface DoorItem {
+  key: string;
   kind: "lamp" | "btn" | "pair" | "sel" | "stop";
   label: string;
   color?: string;
 }
 
-function DoorPreview({ els, doors }: { els: DoorEl[]; doors: number }) {
-  const cols = 4;
-  const dw = 230;
-  const mx = 22;
-  const top = 48;
-  const cellY = 50;
-  const rows = Math.max(1, Math.ceil(els.length / cols));
-  const dh = top + rows * cellY + 30;
-  const W = doors === 2 ? dw * 2 + 24 : dw + 24;
-  const stepX = (dw - 2 * mx) / cols;
+/** Выровненная строка опросника «вопрос — количество» (единая сетка шага). */
+function CountRow({ label, value, onChange, hint }: { label: string; value: number; onChange: (v: number) => void; hint?: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-line/50 py-2">
+      <div className="min-w-0">
+        <div className="text-[12.5px] font-semibold text-ink">{label}</div>
+        {hint && <div className="text-[10.5px] leading-snug text-mute">{hint}</div>}
+      </div>
+      <div className="w-[110px] shrink-0">
+        <NumInput value={value} step={1} onChange={onChange} />
+      </div>
+    </div>
+  );
+}
+
+/* Геометрия макета: дверца 230×450, полотно 500 по высоте. */
+const DOOR = { w: 230, h: 450, y: 25, gap: 30, x0: 25 };
+const CANVAS_H = 500;
+
+function DoorDesigner({ items, doors, positions, labels, labelSide, onMove, onLabel, onLabelSide, onReset }: {
+  items: DoorItem[];
+  doors: number;
+  positions: Record<string, { x: number; y: number }>;
+  labels: Record<string, string>;
+  labelSide: "below" | "above";
+  onMove: (key: string, xy: { x: number; y: number }) => void;
+  onLabel: (key: string, text: string) => void;
+  onLabelSide: (side: "below" | "above") => void;
+  onReset: () => void;
+}) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const dragRef = useRef<{ key: string; dx: number; dy: number } | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+
+  const W = doors === 2 ? DOOR.x0 + 2 * DOOR.w + DOOR.gap + DOOR.x0 : DOOR.x0 + DOOR.w + DOOR.x0;
+
+  /* авто-раскладка: сетка 4 колонки на первой двери */
+  const autoPos = (i: number) => ({
+    x: DOOR.x0 + 25 + 45 * ((i % 4) + 0.5),
+    y: 80 + Math.floor(i / 4) * 52,
+  });
+
+  const toCanvas = (e: { clientX: number; clientY: number }) => {
+    const rect = svgRef.current!.getBoundingClientRect();
+    return { x: (e.clientX - rect.left) * (W / rect.width), y: (e.clientY - rect.top) * (CANVAS_H / rect.height) };
+  };
+
+  const startDrag = (e: ReactPointerEvent<SVGGElement>, key: string, x: number, y: number) => {
+    e.stopPropagation();
+    setSelected(key);
+    const p = toCanvas(e);
+    dragRef.current = { key, dx: x - p.x, dy: y - p.y };
+    svgRef.current?.setPointerCapture(e.pointerId);
+  };
+  const onMoveCanvas = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const dr = dragRef.current;
+    if (!dr) return;
+    const p = toCanvas(e);
+    onMove(dr.key, {
+      x: Math.min(W - 30, Math.max(30, p.x + dr.dx)),
+      y: Math.min(CANVAS_H - 25, Math.max(DOOR.y + 20, p.y + dr.dy)),
+    });
+  };
+  const endDrag = () => { dragRef.current = null; };
+
+  const selItem = selected ? items.find((i) => i.key === selected) : undefined;
 
   return (
-    <div className="rounded-lg border border-line bg-card p-3">
-      <div className="mb-1.5 text-[10px] font-bold tracking-wide text-mute uppercase">Макет дверцы{doors === 2 ? " (левая)" : ""} — предпросмотр</div>
-      <svg width="100%" viewBox={`0 0 ${W} ${dh + 12}`} style={{ display: "block" }}>
-        {Array.from({ length: doors }, (_, di) => {
-          const ox = 12 + di * dw;
-          return (
-            <g key={di}>
-              <rect x={ox} y={6} width={dw} height={dh} rx={7} fill="#f4f5f7" stroke="#141b24" strokeWidth={1.6} />
-              <rect x={ox + dw - 9} y={6 + dh * 0.22} width={4} height={26} rx={2} fill="#c2cad4" />
-              <rect x={ox + dw - 9} y={6 + dh * 0.68} width={4} height={26} rx={2} fill="#c2cad4" />
-              <rect x={ox + dw - 18} y={6 + dh / 2 - 16} width={6} height={32} rx={3} fill="#3d4a59" />
-            </g>
-          );
-        })}
-        {els.map((el, i) => {
-          const col = i % cols;
-          const row = Math.floor(i / cols);
-          const x = 12 + mx + stepX / 2 + col * stepX;
-          const y = 6 + top + row * cellY + 14;
-          return (
-            <g key={i}>
-              {el.kind === "lamp" && (
-                <>
-                  <circle cx={x} cy={y} r={9} fill={el.color} stroke="#141b24" strokeWidth={1.2} />
-                  <circle cx={x - 3} cy={y - 3} r={2.6} fill="#fff" opacity={0.4} />
-                </>
-              )}
-              {el.kind === "btn" && <rect x={x - 10} y={y - 10} width={20} height={20} rx={4.5} fill="#141b24" stroke="#3d4a59" strokeWidth={1.2} />}
-              {el.kind === "sel" && (
-                <>
-                  <rect x={x - 11} y={y - 11} width={22} height={22} rx={3.5} fill="#eceef1" stroke="#141b24" strokeWidth={1.2} />
-                  <text x={x} y={y + 3.2} textAnchor="middle" fontSize={7.5} fontWeight={700} fill="#141b24">I·0·II</text>
-                </>
-              )}
-              {el.kind === "stop" && (
-                <>
-                  <rect x={x - 15} y={y - 15} width={30} height={30} rx={5} fill="#f7edd8" stroke="#a8770e" strokeWidth={1.2} />
-                  <circle cx={x} cy={y} r={10.5} fill="#ce4432" stroke="#8f2f22" strokeWidth={1.2} />
-                </>
-              )}
-              {el.kind === "pair" && (
-                <>
-                  <circle cx={x - 11} cy={y} r={8} fill="#1f8a5b" stroke="#141b24" strokeWidth={1.1} />
-                  <circle cx={x + 11} cy={y} r={8} fill="#ce4432" stroke="#141b24" strokeWidth={1.1} />
-                </>
-              )}
-              <text x={x} y={y + (el.kind === "stop" ? 27 : el.kind === "pair" ? 22 : 23)} textAnchor="middle" fontSize={6.6} fontWeight={600} fill="#3d4a59">
-                {el.label.length > 12 ? el.label.slice(0, 11) + "…" : el.label}
+    <div className="mt-5 rounded-lg border border-line bg-card p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[10px] font-bold tracking-wide text-mute uppercase">
+          Компоновка дверцы{doors === 2 ? " · двухдверный шкаф" : ""} — перетаскивайте элементы, клик — подпись
+        </div>
+        <button type="button" onClick={() => { onReset(); setSelected(null); }}
+          className="cursor-pointer rounded-md border border-line px-2 py-1 text-[10.5px] font-bold text-mute transition-colors hover:border-heat hover:text-heat">
+          Сбросить раскладку
+        </button>
+      </div>
+
+      <div className="mt-2 flex flex-col gap-3 lg:flex-row">
+        <div className="min-w-0 flex-1 rounded-lg bg-dark2/40 p-2">
+          <svg ref={svgRef} width="100%" viewBox={`0 0 ${W} ${CANVAS_H}`} style={{ display: "block", maxHeight: 470 }}
+            onPointerMove={onMoveCanvas} onPointerUp={endDrag} onPointerLeave={endDrag}
+            onPointerDown={() => setSelected(null)}>
+            <defs>
+              <linearGradient id="doorSteel" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stopColor="#3d4a59" />
+                <stop offset="0.5" stopColor="#4c5a6b" />
+                <stop offset="1" stopColor="#37434f" />
+              </linearGradient>
+            </defs>
+
+            {/* дверцы шкафа */}
+            {Array.from({ length: doors }, (_, di) => {
+              const ox = DOOR.x0 + di * (DOOR.w + DOOR.gap);
+              return (
+                <g key={di}>
+                  <rect x={ox} y={DOOR.y} width={DOOR.w} height={DOOR.h} rx={9} fill="#222b35" stroke="#141b24" strokeWidth={1.5} />
+                  <rect x={ox + 9} y={DOOR.y + 9} width={DOOR.w - 18} height={DOOR.h - 18} rx={6} fill="url(#doorSteel)" stroke="#2c3742" strokeWidth={1} />
+                  <rect x={ox - 3} y={DOOR.y + 60} width={7} height={30} rx={2.5} fill="#5b6875" />
+                  <rect x={ox - 3} y={DOOR.y + DOOR.h - 90} width={7} height={30} rx={2.5} fill="#5b6875" />
+                  <rect x={ox + DOOR.w - 17} y={DOOR.y + DOOR.h / 2 - 32} width={8} height={64} rx={4} fill="#c2cad4" stroke="#8b98a9" strokeWidth={0.8} />
+                  {[0, 1, 2, 3].map((k) => (
+                    <rect key={k} x={ox + 30 + k * 42} y={DOOR.y + DOOR.h - 26} width={30} height={3} rx={1.5} fill="#2c3742" />
+                  ))}
+                </g>
+              );
+            })}
+
+            {/* элементы управления */}
+            {items.map((it, i) => {
+              const { x, y } = positions[it.key] ?? autoPos(i);
+              const isSel = selected === it.key;
+              const label = labels[it.key] ?? it.label;
+              const labelY = labelSide === "below"
+                ? y + (it.kind === "stop" ? 28 : it.kind === "pair" ? 24 : 25)
+                : y - (it.kind === "stop" ? 24 : 20);
+              return (
+                <g key={it.key} style={{ cursor: "grab" }} onPointerDown={(e) => startDrag(e, it.key, x, y)}>
+                  {isSel && <rect x={x - 24} y={y - 24} width={48} height={48} rx={10} fill="rgba(37,99,235,0.12)" stroke="#2563eb" strokeWidth={1.2} strokeDasharray="4 3" />}
+                  <circle cx={x} cy={y} r={20} fill="transparent" />
+                  {it.kind === "lamp" && (
+                    <>
+                      <circle cx={x} cy={y} r={10} fill={it.color} stroke="#141b24" strokeWidth={1.3} />
+                      <circle cx={x - 3.5} cy={y - 3.5} r={3} fill="#fff" opacity={0.35} />
+                    </>
+                  )}
+                  {it.kind === "btn" && <rect x={x - 11} y={y - 11} width={22} height={22} rx={5} fill="#141b24" stroke="#3d4a59" strokeWidth={1.3} />}
+                  {it.kind === "sel" && (
+                    <>
+                      <rect x={x - 12} y={y - 12} width={24} height={24} rx={4} fill="#eceef1" stroke="#141b24" strokeWidth={1.3} />
+                      <text x={x} y={y + 3.4} textAnchor="middle" fontSize={8} fontWeight={700} fill="#141b24">I·0·II</text>
+                    </>
+                  )}
+                  {it.kind === "stop" && (
+                    <>
+                      <rect x={x - 16} y={y - 16} width={32} height={32} rx={5} fill="#f7edd8" stroke="#a8770e" strokeWidth={1.3} />
+                      <circle cx={x} cy={y} r={11} fill="#ce4432" stroke="#8f2f22" strokeWidth={1.3} />
+                    </>
+                  )}
+                  {it.kind === "pair" && (
+                    <>
+                      <circle cx={x - 12} cy={y} r={9} fill="#1f8a5b" stroke="#141b24" strokeWidth={1.2} />
+                      <circle cx={x + 12} cy={y} r={9} fill="#ce4432" stroke="#141b24" strokeWidth={1.2} />
+                    </>
+                  )}
+                  <text x={x} y={labelY} textAnchor="middle" fontSize={9} fontWeight={600} fill="#e6ebf2" stroke="#141b24" strokeWidth={2.5} style={{ paintOrder: "stroke" }}>
+                    {label.length > 14 ? label.slice(0, 13) + "…" : label}
+                  </text>
+                </g>
+              );
+            })}
+
+            {items.length === 0 && (
+              <text x={W / 2} y={CANVAS_H / 2} textAnchor="middle" fontSize={11} fill="#8b98a9">
+                Задайте количество элементов выше — они появятся на дверце
               </text>
-            </g>
-          );
-        })}
-        {els.length === 0 && (
-          <text x={W / 2} y={dh / 2 + 6} textAnchor="middle" fontSize={9} fill="#8b98a9">
-            Дверца пустая — добавьте элементы слева
-          </text>
-        )}
-      </svg>
+            )}
+          </svg>
+        </div>
+
+        {/* панель редактирования подписи */}
+        <div className="w-full shrink-0 lg:w-60">
+          {selItem ? (
+            <div className="anim-step rounded-lg border border-line bg-paper p-3">
+              <div className="text-[10px] font-bold tracking-wide text-mute uppercase">Подпись элемента</div>
+              <input
+                value={labels[selItem.key] ?? selItem.label}
+                onChange={(e) => onLabel(selItem.key, e.target.value)}
+                className="mt-1.5 w-full rounded-md border border-line bg-card px-2 py-1.5 text-[12.5px] font-semibold text-ink outline-none focus:border-steel"
+              />
+              <div className="mt-3 text-[10px] font-bold tracking-wide text-mute uppercase">Расположение подписи</div>
+              <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                {(["below", "above"] as const).map((s) => (
+                  <button key={s} type="button" onClick={() => onLabelSide(s)}
+                    className={cx("cursor-pointer rounded-md border px-2 py-1.5 text-[11px] font-bold transition-colors",
+                      labelSide === s ? "border-accent bg-accent-soft/60 text-accent-deep" : "border-line bg-card text-mute hover:border-line2")}>
+                    {s === "below" ? "Снизу" : "Сверху"}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-3 text-[10.5px] leading-snug text-mute">Позиция и подпись сохраняются автоматически и попадут в общий вид.</p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-line2 p-3 text-[11.5px] leading-relaxed text-mute">
+              Кликните по элементу на дверце, чтобы переименовать его и выбрать расположение подписи. Перетаскивайте элементы мышью — раскладка сохраняется.
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
