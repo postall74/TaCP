@@ -375,7 +375,7 @@ MarkupPct     = Profit / totalCost × 100         (наценка к себес�
 | GET/PUT/DELETE | `/api/projects/{id}` | чтение / **полная синхронизация** (смена статуса — по матрице, §8.1) / удаление (менеджер/админ, иначе 403) |
 | POST | `/api/projects/{id}/cabinets` | пакетное добавление шкафов (мастер) |
 | POST | `/api/cabinets/{id}/items?equipmentId=&qty=` | позиция (цена — снимок из справочника) |
-| POST | `/api/projects/{id}/versions?label=` | снимок версии (jsonb) |
+| POST | `/api/projects/{id}/versions?label=` | снимок версии (jsonb). Сервер возвращает версию с **вложенным** `snapshot:{cabinets,calc}`; клиент (`normalizeVersion` в `store.ts`) разворачивает его в плоские `cabinets`/`calc` — см. контракт в § 13 (`fix/versions-black-screen`) |
 | GET/POST | `/api/catalog`, `POST /api/catalog/import` (CSV) | справочник |
 | PUT/DELETE | `/api/catalog/{id}` | обновить (upsert для офлайн-синхронизации) / удалить **в «корзину»** (`deleted_equipment`, 90 дней) |
 | GET | `/api/catalog/deleted` | «корзина» справочника (для пометок в ТКП) |
@@ -532,6 +532,19 @@ Enum'ы в JSON — строки (`"nku"`, `"draft"`), Id — строки: се
 
 Записи — по веткам (регламент — `GIT_WORKFLOW.md`); свежие сверху.
 
+- **`fix/versions-black-screen`** — устранён краш страницы «Версии расчёта»
+  (чёрный экран при переходе на вкладку). Корень: рассинхрон контракта версий —
+  сервер хранит снимок вложенным (`snapshot: {cabinets, calc}` в `ProjectVersion`,
+  jsonb), а фронтенд ждёт плоский `{id, ts, label, cabinets, calc}`; после
+  гидратации из онлайн-режима `v.cabinets`/`v.calc` оказывались `undefined`, и
+  `v.cabinets.length`/`v.calc.total` в `VersionsTab` бросали `TypeError` →
+  неперехваченный краш React → чёрный экран. Исправлено в трёх местах:
+  (1) `store.ts` — `normalizeVersion()` разворачивает `snapshot` в плоские поля,
+  применяется в `normalizeProject` для данных и из localStorage, и с сервера;
+  (2) `Editor.tsx` — защитные `?.`/`?? 0` по всем обращениям к `v.cabinets`/
+  `v.calc`, страница больше не падает на битых данных; (3) `store.ts` —
+  `restoreVersion` с `v.cabinets ?? []`. Обновлены §9 (контракт версий), §13;
+  QUICKSTART §6 (строка диагностики «чёрный экран на „Версиях"»).
 - **`fix/stale-frontend-5085`** — порт 5085 больше не показывает устаревший
   фронтенд: `index.html` и SPA-fallback — `Cache-Control: no-store`, ассеты
   `/assets/*` — `immutable` (хэшированные имена); при старте API логирует дату

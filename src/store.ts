@@ -62,6 +62,22 @@ export const DEFAULT_SETTINGS: Settings = {
   apiOnline: null,
 };
 
+/** Версия с сервера приходит в обёртке { snapshot: { cabinets, calc } },
+    а локально хранится плоско { cabinets, calc }. Приводим оба варианта к
+    плоскому виду — иначе вкладка «Версии» падает на v.cabinets / v.calc
+    (чёрный экран) после гидратации из онлайн-режима. */
+type RawVersion = Partial<ProjectVersion> & {
+  ts?: number | string;
+  snapshot?: { cabinets?: Cabinet[]; calc?: { eqBase?: number; total?: number } };
+};
+const normalizeVersion = (v: RawVersion): ProjectVersion => ({
+  id: v.id ?? genId("ver"),
+  ts: typeof v.ts === "number" ? v.ts : new Date(v.ts ?? Date.now()).getTime(),
+  label: v.label ?? "",
+  cabinets: v.cabinets ?? v.snapshot?.cabinets ?? [],
+  calc: v.calc ?? { eqBase: v.snapshot?.calc?.eqBase ?? 0, total: v.snapshot?.calc?.total ?? 0 },
+});
+
 /** Заполняет недостающие поля старых сохранённых проектов новой модели. */
 const normalizeProject = (p: Project): Project => ({
   ...p,
@@ -82,7 +98,7 @@ const normalizeProject = (p: Project): Project => ({
   pnrSell: p.pnrSell ?? 0,
   validDays: p.validDays ?? 30,
   notes: p.notes ?? "",
-  versions: p.versions ?? [],
+  versions: (p.versions ?? []).map(normalizeVersion),
   cabinets: (p.cabinets ?? []).map((c) => ({
     ...c,
     hours: c.hours ?? 0,
@@ -711,7 +727,7 @@ export const useStore = create<StoreState>()(
             projects: s.projects.map((p) => {
               if (p.id !== pid) return p;
               const v = p.versions.find((x) => x.id === vid);
-              return v ? { ...p, cabinets: JSON.parse(JSON.stringify(v.cabinets)), updatedAt: Date.now() } : p;
+              return v ? { ...p, cabinets: JSON.parse(JSON.stringify(v.cabinets ?? [])), updatedAt: Date.now() } : p;
             }),
           }));
           syncProject(pid);
