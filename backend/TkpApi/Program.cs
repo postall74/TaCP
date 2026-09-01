@@ -117,59 +117,6 @@ using (var scope = app.Services.CreateScope())
             app.Logger.LogInformation("Каталог наполнен из seed-catalog.csv: {Count} позиций", a);
         }
     }
-
-    /* Демонстрационные шаблоны конфигуратора (Б.1): преднаполненный напольный
-       (АВ на микроклимат и освещение) и пустой навесный. */
-    if (!db.CabinetTemplates.Any())
-    {
-        object[] FloorKit(decimal h, decimal w, decimal d) => new object[]
-        {
-            new { key = "frame", name = "Рама с потолочной панелью", qty = 1, unit = "шт", purchase = 9200m },
-            new { key = "cable", name = "Панель кабельного ввода", qty = 2, unit = "шт", purchase = 1090m },
-            new { key = "trav", name = "Траверса монтажная", qty = 3, unit = "шт", purchase = 1530m },
-            new { key = "door", name = $"Дверь с замком ({h}×{w})", qty = 1, unit = "шт", purchase = 3600m },
-            new { key = "rear", name = "Панель задняя", qty = 1, unit = "шт", purchase = 2060m },
-            new { key = "mount", name = "Панель монтажная", qty = 1, unit = "шт", purchase = 2360m },
-            new { key = "key", name = "Ключ от замка двери", qty = 2, unit = "шт", purchase = 150m },
-            new { key = "ped", name = "Цоколь 100 мм с фланцами", qty = 1, unit = "шт", purchase = 2300m },
-            new { key = "side", name = "Панель боковая", qty = 2, unit = "шт", purchase = 2220m },
-        };
-        db.CabinetTemplates.Add(new CabinetTemplate
-        {
-            OrderCode = "ШН-2000.800.600-IP54-П",
-            Name = "Шкаф напольный распределительный",
-            Direction = Direction.Nku, Brand = "ПРОВЕНТО", Mount = "floor",
-            H = 2000, W = 800, D = 600, Ip = 54,
-            Kit = JsonSerializer.SerializeToElement(FloorKit(2000, 800, 600)),
-            FillItems = JsonSerializer.SerializeToElement(new object[]
-            {
-                new { id = "fill-av-1", eqId = "brk-c16", sku = "ВА47-29 C16", name = "Автоматический выключатель 1P C16 (освещение)", brand = "IEK", unit = "шт", qty = 1, purchase = 180m },
-                new { id = "fill-av-2", eqId = "brk-c10", sku = "ВА47-29 C10", name = "Автоматический выключатель 1P C10 (микроклимат)", brand = "IEK", unit = "шт", qty = 1, purchase = 180m },
-            }),
-            AssemblyHours = 5.5m,
-            Notes = "Преднаполненный: АВ на микроклимат и освещение. Демонстрационный шаблон.",
-        });
-        db.CabinetTemplates.Add(new CabinetTemplate
-        {
-            OrderCode = "ЩН-600.400.200-IP66",
-            Name = "Шкаф навесной распределительный",
-            Direction = Direction.Nku, Brand = "DKC", Mount = "wall",
-            H = 600, W = 400, D = 200, Ip = 66,
-            Kit = JsonSerializer.SerializeToElement(new object[]
-            {
-                new { key = "corpus", name = "Корпус сварной (рама, стенки, задняя панель)", qty = 1, unit = "шт", purchase = 4140m },
-                new { key = "door", name = "Дверь с замком (600×400)", qty = 1, unit = "шт", purchase = 1860m },
-                new { key = "mount", name = "Панель монтажная (540×340)", qty = 1, unit = "шт", purchase = 1330m },
-                new { key = "key", name = "Ключ от замка двери", qty = 2, unit = "шт", purchase = 150m },
-                new { key = "bracket", name = "Кронштейн настенного крепления", qty = 4, unit = "шт", purchase = 240m },
-            }),
-            FillItems = JsonSerializer.SerializeToElement(Array.Empty<object>()),
-            AssemblyHours = 1.5m,
-            Notes = "Пустой навесной шкаф. Демонстрационный шаблон.",
-        });
-        db.SaveChanges();
-        app.Logger.LogInformation("Конфигуратор: создано 2 демонстрационных шаблона шкафов");
-    }
 }
 // Роли (admin/manager/engineer) и администратор из appsettings:Admin — идемпотентно
 await app.SeedRolesAndAdminAsync();
@@ -311,56 +258,6 @@ app.MapPost("/api/projects/{id}/versions", async (string id, string? label, TkpD
     p.Versions.Insert(0, new ProjectVersion { Label = label ?? $"Версия {p.Versions.Count + 1}", Snapshot = snapshot });
     await db.SaveChangesAsync();
     return Results.Ok(p.Versions);
-}).RequireAuthorization("Staff");
-
-/* ---------------- Шаблоны шкафов (конфигуратор, Б.1) ----------------
-   Пустые/преднаполненные шкафы с заказным шифром. Заказной шифр уникален;
-   PUT — upsert (идемпотентен для офлайн-очереди), POST проверяет дубли шифра. */
-
-app.MapGet("/api/cabinet-templates", async (TkpDbContext db) =>
-    await db.CabinetTemplates.OrderBy(t => t.OrderCode).ToListAsync())
-   .RequireAuthorization("Staff");
-
-app.MapPost("/api/cabinet-templates", async (CabinetTemplate t, TkpDbContext db) =>
-{
-    var code = t.OrderCode.Trim();
-    if (await db.CabinetTemplates.AnyAsync(x => x.OrderCode.ToLower() == code.ToLower()))
-        return Results.Conflict(new { detail = $"Шкаф с заказным шифром «{code}» уже существует" });
-    if (string.IsNullOrEmpty(t.Id)) t.Id = Guid.NewGuid().ToString();
-    t.OrderCode = code;
-    db.CabinetTemplates.Add(t);
-    await db.SaveChangesAsync();
-    return Results.Created($"/api/cabinet-templates/{t.Id}", t);
-}).RequireAuthorization("Staff");
-
-app.MapPut("/api/cabinet-templates/{id}", async (string id, CabinetTemplate t, TkpDbContext db) =>
-{
-    var ex = await db.CabinetTemplates.FindAsync(id);
-    if (ex is null)
-    {
-        t.Id = id;
-        db.CabinetTemplates.Add(t);
-    }
-    else
-    {
-        var created = ex.CreatedAt;
-        db.Entry(ex).CurrentValues.SetValues(t);
-        ex.Id = id;
-        ex.CreatedAt = created;
-    }
-    await db.SaveChangesAsync();
-    return Results.Ok(t);
-}).RequireAuthorization("Staff");
-
-/* Удаление шаблона — менеджер/админ (как удаление позиций справочника). */
-app.MapDelete("/api/cabinet-templates/{id}", async (string id, TkpDbContext db, ClaimsPrincipal user) =>
-{
-    if (!Rights.Can(user, Rights.CatalogDelete)) return Rights.Forbid(user, Rights.CatalogDelete);
-    var t = await db.CabinetTemplates.FindAsync(id);
-    if (t is null) return Results.NotFound();
-    db.CabinetTemplates.Remove(t);
-    await db.SaveChangesAsync();
-    return Results.NoContent();
 }).RequireAuthorization("Staff");
 
 /* ---------------- Каталог ---------------- */
@@ -546,17 +443,6 @@ static void EnsureExtraTables(TkpDbContext db)
         );
         CREATE INDEX IF NOT EXISTS "ix_deleted_equipment_Sku" ON "deleted_equipment" ("Sku");
         CREATE INDEX IF NOT EXISTS "ix_deleted_equipment_DeletedAt" ON "deleted_equipment" ("DeletedAt");
-
-        CREATE TABLE IF NOT EXISTS "cabinet_templates" (
-            "Id" text NOT NULL PRIMARY KEY,
-            "OrderCode" text NOT NULL, "Name" text NOT NULL,
-            "Direction" integer NOT NULL, "Brand" text NOT NULL, "Mount" text NOT NULL,
-            "H" integer NOT NULL, "W" integer NOT NULL, "D" integer NOT NULL, "Ip" integer NOT NULL,
-            "Kit" jsonb, "FillItems" jsonb,
-            "AssemblyHours" numeric(6,2) NOT NULL, "Notes" text NOT NULL,
-            "CreatedAt" timestamptz NOT NULL, "UpdatedAt" timestamptz NOT NULL
-        );
-        CREATE UNIQUE INDEX IF NOT EXISTS "ix_cabinet_templates_OrderCode" ON "cabinet_templates" ("OrderCode");
         """);
 }
 
