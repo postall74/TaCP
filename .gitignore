@@ -1,25 +1,5 @@
-# --- Node / фронтенд ---
 node_modules/
-dist/
-*.local
-npm-debug.log*
-
-# --- .NET / бэкенд ---
-[Bb]in/
-[Oo]bj/
-*.user
-*.suo
-appsettings.Development.json
-
-# --- IDE ---
-.vs/
-.vscode/*
-!.vscode/extensions.json
-.idea/
-
-# --- ОС ---
-.DS_Store
-Thumbs.db
 .next/
+dist/
 build/
 *.log
