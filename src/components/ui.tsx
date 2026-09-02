@@ -1,267 +1,355 @@
 import { useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { useStore } from "../store";
+import { IcCheck, IcAlert, IcInfo, IcMinus, IcPlus, IcX, IcChevronDown } from "./icons";
 
-/* ============================================================
-   UI-КИТ: единый промышленный стиль приложения.
-   ============================================================ */
+export const cx = (...xs: (string | false | undefined | null)[]) => xs.filter(Boolean).join(" ");
 
-export const cx = (...parts: (string | false | null | undefined)[]): string =>
-  parts.filter(Boolean).join(" ");
+/* ------------------------------ Кнопки ------------------------------ */
 
-/* ---------------- кнопки ---------------- */
-
-const BTN_SIZE = {
-  xs: "h-7 px-2 text-[11px] gap-1 rounded-md",
-  sm: "h-8 px-3 text-[11.5px] gap-1.5 rounded-md",
-  md: "h-9 px-4 text-[12.5px] gap-1.5 rounded-lg",
-} as const;
-
-const BTN_VARIANT = {
-  primary: "bg-accent text-white shadow-sm shadow-accent/30 hover:bg-accent-deep",
-  outline: "border border-line bg-card text-ink2 hover:border-line2 hover:bg-paper",
-  ghost: "text-mute hover:bg-line/50 hover:text-ink",
-  danger: "bg-heat text-white shadow-sm shadow-heat/30 hover:brightness-110",
-} as const;
-
-export function Btn({
-  size = "md", variant = "primary", className, title, disabled, onClick, children,
-}: {
-  size?: keyof typeof BTN_SIZE;
-  variant?: keyof typeof BTN_VARIANT;
-  className?: string;
-  title?: string;
+type BtnProps = {
+  variant?: "primary" | "dark" | "outline" | "ghost" | "danger";
+  size?: "md" | "sm" | "xs";
+  children?: ReactNode;
+  onClick?: () => void;
   disabled?: boolean;
+  title?: string;
+  className?: string;
+  type?: "button" | "submit";
+};
+
+export const Btn = ({ variant = "primary", size = "md", className, children, ...rest }: BtnProps) => (
+  <button
+    type={rest.type ?? "button"}
+    title={rest.title}
+    disabled={rest.disabled}
+    onClick={rest.onClick}
+    className={cx(
+      "inline-flex cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-semibold transition-all duration-150 active:scale-[0.96] disabled:pointer-events-none disabled:opacity-40",
+      size === "md" && "h-9 px-3.5 text-[13px]",
+      size === "sm" && "h-8 px-3 text-xs",
+      size === "xs" && "h-7 px-2.5 text-[11.5px]",
+      variant === "primary" && "bg-accent text-white shadow-sm shadow-accent/40 hover:bg-accent-deep",
+      variant === "dark" && "bg-dark text-white hover:bg-darkline",
+      variant === "outline" && "border border-line2 bg-card text-ink hover:border-ink/40 hover:shadow-sm",
+      variant === "ghost" && "text-ink2 hover:bg-line/50 hover:text-ink",
+      variant === "danger" && "bg-heat text-white hover:brightness-90",
+      className
+    )}
+  >
+    {children}
+  </button>
+);
+
+export const IconBtn = ({
+  title,
+  onClick,
+  children,
+  danger,
+  className,
+}: {
+  title: string;
   onClick?: () => void;
   children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      disabled={disabled}
-      onClick={onClick}
-      className={cx(
-        "inline-flex cursor-pointer items-center justify-center font-bold whitespace-nowrap transition-all duration-150 active:scale-95",
-        BTN_SIZE[size], BTN_VARIANT[variant],
-        disabled && "cursor-not-allowed opacity-45 active:scale-100",
-        className,
-      )}
-    >
-      {children}
-    </button>
-  );
-}
+  danger?: boolean;
+  className?: string;
+}) => (
+  <button
+    type="button"
+    title={title}
+    onClick={(e) => {
+      e.stopPropagation();
+      onClick?.();
+    }}
+    className={cx(
+      "inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-mute transition-all duration-150 active:scale-90",
+      danger ? "hover:bg-heat-soft hover:text-heat" : "hover:bg-line/60 hover:text-ink",
+      className
+    )}
+  >
+    {children}
+  </button>
+);
 
-export function IconBtn({
-  title, danger, onClick, children,
-}: { title: string; danger?: boolean; onClick?: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      className={cx(
-        "flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md transition-all duration-150 active:scale-90",
-        danger ? "text-mute hover:bg-heat-soft hover:text-heat" : "text-mute hover:bg-paper hover:text-ink",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
+/* ------------------------------ Поля ------------------------------ */
 
-/* ---------------- поля ввода ---------------- */
+export const Field = ({ label, children, hint, className }: { label: string; children: ReactNode; hint?: string; className?: string }) => (
+  <label className={cx("block", className)}>
+    <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-mute">{label}</span>
+    {children}
+    {hint && <span className="mt-1 block text-[11px] text-mute">{hint}</span>}
+  </label>
+);
 
-const FIELD_CLS =
-  "h-9 w-full rounded-md border border-line bg-card px-3 text-[12.5px] font-medium text-ink outline-none transition-all duration-150 placeholder:text-mute/70 hover:border-line2 focus:border-accent focus:ring-2 focus:ring-accent/15";
+const inputCls =
+  "h-9 w-full rounded-md border border-line bg-card px-3 text-[13px] font-medium text-ink outline-none transition-all duration-150 placeholder:font-normal placeholder:text-mute/70 focus:border-accent focus:ring-2 focus:ring-accent/15";
 
-export function Input({
-  value, onChange, placeholder, className, autoFocus,
+export const Input = ({
+  value,
+  onChange,
+  placeholder,
+  className,
+  autoFocus,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   className?: string;
   autoFocus?: boolean;
-}) {
-  return (
-    <input
-      value={value}
-      autoFocus={autoFocus}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className={cx(FIELD_CLS, className)}
-    />
-  );
-}
+}) => (
+  <input
+    className={cx(inputCls, className)}
+    value={value}
+    autoFocus={autoFocus}
+    placeholder={placeholder}
+    onChange={(e) => onChange(e.target.value)}
+  />
+);
 
-export function NumInput({
-  value, step = 1, onChange, className,
+export const NumInput = ({
+  value,
+  onChange,
+  className,
+  min,
+  step,
 }: {
   value: number;
-  step?: number;
   onChange: (v: number) => void;
   className?: string;
-}) {
-  return (
-    <input
-      type="number"
-      value={Number.isFinite(value) ? value : 0}
-      step={step}
-      min={0}
-      onChange={(e) => onChange(Number(e.target.value) || 0)}
-      className={cx(FIELD_CLS, "font-mono", className)}
-    />
-  );
-}
+  min?: number;
+  step?: number;
+}) => (
+  <input
+    type="number"
+    className={cx(inputCls, "text-right font-mono font-semibold tabular-nums", className)}
+    value={Number.isFinite(value) ? value : 0}
+    min={min}
+    step={step ?? 1}
+    onChange={(e) => onChange(Number(e.target.value))}
+  />
+);
 
-export function Textarea({
-  value, onChange, rows = 3, placeholder, className,
+export const Select = ({
+  value,
+  onChange,
+  options,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  className?: string;
+}) => (
+  <div className={cx("relative", className)}>
+    <select
+      className="h-9 w-full cursor-pointer appearance-none rounded-md border border-line bg-card pl-3 pr-8 text-[13px] font-medium text-ink outline-none transition-all duration-150 focus:border-accent focus:ring-2 focus:ring-accent/15"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+    <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-mute">
+      <IcChevronDown size={14} />
+    </span>
+  </div>
+);
+
+export const Textarea = ({
+  value,
+  onChange,
+  rows = 4,
+  placeholder,
 }: {
   value: string;
   onChange: (v: string) => void;
   rows?: number;
   placeholder?: string;
-  className?: string;
-}) {
-  return (
-    <textarea
-      value={value}
-      rows={rows}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className={cx(FIELD_CLS, "h-auto resize-y py-2 leading-relaxed", className)}
-    />
-  );
-}
+}) => (
+  <textarea
+    className={cx(inputCls, "h-auto py-2 leading-relaxed")}
+    rows={rows}
+    value={value}
+    placeholder={placeholder}
+    onChange={(e) => onChange(e.target.value)}
+  />
+);
 
-export function Select({
-  value, onChange, options, className,
+export const Toggle = ({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) => (
+  <button
+    type="button"
+    onClick={() => onChange(!on)}
+    className="group flex w-full cursor-pointer items-center justify-between gap-3 rounded-md border border-line bg-card px-3 py-2.5 transition-colors hover:border-line2"
+  >
+    <span className="text-[13px] font-semibold">{label}</span>
+    <span
+      className={cx(
+        "relative h-5 w-9 shrink-0 rounded-full transition-colors duration-200",
+        on ? "bg-accent" : "bg-line2"
+      )}
+    >
+      <span
+        className={cx(
+          "absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200",
+          on && "translate-x-4"
+        )}
+      />
+    </span>
+  </button>
+);
+
+/* ------------------------------ Бейджи и сегменты ------------------------------ */
+
+export const Badge = ({ children, cls }: { children: ReactNode; cls: string }) => (
+  <span className={cx("inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] font-bold tracking-wide uppercase", cls)}>
+    {children}
+  </span>
+);
+
+export const Seg = ({
+  options,
+  value,
+  onChange,
 }: {
+  options: { value: string; label: ReactNode }[];
   value: string;
   onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  className?: string;
-}) {
-  return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className={cx(FIELD_CLS, "cursor-pointer appearance-none bg-no-repeat pr-8 select-field", className)}>
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>{o.label}</option>
-      ))}
-    </select>
-  );
-}
-
-/** Сегментированный переключатель. */
-export function Seg({
-  value, onChange, options,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  return (
-    <div className="inline-flex rounded-lg border border-line bg-paper p-0.5">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          className={cx(
-            "cursor-pointer rounded-md px-3 py-1.5 text-[11.5px] font-bold transition-all duration-150",
-            value === o.value ? "bg-dark text-white shadow-sm" : "text-mute hover:text-ink",
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/** Компактный счётчик «−  значение  +». */
-export function Stepper({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  return (
-    <span className="inline-flex shrink-0 items-center overflow-hidden rounded-md border border-line bg-card">
-      <button type="button" onClick={() => onChange(value - 1)} className="flex h-7 w-7 cursor-pointer items-center justify-center text-mute transition-colors hover:bg-paper hover:text-heat active:bg-heat-soft" title="Уменьшить">
-        <span className="text-[15px] leading-none font-bold">−</span>
+}) => (
+  <div className="inline-flex rounded-lg border border-line bg-line/40 p-0.5">
+    {options.map((o) => (
+      <button
+        key={o.value}
+        type="button"
+        onClick={() => onChange(o.value)}
+        className={cx(
+          "cursor-pointer rounded-[7px] px-3.5 py-1.5 text-[12.5px] font-bold transition-all duration-150",
+          value === o.value ? "bg-dark text-white shadow-sm" : "text-ink2 hover:text-ink"
+        )}
+      >
+        {o.label}
       </button>
-      <span className="w-9 border-x border-line text-center font-mono text-[12px] font-bold text-ink">{value}</span>
-      <button type="button" onClick={() => onChange(value + 1)} className="flex h-7 w-7 cursor-pointer items-center justify-center text-mute transition-colors hover:bg-paper hover:text-ok active:bg-ok-soft" title="Увеличить">
-        <span className="text-[15px] leading-none font-bold">+</span>
-      </button>
-    </span>
-  );
-}
+    ))}
+  </div>
+);
 
-/* ---------------- разметка ---------------- */
+/* ------------------------------ Модальное окно ------------------------------ */
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-[10.5px] font-bold tracking-wide text-mute uppercase">{label}</span>
-      {children}
-      {hint && <span className="mt-1 block text-[10.5px] leading-snug text-mute">{hint}</span>}
-    </label>
-  );
-}
-
-export function Badge({ cls, children }: { cls?: string; children: ReactNode }) {
-  return (
-    <span className={cx("inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] font-bold tracking-wide uppercase", cls)}>
-      {children}
-    </span>
-  );
-}
-
-export function EmptyState({
-  icon, title, text, children,
-}: { icon: ReactNode; title: string; text: string; children?: ReactNode }) {
-  return (
-    <div className="anim-scale flex flex-col items-center rounded-xl border border-dashed border-line2 bg-card/60 px-6 py-10 text-center">
-      <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-dark text-white shadow-lg shadow-dark/20">{icon}</span>
-      <div className="mt-3 font-display text-[14px] font-bold text-ink">{title}</div>
-      <p className="mt-1 max-w-sm text-[12px] leading-relaxed text-mute">{text}</p>
-      {children && <div className="mt-4">{children}</div>}
-    </div>
-  );
-}
-
-/* ---------------- модальное окно ---------------- */
-
-export function Modal({
-  open, onClose, title, w = "max-w-lg", footer, children,
+export const Modal = ({
+  open,
+  onClose,
+  title,
+  children,
+  footer,
+  w = "max-w-lg",
 }: {
   open: boolean;
   onClose: () => void;
-  title: string;
-  w?: string;
-  footer?: ReactNode;
+  title: ReactNode;
   children: ReactNode;
-}) {
+  footer?: ReactNode;
+  w?: string;
+}) => {
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const h = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
   }, [open, onClose]);
 
   if (!open) return null;
-  return (
-    <div className="anim-backdrop fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-dark/60 p-4 backdrop-blur-sm lg:p-10" onMouseDown={onClose}>
-      <div
-        className={cx("anim-scale my-auto flex max-h-full w-full flex-col overflow-hidden rounded-xl border border-line bg-paper shadow-2xl", w)}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between gap-3 border-b border-line bg-card px-5 py-3.5">
-          <span className="font-display text-[13.5px] font-bold text-ink">{title}</span>
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 pt-[8vh]">
+      <div className="anim-backdrop fixed inset-0 bg-dark/55 backdrop-blur-[2px]" onClick={onClose} />
+      <div className={cx("anim-scale relative w-full rounded-xl border border-line bg-card shadow-2xl shadow-dark/30", w)}>
+        <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
+          <h3 className="font-display text-[13px] font-semibold tracking-tight text-ink">{title}</h3>
           <IconBtn title="Закрыть" onClick={onClose}>
-            <span className="text-[15px] leading-none font-bold">×</span>
+            <IcX size={15} />
           </IconBtn>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
-        {footer && <div className="flex justify-end gap-2 border-t border-line bg-card px-5 py-3.5">{footer}</div>}
+        <div className="px-5 py-4">{children}</div>
+        {footer && <div className="flex justify-end gap-2 border-t border-line px-5 py-3.5">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body
   );
-}
+};
 
+/* ------------------------------ Степпер количества ------------------------------ */
+
+export const Stepper = ({ value, onChange, step = 1 }: { value: number; onChange: (v: number) => void; step?: number }) => (
+  <div className="inline-flex items-center rounded-md border border-line bg-card">
+    <button
+      type="button"
+      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-l-md text-mute transition-colors hover:bg-line/60 hover:text-ink active:scale-90"
+      onClick={() => onChange(Math.max(step, value - step))}
+    >
+      <IcMinus size={13} />
+    </button>
+    <input
+      type="number"
+      className="h-7 w-14 border-x border-line bg-transparent text-center font-mono text-[12.5px] font-semibold outline-none"
+      value={value}
+      step={step}
+      onChange={(e) => onChange(Math.max(step, Number(e.target.value) || step))}
+    />
+    <button
+      type="button"
+      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-r-md text-mute transition-colors hover:bg-line/60 hover:text-ink active:scale-90"
+      onClick={() => onChange(value + step)}
+    >
+      <IcPlus size={13} />
+    </button>
+  </div>
+);
+
+/* ------------------------------ Пустое состояние ------------------------------ */
+
+export const EmptyState = ({ icon, title, text, children }: { icon: ReactNode; title: string; text: string; children?: ReactNode }) => (
+  <div className="anim-up flex flex-col items-center justify-center rounded-xl border border-dashed border-line2 bg-card/60 px-6 py-12 text-center">
+    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-dark text-accent">{icon}</div>
+    <h3 className="font-display text-[14px] font-semibold text-ink">{title}</h3>
+    <p className="mt-1 max-w-sm text-[13px] leading-relaxed text-mute">{text}</p>
+    {children && <div className="mt-4">{children}</div>}
+  </div>
+);
+
+/* ------------------------------ Тосты ------------------------------ */
+
+export const ToastHost = () => {
+  const toasts = useStore((s) => s.toasts);
+  const dismiss = useStore((s) => s.dismissToast);
+  useEffect(() => {
+    if (!toasts.length) return;
+    const timers = toasts.map((t) => setTimeout(() => dismiss(t.id), 3200));
+    return () => timers.forEach(clearTimeout);
+  }, [toasts, dismiss]);
+
+  return createPortal(
+    <div className="pointer-events-none fixed right-4 bottom-4 z-[70] flex w-80 flex-col gap-2">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className={cx(
+            "anim-toast pointer-events-auto flex items-center gap-2.5 rounded-lg border px-3.5 py-2.5 text-[13px] font-semibold shadow-lg",
+            t.kind === "ok" && "border-ok/30 bg-dark text-white",
+            t.kind === "err" && "border-heat/40 bg-heat text-white",
+            t.kind === "info" && "border-steel/40 bg-dark text-white"
+          )}
+        >
+          <span className={cx("shrink-0", t.kind === "ok" ? "text-ok" : t.kind === "err" ? "text-heat-soft" : "text-steel-soft")}>
+            {t.kind === "ok" ? <IcCheck size={15} /> : t.kind === "err" ? <IcAlert size={15} /> : <IcInfo size={15} />}
+          </span>
+          <span className="flex-1">{t.text}</span>
+          <button className="cursor-pointer opacity-50 transition-opacity hover:opacity-100" onClick={() => dismiss(t.id)}>
+            <IcX size={13} />
+          </button>
+        </div>
+      ))}
+    </div>,
+    document.body
+  );
+};
