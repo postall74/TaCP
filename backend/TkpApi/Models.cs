@@ -144,6 +144,37 @@ public class Project
     public List<ProjectVersion> Versions { get; set; } = new();
 }
 
+/// <summary>Пустой или преднаполненный шкаф с заказным шифром (cabinet_templates,
+/// дорожная карта Б.1). Kit — комплект поставки (jsonb: узлы — рама, панели,
+/// траверсы… — сводятся в одну позицию ТКП со сборным описанием),
+/// FillItems — преднаполнение оборудованием (jsonb, отдельные строки ТКП),
+/// AssemblyHours — часы сборки в цене изделия.
+/// Kit/FillItems — JsonElement, как ProjectVersion.Snapshot: LineItem уже
+/// сущность со своей таблицей, поэтому вложенные массивы храним jsonb.</summary>
+public class CabinetTemplate
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    /// <summary>Заказной шифр, напр. «ШН-2000.800.600-IP54». Уникален.</summary>
+    public string OrderCode { get; set; } = "";
+    public string Name { get; set; } = "";
+    public Direction Direction { get; set; } = Direction.Nku;
+    public string Brand { get; set; } = "";
+    /// <summary>"floor" | "wall".</summary>
+    public string Mount { get; set; } = "floor";
+    public int H { get; set; } = 2000;
+    public int W { get; set; } = 800;
+    public int D { get; set; } = 600;
+    public int Ip { get; set; } = 54;
+    /// <summary>Комплект поставки: TemplateComponent[] (фронтенд, src/types.ts).</summary>
+    public JsonElement? Kit { get; set; }
+    /// <summary>Преднаполнение: LineItem[] (фронтенд, src/types.ts).</summary>
+    public JsonElement? FillItems { get; set; }
+    public decimal AssemblyHours { get; set; }
+    public string Notes { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
 /// <summary>Снимок версии ТКП (project_versions, snapshot — jsonb).</summary>
 public class ProjectVersion
 {
