@@ -1,25 +1,13 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { ApiError, restApi, toCompany, getToken, setToken, type AuthUser, type ProfilePatch, type RestApi } from "./api/client";
+import type { AuthUser, CabinetTemplate, Equipment, Toast } from "./types";
 import { CATALOG } from "./data/catalog";
-import { buildTemplateCabinets } from "./data/templates";
-import type {
-  Cabinet, DeletedEquipment, Direction, Equipment, LineItem, Project, ProjectStatus, ProjectVersion, Rates, Settings,
-} from "./types";
-import { calcProject, genId } from "./utils";
-import { can, denyReason, type Role } from "./utils/roles";
-import {
-  ensureLocalAdmin, localListUsers, localLogin, localLogout, localMe, localRegister, localSetUserRole,
-  localUpdateProfile,
-} from "./utils/localAuth";
+import { genId } from "./utils";
 
 /* ============================================================
-   ХРАНИЛИЩЕ. Двухрежимное:
-   • локальный (apiBaseUrl пуст) — всё в localStorage (persist);
-   • серверный — каждая мутация оптимистично применяется локально
-     и с дебаунсом уходит в C#-бэкенд (PUT /api/projects/{id} и др.),
-     при старте состояние гидрируется с сервера (hydrateFromApi).
-   UI-компоненты разницы не видят — контракты действий те же.
+   ХРАНИЛИЩЕ ПРИЛОЖЕНИЯ (zustand + persist в localStorage).
+   Шаблоны шкафов — главная сущность Б.1: сохраняются локально и
+   переживают перезагрузку; в полной версии синхронизируются с БД.
    ============================================================ */
 
 export type ToastKind = "ok" | "err" | "info";
@@ -109,144 +97,27 @@ const normalizeProject = (p: Project): Project => ({
 });
 
 interface StoreState {
-  projects: Project[];
+  templates: CabinetTemplate[];
   catalog: Equipment[];
-  /** «Корзина» справочника (удалённые позиции, хранятся 90 дней) — для пометок в ТКП. */
-  deletedCatalog: DeletedEquipment[];
-  /** Офлайн-очередь мутаций, отправляется при восстановлении связи. */
-  outbox: OutboxOp[];
-  /** true, пока идёт ручная проверка связи (индикатор «Проверка…»). */
-  apiChecking: boolean;
-  settings: Settings;
-  toasts: Toast[];
-  remoteLoading: boolean;
-  /** Текущий пользователь (null — не авторизован / локальный режим). */
+  /** null — локальный режим (права администратора). */
   user: AuthUser | null;
+  toasts: Toast[];
 
-  toast: (text: string, kind?: ToastKind) => void;
+  upsertTemplate: (t: CabinetTemplate) => void;
+  deleteTemplate: (id: string) => boolean;
+  toast: (msg: string, kind?: Toast["kind"]) => void;
   dismissToast: (id: string) => void;
-  updateSettings: (patch: Partial<Settings>) => void;
-
-  pingApi: (url?: string) => Promise<boolean>;
-  /** Тихая проверка связи (heartbeat и клик по индикатору): обновляет apiOnline. */
-  checkApi: () => Promise<boolean>;
-  /** Автодетекция same-origin: при пустом apiBaseUrl проверяет /api/health на
-      текущем origin и сам включает онлайн-режим (запуск в локальной сети). */
-  autoDetectApi: () => Promise<void>;
-  /** Отправить накопленные офлайн-мутации (проекты, справочник) на сервер. */
-  flushOutbox: () => Promise<void>;
-  hydrateFromApi: () => Promise<void>;
-
-  /** Правка своего профиля (ФИО, должность, телефон) — доступно всем ролям. */
-  updateProfile: (patch: { fullName?: string; position?: string; phone?: string }) => Promise<void>;
-
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, fullName: string, role: string) => Promise<void>;
-  logout: () => void;
-  /** При старте: восстановить профиль (сервер — /api/auth/me, локально — сессия в localStorage). */
-  initAuth: () => Promise<void>;
-  /** Список пользователей: сервер (admin) или локальное хранилище. */
-  listUsers: () => Promise<AuthUser[]>;
-  /** Смена роли пользователя (сервер: PUT /api/auth/users/{id}/role, локально: сразу). */
-  setUserRole: (id: string, role: string) => Promise<void>;
-
-  createProject: (a: {
-    title: string; client: string; contact: string; direction: Direction;
-    templateKey: string | null; markup: number; validDays: number;
-  }) => string;
-  updateProject: (id: string, patch: Partial<Project>) => void;
-  /** false — отказано по правам (тост уже показан). */
-  deleteProject: (id: string) => boolean;
-  duplicateProject: (id: string) => string;
-  /** false — отказано по правам (тост уже показан). */
-  setStatus: (id: string, status: ProjectStatus) => boolean;
-
-  addCabinet: (pid: string, kind: string, name: string) => string;
-  addCabinetsBulk: (pid: string, cabs: Cabinet[]) => void;
-  updateCabinet: (pid: string, cid: string, patch: Partial<Cabinet>) => void;
-  removeCabinet: (pid: string, cid: string) => void;
-
-  addEquipment: (pid: string, cid: string, eq: Equipment, qty?: number) => "added" | "incremented";
-  updateItem: (pid: string, cid: string, iid: string, patch: Partial<LineItem>) => void;
-  removeItem: (pid: string, cid: string, iid: string) => void;
-
-  saveVersion: (pid: string, label: string) => void;
-  restoreVersion: (pid: string, vid: string) => void;
-  deleteVersion: (pid: string, vid: string) => void;
-
-  upsertEquipment: (e: Equipment) => void;
-  deleteEquipment: (id: string) => void;
-  importEquipment: (items: Omit<Equipment, "id">[], csv?: string) => number;
 }
 
 export const useStore = create<StoreState>()(
   persist(
-    (set, get) => {
-      /* ---------- серверная синхронизация ---------- */
+    (set, get) => ({
+      templates: [],
+      catalog: CATALOG,
+      user: null,
+      toasts: [],
 
-      const api = (): RestApi | null => {
-        // защита от старых сохранённых настроек без apiBaseUrl
-        const base = (get().settings.apiBaseUrl ?? "").trim();
-        return base ? restApi(base) : null;
-      };
-
-      let lastErrTs = 0;
-      let failStreak = 0;
-      /** Ошибка синхронизации. ВАЖНО различать два класса:
-          • ApiError (любой HTTP-ответ, даже 4xx) — сервер ДОСТУПЕН, он ответил:
-            показываем причину и НЕ роняем индикатор «онлайн» (иначе отказ прав
-            или валидации выглядел бы как обрыв связи);
-          • сетевой сбой (fetch не выполнился) — офлайн, но только после двух
-            подряд, чтобы одиночный «чих» сети не переключал индикатор. */
-      const syncFail = (err?: unknown) => {
-        if (err instanceof ApiError) {
-          if (Date.now() - lastErrTs > 6000) {
-            lastErrTs = Date.now();
-            get().toast(err.message || `Сервер ответил ошибкой ${err.status}`, "err");
-          }
-          return;
-        }
-        failStreak += 1;
-        if (failStreak >= 2) {
-          set((s) => ({ settings: { ...s.settings, apiOnline: false } }));
-          if (Date.now() - lastErrTs > 6000) {
-            lastErrTs = Date.now();
-            get().toast("Бэкенд недоступен — изменения сохранены локально", "err");
-          }
-        }
-      };
-      const syncOk = () => {
-        failStreak = 0;
-        set((s) => (s.settings.apiOnline === true ? s : { settings: { ...s.settings, apiOnline: true } }));
-      };
-
-      /* Heartbeat: раз в 45 с тихо проверяем /api/health и возвращаем индикатор
-         «онлайн», как только сервер снова отвечает. Закрывает сценарий «связь
-         восстановилась, а режим так и остался офлайновым до разлогина». */
-      if (typeof window !== "undefined") {
-        window.setInterval(() => {
-          const base = (get().settings.apiBaseUrl ?? "").trim();
-          if (!base) return;
-          if (get().settings.apiOnline === true) {
-            // онлайн: если в очереди что-то осталось (например, flush прервался) — доотправляем
-            if (get().outbox.length > 0) void get().flushOutbox();
-            return;
-          }
-          void get().checkApi(); // при успехе сам снимет очередь
-        }, 45_000);
-      }
-
-      /* ---------- офлайн-очередь (outbox) ----------
-         Каждая мутация, не сумевшая дойти до сервера из-за обрыва связи,
-         кладётся в очередь (persist → localStorage). При восстановлении связи
-         (heartbeat / ручной клик по индикатору / успешный ping) очередь
-         отправляется в порядке поступления. HTTP-ошибки (4xx/5xx) означают,
-         что сервер ДОСТУПЕН — такую операцию снимаем (иначе зациклимся). */
-      const opKey = (o: OutboxOp) =>
-        o.kind === "project.upsert" || o.kind === "project.delete"
-          ? `${o.kind}:${o.id}`
-          : `${o.kind}:${o.eqId}`;
-      const enqueue = (op: OutboxOp) =>
+      upsertTemplate: (t) =>
         set((s) => {
           const rest = s.outbox.filter((x) => opKey(x) !== opKey(op));
           return { outbox: [...rest, op] };
@@ -769,87 +640,18 @@ export const useStore = create<StoreState>()(
           }
         },
 
-        /* Удаление позиции — только менеджер/админ (инженер лишь пополняет справочник). */
-        deleteEquipment: (id) => {
-          if (!can(get().user, "catalog.delete")) {
-            get().toast(denyReason(get().user, "catalog.delete"), "err");
-            return;
-          }
-          set((s) => ({ catalog: s.catalog.filter((e) => e.id !== id) }));
-          const a = api();
-          if (a) {
-            const op: OutboxOp = { kind: "equipment.delete", eqId: id, ts: Date.now() };
-            enqueue(op);
-            a.deleteEquipment(id)
-              .then(() => { dequeue(op); syncOk(); })
-              .catch((e) => { if (e instanceof ApiError) { dequeue(op); syncFail(e); } else syncFail(e); });
-          }
-        },
-
-        /* Импорт прайсов — массовая перезапись цен: только менеджер/админ. */
-        importEquipment: (items, csv) => {
-          if (!can(get().user, "catalog.import")) {
-            get().toast(denyReason(get().user, "catalog.import"), "err");
-            return 0;
-          }
-          let added = 0;
-          set((s) => {
-            const bySku = new Map(s.catalog.map((e) => [e.sku.toLowerCase(), e] as const));
-            const next = [...s.catalog];
-            for (const it of items) {
-              const ex = bySku.get(it.sku.toLowerCase());
-              if (ex) {
-                const merged = { ...ex, ...it, id: ex.id };
-                bySku.set(it.sku.toLowerCase(), merged);
-                const i = next.findIndex((e) => e.id === ex.id);
-                if (i >= 0) next[i] = merged;
-              } else {
-                const ne: Equipment = { ...it, id: genId("eq") };
-                next.push(ne);
-                bySku.set(it.sku.toLowerCase(), ne);
-                added++;
-              }
-            }
-            return { catalog: next };
-          });
-          // сервер сам разбирает CSV: дубликаты по артикулу обновит, новое добавит
-          if (csv) api()?.importCsv(csv).then(syncOk).catch(syncFail);
-          return added;
-        },
-      };
-    },
-    {
-      name: "tkp-pro-v2",
-      // v3: у settings появились apiBaseUrl/apiOnline. Старые сохранённые настройки
-      // (без этих полей) приводили к краху при рендере — миграция дополняет их.
-      version: 3,
-      // не сохраняем «летучие» поля: тосты, индикатор загрузки, статус соединения,
-      // apiChecking. outbox ОБЯЗАТЕЛЬНО сохраняем — иначе офлайн-мутации, сделанные
-      // перед перезагрузкой страницы, потеряются и не дойдут до сервера.
-      partialize: (s) =>
-        ({
-          projects: s.projects,
-          catalog: s.catalog,
-          outbox: s.outbox,
-          deletedCatalog: s.deletedCatalog,
-          settings: { ...s.settings, apiOnline: null },
-        }) as StoreState,
-      // Миграция со старой структуры: дополняем проекты/настройки новыми полями.
-      migrate: (persisted: unknown, version: number) => {
-        const st = persisted as Partial<StoreState>;
-        if (version < 3 && st) {
-          st.projects = (st.projects ?? []).map(normalizeProject) as Project[];
-          const old = (st.settings ?? {}) as Partial<Settings>;
-          st.settings = {
-            ...DEFAULT_SETTINGS,
-            ...old,
-            rates: { ...DEFAULT_RATES, ...(old.rates ?? {}) },
-            apiBaseUrl: typeof old.apiBaseUrl === "string" ? old.apiBaseUrl : "",
-            apiOnline: null,
-          };
-        }
-        return st as StoreState;
+      toast: (msg, kind = "ok") => {
+        const id = genId("t");
+        set((s) => ({ toasts: [...s.toasts, { id, msg, kind }] }));
+        setTimeout(() => get().dismissToast(id), 4200);
       },
-    }
-  )
+
+      dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+    }),
+    {
+      name: "shkaf-pro-v1",
+      /* тосты не сохраняем */
+      partialize: (s) => ({ templates: s.templates, catalog: s.catalog, user: s.user }) as StoreState,
+    },
+  ),
 );

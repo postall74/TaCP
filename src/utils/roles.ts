@@ -1,35 +1,19 @@
-import type { AuthUser } from "../api/client";
+import type { AuthUser, Role } from "../types";
 
 /* ============================================================
-   МАТРИЦА ПРАВ: роль → разрешённые действия.
-   Единый источник правды для UI (кнопки гаснут) и store.ts
-   (мутации блокируются с тостом). Зеркало на сервере —
-   backend/TkpApi/Rights.cs (те же действия, приоритет ролей и
-   тексты отказов; отказ — 403 + причина) поверх политик
-   AdminOnly/Staff из AuthExtensions.cs.
-
-   Инженер  — собирает и считает ТКП, ведёт справочник;
-   Менеджер — воронка: отправляет, выигрывает/проигрывает, удаляет;
-   Админ    — всё + пользователи, тарифы, реквизиты.
-   Локальный режим (user=null) — права администратора (однопользовательская разработка).
+   МАТРИЦА ПРАВ (зеркало серверной Rules в полной версии ТКП·Про).
+   user = null (локальный режим) — права администратора.
    ============================================================ */
 
-export type Role = "admin" | "manager" | "engineer";
-
 export type Perm =
-  | "project.create"   // создавать ТКП
-  | "project.edit"     // менять структуру, состав, параметры
-  | "project.delete"   // удалять ТКП (в т.ч. архивные)
-  | "project.duplicate"// дублировать
-  | "status.workflow"  // черновик → на расчёте → отправлено
-  | "status.decide"    // отправлено → выиграно/проиграно (и обратно)
-  | "catalog.add"      // добавление позиций в справочник (все сотрудники)
-  | "catalog.edit"     // правка позиций справочника (все сотрудники)
-  | "catalog.delete"   // удаление позиций — менеджер/админ
-  | "catalog.import"   // импорт прайсов CSV — менеджер/админ
-  | "rates.edit"       // тарифы нормо-часов
-  | "settings.edit"    // реквизиты компании — менеджер/админ
-  | "users.manage";    // страница пользователей
+  | "catalog.add" | "catalog.edit" | "catalog.delete"
+  | "template.edit" | "template.delete";
+
+const ADMIN: Perm[] = ["catalog.add", "catalog.edit", "catalog.delete", "template.edit", "template.delete"];
+const MANAGER: Perm[] = ["catalog.add", "catalog.edit", "catalog.delete", "template.edit", "template.delete"];
+const ENGINEER: Perm[] = ["catalog.add", "catalog.edit", "template.edit"];
+
+const MATRIX: Record<Role, Perm[]> = { admin: ADMIN, manager: MANAGER, engineer: ENGINEER };
 
 export const ROLE_LABEL: Record<Role, string> = {
   admin: "Администратор",
@@ -37,63 +21,24 @@ export const ROLE_LABEL: Record<Role, string> = {
   engineer: "Инженер",
 };
 
-const ADMIN: Perm[] = [
-  "project.create", "project.edit", "project.delete", "project.duplicate",
-  "status.workflow", "status.decide",
-  "catalog.add", "catalog.edit", "catalog.delete", "catalog.import",
-  "rates.edit", "settings.edit", "users.manage",
-];
-const MANAGER: Perm[] = [
-  "project.create", "project.edit", "project.delete", "project.duplicate",
-  "status.workflow", "status.decide",
-  "catalog.add", "catalog.edit", "catalog.delete", "catalog.import",
-  "settings.edit", // реквизиты компании — менеджер + админ
-];
-const ENGINEER: Perm[] = [
-  "project.create", "project.edit", "project.duplicate",
-  "status.workflow",
-  // справочник: инженер добавляет и правит, но НЕ удаляет и НЕ импортирует прайсы
-  "catalog.add", "catalog.edit",
-];
-
-const MATRIX: Record<Role, Perm[]> = { admin: ADMIN, manager: MANAGER, engineer: ENGINEER };
-
-/** Текущая роль: из профиля, иначе admin (локальный режим без сервера). */
-export const currentRole = (user: AuthUser | null): Role => {
-  if (!user) return "admin";
-  const r = user.roles?.map((x) => x.toLowerCase());
-  if (r?.includes("admin")) return "admin";
-  if (r?.includes("manager")) return "manager";
+export function currentRole(user: AuthUser | null): Role {
+  if (!user) return "admin"; // локальный режим
+  if (user.roles.includes("admin")) return "admin";
+  if (user.roles.includes("manager")) return "manager";
   return "engineer";
-};
+}
 
-export const can = (user: AuthUser | null, perm: Perm): boolean =>
-  MATRIX[currentRole(user)].includes(perm);
+export function can(user: AuthUser | null, perm: Perm): boolean {
+  return MATRIX[currentRole(user)].includes(perm);
+}
 
-/** Человекочитаемое объяснение отказа — для тостов и подсказок. */
-export const denyReason = (user: AuthUser | null, perm: Perm): string => {
+export function denyReason(user: AuthUser | null, perm: Perm): string {
   const role = ROLE_LABEL[currentRole(user)];
   switch (perm) {
-    case "project.delete":
-      return `Удаление ТКП доступно менеджеру и администратору (вы — ${role})`;
-    case "status.decide":
-      return `Решение «выиграно/проиграно» принимает менеджер или администратор (вы — ${role})`;
     case "catalog.delete":
-      return `Удалять позиции из общего справочника могут менеджер и администратор (вы — ${role})`;
-    case "catalog.import":
-      return `Импорт прайсов доступен менеджеру и администратору (вы — ${role})`;
-    case "settings.edit":
-      return `Реквизиты компании заполняют менеджер и администратор (вы — ${role})`;
-    case "rates.edit":
-    case "users.manage":
-      return `Раздел доступен только администратору (вы — ${role})`;
+    case "template.delete":
+      return `Удаление доступно менеджеру и администратору (вы — ${role})`;
     default:
       return `Недостаточно прав (вы — ${role})`;
   }
-};
-
-/** Может ли роль менять статус НА указанный (для подписей кнопок). */
-export const canMoveTo = (
-  user: AuthUser | null,
-  to: "calc" | "sent" | "won" | "lost" | "draft"
-): boolean => (to === "won" || to === "lost" ? can(user, "status.decide") : can(user, "status.workflow"));
+}
