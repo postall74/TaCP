@@ -20,10 +20,10 @@ import { IcBox, IcCopy, IcLayers, IcPencil, IcPlus, IcTrash, IcWand } from "./ic
    в стоимости изделия.
    ============================================================ */
 
-const MOUNTS = [
+const MOUNTS: { v: "floor" | "wall"; label: string; heights: number[]; widths: number[]; depths: number[] }[] = [
   { v: "floor", label: "Напольный", heights: [1800, 2000, 2200], widths: [600, 800, 1000, 1200], depths: [400, 600, 800] },
   { v: "wall", label: "Навесной", heights: [400, 600, 800, 1000], widths: [300, 400, 600, 800], depths: [150, 200, 250, 300] },
-] as const;
+];
 
 interface DraftTpl {
   id: string;

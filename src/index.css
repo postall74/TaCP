@@ -1,1 +1,100 @@
 @import "tailwindcss";
+
+/* ============================================================
+   ДИЗАЙН-СИСТЕМА «Шкаф·Про»: промышленная графика НКУ —
+   графит + сигнальный оранжевый, чертёжная сетка на фоне.
+   Шрифты: Unbounded (дисплей) + Golos Text (текст).
+   ============================================================ */
+
+@theme {
+  --font-sans: "Golos Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Unbounded", "Golos Text", sans-serif;
+
+  --color-ink: #141b24;
+  --color-ink2: #3d4a59;
+  --color-mute: #6f7b8b;
+  --color-line: #e3e7ec;
+  --color-line2: #c8d1da;
+  --color-paper: #f4f6f8;
+  --color-card: #ffffff;
+
+  /* сигнальный оранжевый (RAL 2009) */
+  --color-accent: #e8641b;
+  --color-accent-deep: #c14e0e;
+  --color-accent-soft: #fdeee2;
+
+  --color-steel: #33648f;
+  --color-steel-soft: #e8eef5;
+  --color-ok: #1f8a5b;
+  --color-ok-soft: #e5f3ec;
+  --color-warn: #a8770e;
+  --color-warn-soft: #f7edd8;
+  --color-heat: #ce4432;
+  --color-heat-soft: #f9e7e4;
+
+  --color-dark: #141b24;
+  --color-dark2: #1d2734;
+  --color-darkline: #2c3947;
+  --color-darkmute: #8b98a9;
+}
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: #e8641b33; }
+
+/* ---------------- чертёжные сетки ---------------- */
+
+.blueprint {
+  background-color: var(--color-paper);
+  background-image:
+    linear-gradient(to right, #141b2408 1px, transparent 1px),
+    linear-gradient(to bottom, #141b2408 1px, transparent 1px),
+    linear-gradient(to right, #141b2405 1px, transparent 1px),
+    linear-gradient(to bottom, #141b2405 1px, transparent 1px);
+  background-size: 96px 96px, 96px 96px, 24px 24px, 24px 24px;
+}
+
+.blueprint-dark {
+  background-image:
+    linear-gradient(to right, #ffffff0a 1px, transparent 1px),
+    linear-gradient(to bottom, #ffffff0a 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* ---------------- анимации состояния ---------------- */
+
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes step-in { from { opacity: 0; transform: translateY(10px) scale(0.995); } to { opacity: 1; transform: none; } }
+@keyframes pop { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes toast-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+
+.anim-up { animation: rise 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-step { animation: step-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-scale { animation: pop 0.22s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-backdrop { animation: fade 0.18s ease both; }
+.toast-in { animation: toast-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* ---------------- мелкие детали ---------------- */
+
+/* стрелка для Select */
+.select-field {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%236f7b8b' stroke-width='1.6' stroke-linecap='round'/></svg>");
+  background-position: right 10px center;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: #c8d1da; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-thumb:hover { background: #8b98a9; border: 2px solid transparent; background-clip: content-box; }
