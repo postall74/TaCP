@@ -1,245 +1,100 @@
-@import url("https://fonts.googleapis.com/css2?family=Unbounded:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
-/* Тёмный режим включается классом .dark на <html> (см. store.ts / App.tsx). */
-@custom-variant dark (&:where(.dark, .dark *));
+/* ============================================================
+   ДИЗАЙН-СИСТЕМА «Шкаф·Про»: промышленная графика НКУ —
+   графит + сигнальный оранжевый, чертёжная сетка на фоне.
+   Шрифты: Unbounded (дисплей) + Golos Text (текст).
+   ============================================================ */
 
-/* Семантические токены: светлая тема по умолчанию, тёмная — переопределением
-   CSS-переменных. Утилиты (bg-paper, text-ink…) ссылаются на переменные через
-   @theme inline, поэтому переключаются вместе с классом .dark. */
-:root {
-  --paper: #eceef1;
-  --card: #ffffff;
-  --ink: #141b24;
-  --ink2: #3d4a59;
-  --mute: #6f7b8b;
-  --line: #d7dce3;
-  --line2: #c2cad4;
+@theme {
+  --font-sans: "Golos Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Unbounded", "Golos Text", sans-serif;
 
-  --accent: #f04d14;
-  --accent-deep: #c43d0c;
-  --accent-soft: #fce9e0;
+  --color-ink: #141b24;
+  --color-ink2: #3d4a59;
+  --color-mute: #6f7b8b;
+  --color-line: #e3e7ec;
+  --color-line2: #c8d1da;
+  --color-paper: #f4f6f8;
+  --color-card: #ffffff;
 
-  --steel: #2e5fa3;
-  --steel-soft: #e4ecf7;
-  --heat: #ce4432;
-  --heat-soft: #f9e6e1;
-  --ok: #1f8a5b;
-  --ok-soft: #e2f1e8;
-  --warn: #a8770e;
-  --warn-soft: #f7edd8;
+  /* сигнальный оранжевый (RAL 2009) */
+  --color-accent: #e8641b;
+  --color-accent-deep: #c14e0e;
+  --color-accent-soft: #fdeee2;
 
-  --dark: #10161e;
-  --dark2: #18202b;
-  --darkline: #27313f;
-  --darkmute: #8b98a9;
+  --color-steel: #33648f;
+  --color-steel-soft: #e8eef5;
+  --color-ok: #1f8a5b;
+  --color-ok-soft: #e5f3ec;
+  --color-warn: #a8770e;
+  --color-warn-soft: #f7edd8;
+  --color-heat: #ce4432;
+  --color-heat-soft: #f9e7e4;
 
-  --blueprint-line: rgba(20, 27, 36, 0.05);
+  --color-dark: #141b24;
+  --color-dark2: #1d2734;
+  --color-darkline: #2c3947;
+  --color-darkmute: #8b98a9;
 }
 
-.dark {
-  --paper: #0d1117;
-  --card: #161b22;
-  --ink: #e6edf3;
-  --ink2: #b1bac4;
-  --mute: #8b98a9;
-  --line: #2d333b;
-  --line2: #3d444d;
-
-  --accent: #ff5c24;
-  --accent-deep: #f04d14;
-  --accent-soft: rgba(240, 77, 20, 0.16);
-
-  --steel: #5b8fd6;
-  --steel-soft: rgba(46, 95, 163, 0.22);
-  --heat: #e0604d;
-  --heat-soft: rgba(206, 68, 50, 0.2);
-  --ok: #3fb380;
-  --ok-soft: rgba(31, 138, 91, 0.2);
-  --warn: #d19a2b;
-  --warn-soft: rgba(168, 119, 14, 0.2);
-
-  --dark: #10161e;
-  --dark2: #18202b;
-  --darkline: #27313f;
-  --darkmute: #8b98a9;
-
-  --blueprint-line: rgba(230, 237, 243, 0.045);
-}
-
-@theme inline {
-  --color-paper: var(--paper);
-  --color-card: var(--card);
-  --color-ink: var(--ink);
-  --color-ink2: var(--ink2);
-  --color-mute: var(--mute);
-  --color-line: var(--line);
-  --color-line2: var(--line2);
-
-  --color-accent: var(--accent);
-  --color-accent-deep: var(--accent-deep);
-  --color-accent-soft: var(--accent-soft);
-
-  --color-steel: var(--steel);
-  --color-steel-soft: var(--steel-soft);
-  --color-heat: var(--heat);
-  --color-heat-soft: var(--heat-soft);
-  --color-ok: var(--ok);
-  --color-ok-soft: var(--ok-soft);
-  --color-warn: var(--warn);
-  --color-warn-soft: var(--warn-soft);
-
-  --color-dark: var(--dark);
-  --color-dark2: var(--dark2);
-  --color-darkline: var(--darkline);
-  --color-darkmute: var(--darkmute);
-
-  --font-display: "Unbounded", "Manrope", sans-serif;
-  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
-}
-
-html,
-body {
-  height: 100%;
-}
+html, body, #root { height: 100%; }
 
 body {
-  @apply bg-paper text-ink font-sans antialiased;
-  font-feature-settings: "ss01";
-  transition: background-color 0.25s ease, color 0.25s ease;
-}
-
-::selection {
-  background: #f04d14;
-  color: #fff;
-}
-
-/* ---- тонкие скроллбары ---- */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--line2) transparent;
-}
-*::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-*::-webkit-scrollbar-thumb {
-  background: var(--line2);
-  border-radius: 8px;
-}
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-input[type="number"]::-webkit-outer-spin-button,
-input[type="number"]::-webkit-inner-spin-button {
-  -webkit-appearance: none;
   margin: 0;
-}
-input[type="number"] {
-  -moz-appearance: textfield;
-  appearance: textfield;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* ---- чертёжная сетка фона ---- */
-.bg-blueprint {
-  background-image: linear-gradient(to right, var(--blueprint-line) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--blueprint-line) 1px, transparent 1px);
+::selection { background: #e8641b33; }
+
+/* ---------------- чертёжные сетки ---------------- */
+
+.blueprint {
+  background-color: var(--color-paper);
+  background-image:
+    linear-gradient(to right, #141b2408 1px, transparent 1px),
+    linear-gradient(to bottom, #141b2408 1px, transparent 1px),
+    linear-gradient(to right, #141b2405 1px, transparent 1px),
+    linear-gradient(to bottom, #141b2405 1px, transparent 1px);
+  background-size: 96px 96px, 96px 96px, 24px 24px, 24px 24px;
+}
+
+.blueprint-dark {
+  background-image:
+    linear-gradient(to right, #ffffff0a 1px, transparent 1px),
+    linear-gradient(to bottom, #ffffff0a 1px, transparent 1px);
   background-size: 28px 28px;
 }
 
-/* ---- анимации ---- */
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.anim-up { animation: fadeUp 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+/* ---------------- анимации состояния ---------------- */
 
-@keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.96) translateY(8px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
-}
-.anim-scale { animation: scaleIn 0.22s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes step-in { from { opacity: 0; transform: translateY(10px) scale(0.995); } to { opacity: 1; transform: none; } }
+@keyframes pop { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes toast-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
 
-@keyframes backdropIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-.anim-backdrop { animation: backdropIn 0.2s ease both; }
+.anim-up { animation: rise 0.28s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-step { animation: step-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-scale { animation: pop 0.22s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-backdrop { animation: fade 0.18s ease both; }
+.toast-in { animation: toast-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
-@keyframes rowFlash {
-  0% { background-color: var(--accent-soft); }
-  100% { background-color: transparent; }
-}
-.row-flash { animation: rowFlash 1.1s ease-out both; }
+/* ---------------- мелкие детали ---------------- */
 
-@keyframes toastIn {
-  from { opacity: 0; transform: translateX(24px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-.anim-toast { animation: toastIn 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
-
-@keyframes blinkDot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.25; }
-}
-.blink-dot { animation: blinkDot 1.6s ease-in-out infinite; }
-
-@keyframes tickPulse {
-  0% { transform: scale(1); }
-  40% { transform: scale(1.06); }
-  100% { transform: scale(1); }
-}
-.tick-pulse { animation: tickPulse 0.35s ease both; }
-
-/* ---- плавное раскрытие аккордеона ---- */
-.collapse-grid {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.32s cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-.collapse-grid.open { grid-template-rows: 1fr; }
-.collapse-grid > div {
-  overflow: hidden;
-  min-height: 0;
+/* стрелка для Select */
+.select-field {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%236f7b8b' stroke-width='1.6' stroke-linecap='round'/></svg>");
+  background-position: right 10px center;
 }
 
-/* ---- документ ТКП (всегда белый — это печатный лист) ---- */
-.doc-paper {
-  font-family: "Manrope", "PT Serif", Georgia, serif;
-  width: 210mm;
-  min-height: 296mm;
-  background: #fff;
-  color: #171717;
-  font-size: 12.5px;
-  line-height: 1.45;
-}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
-/* ---- печать ---- */
-@media print {
-  @page {
-    size: A4;
-    margin: 10mm 9mm;
-  }
-  * { overflow: visible !important; }
-  body { background: #fff !important; }
-  body * { visibility: hidden; }
-  #doc-print-area,
-  #doc-print-area * { visibility: visible; }
-  #doc-print-area {
-    position: absolute !important;
-    inset: 0 auto auto 0 !important;
-    width: 100% !important;
-    margin: 0 !important;
-    box-shadow: none !important;
-    border: none !important;
-  }
-  .doc-paper {
-    width: 100% !important;
-    min-height: 0 !important;
-    padding: 0 !important;
-    box-shadow: none !important;
-  }
-  .no-print { display: none !important; }
-}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: #c8d1da; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-thumb:hover { background: #8b98a9; border: 2px solid transparent; background-clip: content-box; }

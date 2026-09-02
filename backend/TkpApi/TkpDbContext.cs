@@ -21,6 +21,7 @@ public class TkpDbContext(DbContextOptions<TkpDbContext> options) : IdentityDbCo
     public DbSet<ProjectVersion> Versions => Set<ProjectVersion>();
     public DbSet<CompanySettingsRow> CompanySettings => Set<CompanySettingsRow>();
     public DbSet<DeletedEquipment> DeletedEquipment => Set<DeletedEquipment>();
+    public DbSet<CabinetTemplate> CabinetTemplates => Set<CabinetTemplate>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
