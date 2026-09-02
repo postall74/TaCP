@@ -37,6 +37,8 @@ export const plural = (n: number, one: string, few: string, many: string) => {
   return many;
 };
 
+export const roundHalf = (x: number): number => Math.round(x * 2) / 2;
+
 /* ------------------------- расчётное ядро ------------------------- */
 
 export interface CalcFields {
