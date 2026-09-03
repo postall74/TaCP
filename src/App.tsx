@@ -1,403 +1,254 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { DEFAULT_SETTINGS, useStore } from "./store";
-import type { Settings } from "./types";
-import CatalogPage from "./components/CatalogPage";
-import Dashboard from "./components/Dashboard";
-import Editor from "./components/Editor";
-import LoginGate from "./components/LoginGate";
-import RatesPage from "./components/RatesPage";
-import UsersPage from "./components/UsersPage";
-import { Field, Input, Modal, Textarea, ToastHost, cx } from "./components/ui";
-import {
-  IcBolt, IcBox, IcClock, IcFolder, IcGear, IcMoon, IcPanel, IcRefresh, IcSun, IcUser, IcWand, IcX,
-} from "./components/icons";
-import { can, currentRole, ROLE_LABEL } from "./utils/roles";
+import { useMemo, useState } from "react";
+import { Boxes, ChevronRight, Layers, ShieldCheck, Wand, Zap } from "lucide-react";
+import Wizard from "./components/Wizard";
+import { Badge, Btn, cx } from "./components/ui";
+import type { Cabinet, Project, Rates } from "./types";
+import { DIRECTIONS, STATUS_LABEL } from "./types";
+import { calcProject, fmtMoney, fmtNum, genId, plural } from "./utils";
 
 /* ============================================================
-   ОБОЛОЧКА: тёмный сайдбар с навигацией, переключатель темы,
-   реквизиты компании (уходят в шапку документов), подключение
-   к C#-бэкенду, JWT-вход. Тосты — глобальные.
+   ТКП·Про — рабочий прототип (итерация А.3 + А.6 дорожной карты):
+   УЗИП всех классов с автоматическим резервным автоматом и
+   единообразный шаг «Работы и ППО». Данные — демо-проект, расчёт
+   живой (calcProject), структура пополняется из мастера.
    ============================================================ */
 
-type Route = "board" | "editor" | "catalog" | "rates" | "users";
+const RATES: Rates = { design: 1800, production: 1800, software: 2200 };
 
-const NAV: { key: Route; label: string; hint: string; icon: (p: { size?: number }) => ReactNode; adminOnly?: boolean }[] = [
-  { key: "board", label: "Дашборд", hint: "проекты и статусы", icon: IcFolder },
-  { key: "editor", label: "Конструктор", hint: "структура ТКП", icon: IcPanel },
-  { key: "catalog", label: "Справочник", hint: "оборудование", icon: IcBox },
-  { key: "rates", label: "Тарифы", hint: "нормо-часы", icon: IcClock },
-  { key: "users", label: "Пользователи", hint: "роли и доступ", icon: IcUser, adminOnly: true },
-];
+const DEMO_PROJECT: Project = {
+  id: "prj-demo",
+  number: "ТКП-2026-014",
+  title: "Реконструкция ГРЩ цеха №3",
+  client: "ЗАО «Эталон-Прибор»",
+  contact: "Султанов С.А. · +7 (351) 267-47-10",
+  direction: "nku",
+  status: "calc",
+  createdAt: Date.now() - 86400000 * 6,
+  updatedAt: Date.now() - 3600000 * 5,
+  markup: 15,
+  workMarkup: 25,
+  discount: 0,
+  vatRate: 20,
+  showWorkLines: true,
+  validDays: 30,
+  notes: "",
+  versions: [],
+  cabinets: [
+    {
+      id: genId("cab"), kind: "ГРЩ", name: "ГРЩ — ввод и отходящие линии",
+      items: [
+        { id: genId("li"), eqId: "enc-800", sku: "CQE N 2000×800×600", name: "Шкаф напольный в сборе 2000×800×600, IP54", brand: "DKC", unit: "шт", qty: 1, purchase: 68500 },
+        { id: genId("li"), eqId: "brk-nsx100", sku: "NSX100F TM-D 100", name: "Автомат в литом корпусе 3P 100 А", brand: "Schneider Electric", unit: "шт", qty: 1, purchase: 18400 },
+        { id: genId("li"), eqId: "brk-c16", sku: "ВА47-29 C16", name: "Автоматический выключатель 1P C16", brand: "IEK", unit: "шт", qty: 8, purchase: 210 },
+        { id: genId("li"), eqId: "uzp-t2", sku: "VAL-MS 400", name: "УЗИП класс II (тип 2), 40 кА 8/20", brand: "Phoenix Contact", unit: "компл.", qty: 1, purchase: 6400 },
+        { id: genId("li"), eqId: "uzp-backup", sku: "CB-SPD 3P C63", name: "Автомат резервной защиты УЗИП 3P C63", brand: "DKC", unit: "шт", qty: 1, purchase: 1180 },
+      ],
+      hours: 12, designHours: 6, softwareHours: 0,
+    },
+  ],
+};
+
+interface Toast { id: number; msg: string; kind: "ok" | "err" }
 
 export default function App() {
-  const projects = useStore((s) => s.projects);
-  const settings = useStore((s) => s.settings);
-  const user = useStore((s) => s.user);
-  const logout = useStore((s) => s.logout);
-  const initAuth = useStore((s) => s.initAuth);
-  const autoDetectApi = useStore((s) => s.autoDetectApi);
-  const hydrateFromApi = useStore((s) => s.hydrateFromApi);
-  const createProject = useStore((s) => s.createProject);
-  const updateSettings = useStore((s) => s.updateSettings);
-  const checkApi = useStore((s) => s.checkApi);
-  const outboxCount = useStore((s) => s.outbox.length);
-  const toast = useStore((s) => s.toast);
+  const [project, setProject] = useState<Project>(DEMO_PROJECT);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const [route, setRoute] = useState<Route>("board");
-  const [editorId, setEditorId] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [checkingConn, setCheckingConn] = useState(false);
+  const calc = useMemo(() => calcProject(project, RATES), [project]);
+  const posCount = project.cabinets.reduce((s, c) => s + c.items.length, 0);
 
-  /* Клик по индикатору связи: явная проверка с визуальным откликом.
-     Между нажатием и ответом — «Проверка…», затем тост «ок» или «не удалось». */
-  const recheckConn = async () => {
-    if (!apiBase || checkingConn) return;
-    setCheckingConn(true);
-    toast("Проверяем связь с сервером…", "info");
-    const ok = await checkApi();
-    setCheckingConn(false);
-    toast(ok ? "Связь с сервером установлена" : `Сервер ${apiBase} не отвечает`, ok ? "ok" : "err");
+  const toast = (msg: string, kind: "ok" | "err" = "ok") => {
+    const id = Date.now() + Math.random();
+    setToasts((t) => [...t, { id, msg, kind }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4200);
   };
 
-  const apiBase = (settings.apiBaseUrl ?? "").trim();
-  const editorProject = projects.find((p) => p.id === editorId);
-  /* пользователи — только админ; редактор — только при открытом проекте */
-  const activeRoute: Route =
-    route === "editor" ? (editorProject ? "editor" : "board")
-    : route === "users" ? (can(user, "users.manage") ? "users" : "board")
-    : route;
-
-  /* тема: класс на <html> переключает все CSS-переменные токенов */
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", settings.theme === "dark");
-  }, [settings.theme]);
-
-  /* при старте: автодетекция same-origin (запуск в локальной сети) → затем
-     восстановление профиля (токен на сервере или сессия в localStorage) */
-  useEffect(() => {
-    void autoDetectApi().then(() => initAuth());
-  }, [autoDetectApi, initAuth]);
-
-  /* серверные данные подтягиваем только после входа:
-     проекты/каталог защищены политикой Staff и требуют Bearer-токен */
-  useEffect(() => {
-    if (apiBase && user) void hydrateFromApi();
-  }, [apiBase, user, hydrateFromApi]);
-
-  const openProject = (id: string) => {
-    setEditorId(id);
-    setRoute("editor");
+  const handleCreate = (cabs: Cabinet[], opts: { showWorkLines: boolean; transportPct: number }) => {
+    setProject((p) => ({
+      ...p,
+      cabinets: [...p.cabinets, ...cabs],
+      showWorkLines: opts.showWorkLines,
+      transportPct: opts.transportPct,
+      updatedAt: Date.now(),
+    }));
   };
-
-  const addDemo = () => {
-    const id = createProject({
-      title: "Щит АВР для насосной станции №3",
-      client: "ООО «Водоканал-Сервис»",
-      contact: "гл. энергетик Морозов К.П.",
-      direction: "nku",
-      templateKey: "nku-avr",
-      markup: 18,
-      validDays: 30,
-    });
-    openProject(id);
-    toast("Демо-проект создан по шаблону «Щит АВР»");
-  };
-
-  /* Экран входа показывается всегда, пока нет профиля:
-     в серверном режиме — ASP.NET Identity, в локальном — localStorage. */
-  if (!user) {
-    return (
-      <>
-        <LoginGate />
-        <ToastHost />
-      </>
-    );
-  }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-paper">
-      {/* ---------------- сайдбар ---------------- */}
-      <aside className="flex w-[220px] shrink-0 flex-col border-r border-darkline bg-dark">
-        <div className="flex items-center gap-2.5 px-5 pt-6 pb-5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-white shadow-lg shadow-accent/30">
-            <IcBolt size={19} />
-          </span>
-          <div>
-            <div className="font-display text-[15px] leading-none font-bold tracking-tight text-white">ТКП·Про</div>
-            <div className="mt-1 text-[8.5px] font-semibold tracking-[0.22em] text-darkmute uppercase">НКУ · АСУ · Обогрев</div>
+    <div className="bg-blueprint min-h-screen">
+      {/* ---------- шапка ---------- */}
+      <header className="sticky top-0 z-40 border-b border-darkline bg-dark/95 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-5">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-white shadow-md shadow-accent/30">
+              <Zap size={17} />
+            </span>
+            <div className="leading-tight">
+              <div className="font-display text-[14px] font-bold tracking-wide text-white">ТКП·Про</div>
+              <div className="text-[9px] font-semibold tracking-widest text-darkmute uppercase">прототип · итерация А.3 + А.6</div>
+            </div>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <Badge tone="accent"><ShieldCheck size={11} /> УЗИП: классы I–III + автомат</Badge>
+            <span className="hidden rounded-md bg-dark2 px-2.5 py-1 text-[11px] font-bold text-darkmute sm:block">
+              Султанов С.А. · админ
+            </span>
           </div>
         </div>
+      </header>
 
-        <nav className="mt-1 flex flex-col gap-1 px-3">
-          {NAV.filter((n) => !n.adminOnly || can(user, "users.manage")).map((n) => {
-            const Icon = n.icon;
-            const active = activeRoute === n.key;
-            const dim = n.key === "editor" && !editorProject;
-            return (
-              <button
-                key={n.key}
-                disabled={dim}
-                onClick={() => (n.key === "editor" && editorProject ? openProject(editorProject.id) : setRoute(n.key))}
-                className={cx(
-                  "group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-all duration-150",
-                  active ? "bg-accent text-white shadow-lg shadow-accent/25" : "text-darkmute hover:bg-dark2 hover:text-white",
-                  dim && "cursor-not-allowed opacity-40"
-                )}
-              >
-                <Icon size={17} />
-                <span className="flex-1">
-                  <span className="block text-[13px] leading-tight font-bold">{n.label}</span>
-                  <span className={cx("block text-[10px] leading-tight", active ? "text-white/70" : "text-darkmute")}>{n.hint}</span>
-                </span>
-                {n.key === "board" && projects.length > 0 && (
-                  <span className={cx("rounded-md px-1.5 py-0.5 font-mono text-[10.5px] font-bold", active ? "bg-white/20 text-white" : "bg-darkline text-darkmute")}>
-                    {projects.length}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* профиль (если авторизован) */}
-        {user && (
-          <div className="mx-3 mt-4 rounded-lg bg-dark2 px-3 py-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="truncate text-[12.5px] font-bold text-white">{user.fullName}</div>
-              <span className="shrink-0 rounded bg-darkline px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-darkmute uppercase">
-                {ROLE_LABEL[currentRole(user)]}
-              </span>
+      {/* ---------- рабочая область ---------- */}
+      <main className="mx-auto grid max-w-6xl gap-4 px-5 py-6 lg:grid-cols-[360px_1fr]">
+        {/* карточка проекта + экономика */}
+        <section className="anim-rise flex flex-col gap-4">
+          <div className="overflow-hidden rounded-xl border border-line bg-card shadow-sm">
+            <div className="border-b border-line bg-dark px-4 py-3.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="num font-mono text-[11px] font-bold tracking-wide text-darkmute">{project.number}</span>
+                <Badge tone="warn">{STATUS_LABEL[project.status]}</Badge>
+              </div>
+              <h1 className="mt-1 text-[15px] leading-snug font-bold text-white">{project.title}</h1>
+              <div className="mt-0.5 text-[11px] text-darkmute">{project.client}</div>
             </div>
-            <div className="truncate text-[10px] text-darkmute">{user.email}</div>
-            {user.phone && <div className="truncate text-[10px] text-darkmute">{user.phone}</div>}
-            <div className="mt-1.5 flex items-center gap-3">
-              <button
-                onClick={() => setProfileOpen(true)}
-                title="Изменить ФИО, должность, телефон"
-                className="flex cursor-pointer items-center gap-1 text-[10.5px] font-semibold text-steel transition-colors hover:text-white"
-              >
-                <IcGear size={11} /> Профиль
-              </button>
-              <button onClick={logout} className="flex cursor-pointer items-center gap-1 text-[10.5px] font-semibold text-heat transition-colors hover:text-white">
-                <IcX size={11} /> Выйти
-              </button>
+            <div className="flex flex-col gap-2 px-4 py-3.5">
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-mute">Направление</span>
+                <Badge tone="steel">{DIRECTIONS[project.direction].short}</Badge>
+              </div>
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-mute">Шкафов / позиций</span>
+                <span className="num font-mono font-bold text-ink">{project.cabinets.length} / {posCount}</span>
+              </div>
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-mute">Наценка / работы</span>
+                <span className="num font-mono font-bold text-ink">{fmtNum(project.markup)} % / +{fmtNum(project.workMarkup)} %</span>
+              </div>
+              <div className="mt-1 flex items-end justify-between border-t border-line pt-2.5">
+                <div>
+                  <div className="text-[9.5px] font-bold tracking-widest text-mute uppercase">Итог с НДС {fmtNum(project.vatRate)} %</div>
+                  <div key={calc.totalVat} className="num anim-pop font-mono text-[22px] leading-tight font-extrabold text-ink">
+                    {fmtMoney(calc.totalVat)}
+                  </div>
+                </div>
+                <div className="text-right text-[10.5px] leading-snug text-mute">
+                  оборудование {fmtMoney(calc.eqSell)}<br />работы {fmtMoney(calc.laborSell)}
+                </div>
+              </div>
+              <Btn className="mt-2 w-full" onClick={() => setWizardOpen(true)}>
+                <Wand size={15} /> Открыть мастер подбора
+              </Btn>
             </div>
           </div>
-        )}
 
-        <div className="mt-auto flex flex-col gap-1.5 border-t border-darkline px-3 py-4">
-          {/* режим работы: локально (localStorage) или C#-бэкенд.
-              В сетевом режиме — кликабельная кнопка повторной проверки связи. */}
-          {apiBase ? (
-            <button
-              type="button"
-              onClick={() => void recheckConn()}
-              disabled={checkingConn}
-              title={`${apiBase} — нажмите, чтобы проверить связь и отправить отложенные изменения`}
-              className={cx(
-                "mx-0.5 mb-1 flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 font-mono text-[10px] font-bold tracking-wide uppercase transition-all duration-150 active:scale-[0.98]",
-                checkingConn && "border-warn/50 text-warn",
-                !checkingConn && settings.apiOnline === true && "border-ok/40 text-ok hover:bg-ok/10",
-                !checkingConn && settings.apiOnline !== true && "border-heat/40 text-heat hover:bg-heat/10"
-              )}
-            >
-              {checkingConn ? (
-                <span className="shrink-0 animate-spin"><IcRefresh size={11} /></span>
-              ) : (
-                <span
-                  className={cx(
-                    "h-1.5 w-1.5 shrink-0 rounded-full",
-                    settings.apiOnline === true ? "blink-dot bg-ok" : "bg-heat"
-                  )}
-                />
-              )}
-              {checkingConn ? "Проверка…" : settings.apiOnline === true ? "C# API · онлайн" : "C# API · офлайн"}
-              {!checkingConn && outboxCount > 0 && (
-                <span className="ml-auto rounded bg-warn px-1 py-px font-mono text-[9px] font-bold text-dark" title={`Отложенных изменений: ${outboxCount}`}>
-                  {outboxCount}
-                </span>
-              )}
-            </button>
+          {/* ставки тарифов — источник для шага «Работы» */}
+          <div className="rounded-xl border border-line bg-card px-4 py-3.5 shadow-sm">
+            <div className="flex items-center gap-2 text-[11px] font-bold tracking-wide text-mute uppercase">
+              <Layers size={13} className="text-steel" /> Тарифы нормо-часов (А.6)
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {([["Сборка", RATES.production], ["Проект", RATES.design], ["ППО", RATES.software]] as const).map(([label, v]) => (
+                <div key={label} className="rounded-lg bg-paper px-2.5 py-2 text-center transition-transform duration-150 hover:-translate-y-0.5">
+                  <div className="text-[9.5px] font-bold tracking-wide text-mute uppercase">{label}</div>
+                  <div className="num font-mono text-[13px] font-bold text-ink">{fmtMoney(v)}/ч</div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-[10.5px] leading-snug text-mute">
+              Шаг «Работы и ППО» умножает нормо-часы на эти ставки и показывает стоимость в продаже с наценкой {fmtNum(project.workMarkup)} %.
+            </p>
+          </div>
+        </section>
+
+        {/* структура проекта */}
+        <section className="anim-rise rounded-xl border border-line bg-card shadow-sm" style={{ animationDelay: "80ms" }}>
+          <div className="flex items-center justify-between border-b border-line px-4 py-3">
+            <div className="flex items-center gap-2 text-[13px] font-bold text-ink">
+              <Boxes size={15} className="text-accent" /> Структура проекта
+            </div>
+            <span className="num font-mono text-[11px] font-bold text-mute">{posCount} {plural(posCount, "позиция", "позиции", "позиций")}</span>
+          </div>
+
+          {project.cabinets.length === 0 ? (
+            <div className="px-6 py-14 text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-paper text-mute"><Boxes size={22} /></div>
+              <div className="mt-3 text-[13px] font-bold text-ink2">Структура пуста</div>
+              <p className="mx-auto mt-1 max-w-xs text-[11.5px] leading-relaxed text-mute">Откройте мастер подбора — собранный шкаф появится здесь вместе с позициями и часами работ.</p>
+            </div>
           ) : (
-            <div
-              className="mx-0.5 mb-1 flex items-center gap-2 rounded-md border border-darkline px-2.5 py-1.5 font-mono text-[10px] font-bold tracking-wide text-darkmute uppercase"
-              title="Данные хранятся в браузере. URL бэкенда — в «Реквизитах компании»."
-            >
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-darkmute" />
-              Локальный режим
+            <div className="flex flex-col">
+              {project.cabinets.map((cab) => {
+                const c = calc.cabs.find((x) => x.cab.id === cab.id);
+                return (
+                  <article key={cab.id} className="border-b border-line/70 px-4 py-3 transition-colors last:border-b-0 hover:bg-paper/50">
+                    <header className="flex flex-wrap items-center gap-2">
+                      <span className="rounded bg-dark px-1.5 py-0.5 font-mono text-[9.5px] font-bold text-white">{cab.kind}</span>
+                      <h2 className="text-[13px] font-bold text-ink">{cab.name}</h2>
+                      <span className="ml-auto flex items-center gap-2">
+                        <Badge tone="steel">{cab.hours + cab.designHours + cab.softwareHours} ч работ</Badge>
+                        <span className="num font-mono text-[13px] font-bold text-ink">{fmtMoney(c?.total ?? 0)}</span>
+                      </span>
+                    </header>
+                    <ul className="mt-2 grid gap-x-6 gap-y-1 md:grid-cols-2">
+                      {cab.items.map((it) => (
+                        <li key={it.id} className="flex items-baseline justify-between gap-3 border-b border-dotted border-line/70 py-0.5 text-[11.5px]">
+                          <span className="truncate text-ink2">{it.name}</span>
+                          <span className={cx(
+                            "num font-mono font-bold whitespace-nowrap",
+                            it.eqId === "uzp-backup" ? "text-ok" : "text-ink",
+                          )}>
+                            {it.qty} {it.unit}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    {cab.items.some((i) => i.eqId === "uzp-backup") && (
+                      <p className="mt-1.5 flex items-center gap-1.5 text-[10.5px] font-semibold text-ok">
+                        <ShieldCheck size={12} /> Резервный автомат УЗИП заложен автоматически
+                      </p>
+                    )}
+                  </article>
+                );
+              })}
             </div>
           )}
-          <button onClick={addDemo} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-[12px] font-semibold text-darkmute transition-colors hover:bg-dark2 hover:text-white">
-            <IcWand size={15} /> Демо-проект
-          </button>
-          <button
-            onClick={() => {
-              updateSettings({ theme: settings.theme === "dark" ? "light" : "dark" });
-              toast(settings.theme === "dark" ? "Светлая тема включена" : "Тёмная тема включена", "info");
-            }}
-            className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-[12px] font-semibold text-darkmute transition-colors hover:bg-dark2 hover:text-white"
-          >
-            {settings.theme === "dark" ? <IcSun size={15} /> : <IcMoon size={15} />}
-            {settings.theme === "dark" ? "Светлая тема" : "Тёмная тема"}
-            <span className="ml-auto flex h-4 w-7 items-center rounded-full p-0.5 transition-colors" style={{ background: settings.theme === "dark" ? "#f04d14" : "#27313f" }}>
-              <span className={cx("h-3 w-3 rounded-full bg-white transition-transform duration-200", settings.theme === "dark" && "translate-x-3")} />
-            </span>
-          </button>
-          <button onClick={() => setSettingsOpen(true)} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-[12px] font-semibold text-darkmute transition-colors hover:bg-dark2 hover:text-white">
-            <IcGear size={15} /> Реквизиты компании
-          </button>
-        </div>
-      </aside>
 
-      {/* ---------------- контент ---------------- */}
-      <main className="min-w-0 flex-1 bg-blueprint">
-        <div className="h-full overflow-y-auto">
-          <div className="mx-auto max-w-[1460px] px-6 py-6 lg:px-8">
-            {activeRoute === "board" && <Dashboard onOpen={openProject} />}
-            {activeRoute === "editor" && editorProject && (
-              <Editor
-                key={editorProject.id}
-                id={editorProject.id}
-                onBack={() => {
-                  setEditorId(null);
-                  setRoute("board");
-                }}
-              />
-            )}
-            {activeRoute === "catalog" && <CatalogPage />}
-            {activeRoute === "rates" && <RatesPage />}
-            {activeRoute === "users" && <UsersPage />}
-          </div>
-        </div>
+          {project.cabinets.length > 0 && (
+            <button
+              onClick={() => setWizardOpen(true)}
+              className="group flex w-full cursor-pointer items-center justify-center gap-2 border-t border-line px-4 py-3 text-[12px] font-bold text-steel transition-colors hover:bg-steel-soft"
+            >
+              Добавить ещё шкаф мастером <ChevronRight size={14} className="transition-transform group-hover:translate-x-0.5" />
+            </button>
+          )}
+        </section>
       </main>
 
-      <SettingsModal
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        initial={settings}
-        onSave={(s) => {
-          updateSettings(s);
-          toast("Реквизиты сохранены — шапка документов обновлена");
-          setSettingsOpen(false);
-        }}
-        onReset={() => {
-          updateSettings(DEFAULT_SETTINGS);
-          toast("Реквизиты сброшены к значениям по умолчанию", "info");
-        }}
-      />
-      <ToastHost />
-    </div>
-  );
-}
+      <footer className="mx-auto max-w-6xl px-5 pb-8">
+        <p className="text-center text-[10.5px] text-mute">
+          Прототип шагов А.3 «УЗИП» и А.6 «Работы и ППО» · ветка <span className="font-mono font-bold">feature/wizard-uzip-work</span> · полный мастер — в основной ветке проекта
+        </p>
+      </footer>
 
-/* ---------------- реквизиты компании + подключение к API ---------------- */
+      {wizardOpen && (
+        <Wizard
+          project={project}
+          rates={RATES}
+          onClose={() => setWizardOpen(false)}
+          onCreate={handleCreate}
+          onToast={toast}
+        />
+      )}
 
-function SettingsModal({
-  open, onClose, initial, onSave, onReset,
-}: {
-  open: boolean;
-  onClose: () => void;
-  initial: Settings;
-  onSave: (s: Settings) => void;
-  onReset: () => void;
-}) {
-  const [f, setF] = useState<Settings>(initial);
-  useEffect(() => setF(initial), [open, initial]);
-  const set = (patch: Partial<Settings>) => setF((s) => ({ ...s, ...patch }));
-
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Реквизиты компании"
-      w="max-w-2xl"
-      footer={
-        <>
-          <button onClick={onReset} className="mr-auto flex cursor-pointer items-center gap-1.5 text-[12px] font-semibold text-mute transition-colors hover:text-ink">
-            <IcRefresh size={13} /> Сбросить
-          </button>
-          <button onClick={onClose} className="cursor-pointer rounded-md border border-line px-3.5 py-2 text-[13px] font-bold text-ink2 transition-colors hover:bg-paper">
-            Отмена
-          </button>
-          <button onClick={() => onSave(f)} className="cursor-pointer rounded-md bg-accent px-4 py-2 text-[13px] font-bold text-white transition-all hover:bg-accent-deep active:scale-95">
-            Сохранить
-          </button>
-        </>
-      }
-    >
-      <p className="mb-3 text-[12px] leading-relaxed text-mute">
-        Эти данные попадают в шапку и подпись каждого документа ТКП (PDF/Word). Ставки нормо-часов — на странице{" "}
-        <b className="text-ink2">«Тарифы»</b>.
-      </p>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Название компании">
-          <Input value={f.companyName} onChange={(v) => set({ companyName: v })} />
-        </Field>
-        <Field label="Слоган / профиль">
-          <Input value={f.tagline} onChange={(v) => set({ tagline: v })} />
-        </Field>
-        <Field label="Телефон">
-          <Input value={f.phone} onChange={(v) => set({ phone: v })} />
-        </Field>
-        <Field label="E-mail">
-          <Input value={f.email} onChange={(v) => set({ email: v })} />
-        </Field>
-        <Field label="Адрес" className="col-span-2">
-          <Input value={f.address} onChange={(v) => set({ address: v })} />
-        </Field>
-        <Field label="Банковские реквизиты (ИНН, счёт…)" className="col-span-2">
-          <Textarea rows={2} value={f.requisites} onChange={(v) => set({ requisites: v })} />
-        </Field>
-        <Field label="Менеджер (подписант)">
-          <Input value={f.manager} onChange={(v) => set({ manager: v })} />
-        </Field>
-        <Field label="Исполнитель (инженер)">
-          <Input value={f.executor} onChange={(v) => set({ executor: v })} />
-        </Field>
-      </div>
-
-      <ApiBlock f={f} set={set} />
-    </Modal>
-  );
-}
-
-function ApiBlock({ f, set }: { f: Settings; set: (p: Partial<Settings>) => void }) {
-  const pingApi = useStore((s) => s.pingApi);
-  const [busy, setBusy] = useState(false);
-
-  return (
-    <div className="mt-4 rounded-lg border border-line bg-paper/60 p-3.5">
-      <div className="flex items-center justify-between">
-        <span className="text-[10.5px] font-bold tracking-[0.14em] text-mute uppercase">Подключение к C#-бэкенду</span>
-        <span
-          className={cx(
-            "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold",
-            f.apiOnline ? "bg-ok-soft text-ok" : f.apiOnline === false ? "bg-heat-soft text-heat" : "bg-line/70 text-mute"
-          )}
-        >
-          <span className={cx("h-1.5 w-1.5 rounded-full", f.apiOnline ? "blink-dot bg-ok" : f.apiOnline === false ? "bg-heat" : "bg-mute")} />
-          {f.apiOnline ? "онлайн" : f.apiOnline === false ? "офлайн" : "не проверялось"}
-        </span>
-      </div>
-      <p className="mt-1.5 text-[11.5px] leading-relaxed text-mute">
-        Сервер: <span className="font-mono text-[10.5px]">backend/TkpApi</span> (ASP.NET Core + PostgreSQL). Пустой URL —
-        локальный режим, данные в браузере.
-      </p>
-      <div className="mt-2 flex gap-2">
-        <Input value={f.apiBaseUrl ?? ""} onChange={(v) => set({ apiBaseUrl: v })} placeholder="http://localhost:5085" className="font-mono text-[12px]" />
-        <button
-          type="button"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            await pingApi(f.apiBaseUrl);
-            setBusy(false);
-          }}
-          className="shrink-0 cursor-pointer rounded-md border border-line bg-card px-3 text-[12.5px] font-bold text-ink2 transition-all hover:border-accent hover:text-accent-deep active:scale-95 disabled:opacity-50"
-        >
-          {busy ? "Проверка…" : "Проверить"}
-        </button>
+      {/* тосты */}
+      <div className="pointer-events-none fixed right-4 bottom-4 z-[60] flex w-80 flex-col gap-2">
+        {toasts.map((t) => (
+          <div key={t.id} className={cx(
+            "anim-rise pointer-events-auto rounded-lg border px-3.5 py-2.5 text-[12px] font-bold shadow-lg",
+            t.kind === "ok" ? "border-ok/30 bg-ok-soft text-ok" : "border-heat/30 bg-heat-soft text-heat",
+          )}>
+            {t.msg}
+          </div>
+        ))}
       </div>
     </div>
   );
