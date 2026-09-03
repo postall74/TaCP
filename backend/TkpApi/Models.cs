@@ -1,0 +1,244 @@
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
+using Microsoft.AspNetCore.Identity;
+
+namespace TkpApi;
+
+/* ============================================================
+   ДОМЕННАЯ МОДЕЛЬ (зеркало src/types.ts фронтенда).
+   EF Core мапит эти классы в таблицы PostgreSQL (TkpDbContext).
+   Идентификаторы — строки: фронтенд генерирует их сам,
+   поэтому контракты JSON совпадают без преобразований.
+   ============================================================ */
+
+public enum Direction { Nku, Asu, Heat, Uni }
+public enum ProjectStatus { Draft, Calc, Sent, Won, Lost }
+
+/* ---------------- Пользователи и роли (ASP.NET Identity) ---------------- */
+
+/// <summary>Роли приложения. Хранятся в Identity-таблицах (AspNetUserRoles).</summary>
+public static class Roles
+{
+    public const string Admin = "admin";      // всё + управление пользователями
+    public const string Manager = "manager";  // коммерция: наценки, скидки, документы, экспорт
+    public const string Engineer = "engineer";// техника: структура, шкаф, подбор, справочник
+}
+
+/// <summary>Пользователь системы (aspnetusers). Наследует IdentityUser: логин, хэш пароля и т.д.</summary>
+public class AppUser : IdentityUser
+{
+    /// <summary>ФИО для вывода в документы («Исполнитель», «Менеджер»).</summary>
+    public string FullName { get; set; } = "";
+    /// <summary>Должность.</summary>
+    public string Position { get; set; } = "";
+    /* Контактный телефон — встроенное поле IdentityUser.PhoneNumber:
+       колонка уже есть в схеме, миграция не нужна. Меняет сам пользователь
+       (PUT /api/auth/me) или админ на странице «Пользователи». */
+}
+
+/* ---------------- Справочник и проекты ---------------- */
+
+/// <summary>Справочник оборудования (equipment_catalog).
+/// ВАЖНО (новая модель цен): хранится ТОЛЬКО закупочная цена Purchase.
+/// Цена продажи вычисляется один раз: Purchase × (1 + проект.Markup/100).</summary>
+public class Equipment
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Sku { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Brand { get; set; } = "";
+    public string Category { get; set; } = "";
+    public Direction Direction { get; set; } = Direction.Uni;
+    public string Unit { get; set; } = "шт";
+    public decimal Purchase { get; set; }   // закупочная цена — единственная цена в справочнике
+    public decimal RatedCurrent { get; set; } // номинальный ток, А (для правил совместимости)
+    public string? Attrs { get; set; }
+}
+
+/// <summary>Позиция шкафа. Цена продажи НЕ хранится — вычисляется от Purchase.</summary>
+public class LineItem
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string? EqId { get; set; }
+    public string Sku { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Brand { get; set; } = "";
+    public string Unit { get; set; } = "шт";
+    public decimal Qty { get; set; }
+    public decimal Purchase { get; set; }   // закупочная цена (снимок на момент добавления)
+}
+
+/// <summary>Функциональный отсек шкафа — секционирование по ГОСТ IEC 61439-2
+/// (зеркало CabinetSegment из src/types.ts; логика — src/utils/segments.ts).</summary>
+public class CabinetSegment
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    /// <summary>input | feeders | control | busbar | cable | custom.</summary>
+    public string Kind { get; set; } = "custom";
+    public string Name { get; set; } = "";
+    /// <summary>Перегородки, образующие отсек (0–4).</summary>
+    public int Partitions { get; set; }
+}
+
+/// <summary>Шкаф / секция / линейка (project_cabinets).</summary>
+public class Cabinet
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Kind { get; set; } = "";
+    public string Name { get; set; } = "";
+    public decimal Hours { get; set; }
+    public decimal DesignHours { get; set; }
+    public decimal SoftwareHours { get; set; }
+    public string? Note { get; set; }
+    public List<LineItem> Items { get; set; } = new();
+
+    /// <summary>Отсеки секционирования. Пока [NotMapped]: персист в таблицу
+    /// cabinet_segments приедет с EF-миграцией (дорожная карта, п. 1). Фронтенд
+    /// хранит их в локальной копии проекта — данные не теряются.</summary>
+    [NotMapped]
+    public List<CabinetSegment>? Segments { get; set; }
+
+    /// <summary>Форма внутреннего разделения: "1"…"4b" (ГОСТ IEC 61439-2).</summary>
+    [NotMapped]
+    public string? Form { get; set; }
+}
+
+/// <summary>Проект ТКП (projects) — мета-данные + вся экономика.</summary>
+public class Project
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Number { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string Client { get; set; } = "";
+    public string Contact { get; set; } = "";
+    public Direction Direction { get; set; } = Direction.Nku;
+    public ProjectStatus Status { get; set; } = ProjectStatus.Draft;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Автор проекта (Id пользователя). Заполняется из JWT при создании.</summary>
+    public string? OwnerId { get; set; }
+
+    public decimal Markup { get; set; } = 15;          // % наценки к ЗАКУПОЧНОЙ цене (применяется один раз)
+    public decimal WorkMarkup { get; set; } = 25;
+    public decimal Discount { get; set; }
+    public decimal VatRate { get; set; } = 20;
+    public bool ShowWorkLines { get; set; } = true;
+
+    public decimal TzzPct { get; set; } = 1;
+    public decimal ThirdParty { get; set; }
+    public decimal ExtraCosts { get; set; }
+    public decimal UnforeseenPct { get; set; } = 2;
+    public decimal TripCosts { get; set; }
+    public decimal TransportPct { get; set; }
+
+    public decimal SmrCost { get; set; }
+    public decimal SmrSell { get; set; }
+    public decimal PnrCost { get; set; }
+    public decimal PnrSell { get; set; }
+
+    public int ValidDays { get; set; } = 30;
+    public string Notes { get; set; } = "";
+
+    public List<Cabinet> Cabinets { get; set; } = new();
+    public List<ProjectVersion> Versions { get; set; } = new();
+}
+
+/// <summary>Пустой или преднаполненный шкаф с заказным шифром (cabinet_templates,
+/// дорожная карта Б.1). Kit — комплект поставки (jsonb: узлы — рама, панели,
+/// траверсы… — сводятся в одну позицию ТКП со сборным описанием),
+/// FillItems — преднаполнение оборудованием (jsonb, отдельные строки ТКП),
+/// AssemblyHours — часы сборки в цене изделия.
+/// Kit/FillItems — JsonElement, как ProjectVersion.Snapshot: LineItem уже
+/// сущность со своей таблицей, поэтому вложенные массивы храним jsonb.</summary>
+public class CabinetTemplate
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    /// <summary>Заказной шифр, напр. «ШН-2000.800.600-IP54». Уникален.</summary>
+    public string OrderCode { get; set; } = "";
+    public string Name { get; set; } = "";
+    public Direction Direction { get; set; } = Direction.Nku;
+    public string Brand { get; set; } = "";
+    /// <summary>"floor" | "wall".</summary>
+    public string Mount { get; set; } = "floor";
+    public int H { get; set; } = 2000;
+    public int W { get; set; } = 800;
+    public int D { get; set; } = 600;
+    public int Ip { get; set; } = 54;
+    /// <summary>Комплект поставки: TemplateComponent[] (фронтенд, src/types.ts).</summary>
+    public JsonElement? Kit { get; set; }
+    /// <summary>Преднаполнение: LineItem[] (фронтенд, src/types.ts).</summary>
+    public JsonElement? FillItems { get; set; }
+    public decimal AssemblyHours { get; set; }
+    public string Notes { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>Снимок версии ТКП (project_versions, snapshot — jsonb).</summary>
+public class ProjectVersion
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public DateTime Ts { get; set; } = DateTime.UtcNow;
+    public string Label { get; set; } = "";
+    public JsonElement? Snapshot { get; set; }
+}
+
+/// <summary>Ставки чел·часов по ролям (rate_cards).</summary>
+public class Rates
+{
+    public decimal Design { get; set; } = 1800;
+    public decimal Production { get; set; } = 1800;
+    public decimal Software { get; set; } = 2200;
+    public decimal Smr { get; set; } = 1800;
+    public decimal Pnr { get; set; } = 1800;
+}
+
+/// <summary>Реквизиты компании для документов (settings.company jsonb).
+/// Дефолт — ЗАО «Эталон-Прибор», чтобы шапка документов не была пустой
+/// до заполнения администратором/менеджером (PUT /api/settings, политика ManagerUp).</summary>
+public class CompanySettings
+{
+    public string CompanyName { get; set; } = "ЗАО «Эталон-Прибор»";
+    public string Tagline { get; set; } = "Комплектация · сборка НКУ · автоматизация · электрообогрев";
+    public string Address { get; set; } = "г. Челябинск, пр. Победы, 288";
+    public string Phone { get; set; } = "+7 (351) 267-47-10";
+    public string Email { get; set; } = "s.a.sultanov@etalon-chel.ru";
+    public string Requisites { get; set; } = "ИНН 7452023246 / КПП 74480100 / ОГРН 1027403767500\n" +
+        "Филиал «Корпоративный» ПАО «Совкомбанк», г. Москва\n" +
+        "р/с 40702810300230800179, к/с 30101810445250000360, БИК 044525360";
+    public string Manager { get; set; } = "Сабаев А.В., руководитель проектов";
+    public string Executor { get; set; } = "Султанов С.А., руководитель группы по подготовке ТКП";
+}
+
+/// <summary>Реквизиты компании, привязанные к учётной записи (таблица company_settings).
+/// У каждого пользователя — свой набор (исполнитель, контактный телефон и т.д.);
+/// GET/PUT /api/settings работают с настройками ТЕКУЩЕГО пользователя, при
+/// отсутствии строки возвращаются значения по умолчанию (ЗАО «Эталон-Прибор»).</summary>
+public class CompanySettingsRow : CompanySettings
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string UserId { get; set; } = "";
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>«Корзина» справочника (таблица deleted_equipment). Удалённая позиция
+/// не исчезает сразу: 90 дней хранится здесь, чтобы проекты, в которые она уже
+/// вошла, могли показать её с пометкой и предложить замену. Повторное добавление
+/// того же артикула возвращает позицию в справочник; по истечении срока строка
+/// удаляется безвозвратно (чистка при старте и каждые 6 часов).</summary>
+public class DeletedEquipment
+{
+    public string Id { get; set; } = "";            // id позиции из equipment_catalog
+    public string Sku { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Brand { get; set; } = "";
+    public string Category { get; set; } = "";
+    public Direction Direction { get; set; } = Direction.Uni;
+    public string Unit { get; set; } = "шт";
+    public decimal Purchase { get; set; }
+    public decimal RatedCurrent { get; set; }
+    public string Attrs { get; set; } = "";
+    public DateTime DeletedAt { get; set; } = DateTime.UtcNow;
+    public string DeletedBy { get; set; } = "";     // кто удалил (e-mail)
+}
