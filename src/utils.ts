@@ -23,9 +23,11 @@ export const fmtDateShort = (ts: number) =>
   new Date(ts).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
 
 export const fmtDateTime = (ts: number) =>
-  new Date(ts).toLocaleString("ru-RU", {
-    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
-  });
+  new Date(ts).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+let seq = 0;
+export const genId = (prefix: string) =>
+  `${prefix}-${Date.now().toString(36)}-${(seq++).toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
 export const plural = (n: number, one: string, few: string, many: string) => {
   const m10 = n % 10, m100 = n % 100;

@@ -78,6 +78,50 @@ export default function App() {
             <div className="text-[9.5px] font-semibold tracking-[0.14em] text-darkmute uppercase">предложения · расчёт</div>
           </div>
         </div>
+      </header>
+
+      {/* ---------- рабочая область ---------- */}
+      <main className="mx-auto grid max-w-6xl gap-4 px-5 py-6 lg:grid-cols-[360px_1fr]">
+        {/* карточка проекта + экономика */}
+        <section className="anim-rise flex flex-col gap-4">
+          <div className="overflow-hidden rounded-xl border border-line bg-card shadow-sm">
+            <div className="border-b border-line bg-dark px-4 py-3.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="num font-mono text-[11px] font-bold tracking-wide text-darkmute">{project.number}</span>
+                <Badge tone="warn">{STATUS_LABEL[project.status]}</Badge>
+              </div>
+              <h1 className="mt-1 text-[15px] leading-snug font-bold text-white">{project.title}</h1>
+              <div className="mt-0.5 text-[11px] text-darkmute">{project.client}</div>
+            </div>
+            <div className="flex flex-col gap-2 px-4 py-3.5">
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-mute">Направление</span>
+                <Badge tone="steel">{DIRECTIONS[project.direction].short}</Badge>
+              </div>
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-mute">Шкафов / позиций</span>
+                <span className="num font-mono font-bold text-ink">{project.cabinets.length} / {posCount}</span>
+              </div>
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-mute">Наценка / работы</span>
+                <span className="num font-mono font-bold text-ink">{fmtNum(project.markup)} % / +{fmtNum(project.workMarkup)} %</span>
+              </div>
+              <div className="mt-1 flex items-end justify-between border-t border-line pt-2.5">
+                <div>
+                  <div className="text-[9.5px] font-bold tracking-widest text-mute uppercase">Итог с НДС {fmtNum(project.vatRate)} %</div>
+                  <div key={calc.totalVat} className="num anim-pop font-mono text-[22px] leading-tight font-extrabold text-ink">
+                    {fmtMoney(calc.totalVat)}
+                  </div>
+                </div>
+                <div className="text-right text-[10.5px] leading-snug text-mute">
+                  оборудование {fmtMoney(calc.eqSell)}<br />работы {fmtMoney(calc.laborSell)}
+                </div>
+              </div>
+              <Btn className="mt-2 w-full" onClick={() => setWizardOpen(true)}>
+                <Wand size={15} /> Открыть мастер подбора
+              </Btn>
+            </div>
+          </div>
 
         <nav className="mt-2 flex flex-1 flex-col gap-1 px-2 lg:px-3">
           {NAV.filter((n) => !n.adminOnly || role === "admin").map((n) => {
