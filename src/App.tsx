@@ -1,255 +1,201 @@
-import { useMemo, useState } from "react";
-import { Boxes, ChevronRight, Layers, ShieldCheck, Wand, Zap } from "lucide-react";
-import Wizard from "./components/Wizard";
-import { Badge, Btn, cx } from "./components/ui";
-import type { Cabinet, Project, Rates } from "./types";
-import { DIRECTIONS, STATUS_LABEL } from "./types";
-import { calcProject, fmtMoney, fmtNum, genId, plural } from "./utils";
+import { useEffect, useState } from "react";
+import { useStore } from "./store";
+import LoginGate from "./components/LoginGate";
+import Dashboard from "./components/Dashboard";
+import Editor from "./components/Editor";
+import CatalogPage from "./components/CatalogPage";
+import CabinetConfigurator from "./components/CabinetConfigurator";
+import RatesPage from "./components/RatesPage";
+import UsersPage from "./components/UsersPage";
+import { cx } from "./components/ui";
+import {
+  IcBolt, IcBox, IcDatabase, IcGear, IcLayers, IcRefresh, IcUser, IcX,
+} from "./components/icons";
+import { currentRole, ROLE_LABEL } from "./utils/roles";
 
 /* ============================================================
-   ТКП·Про — рабочий прототип (итерация А.3 + А.6 дорожной карты):
-   УЗИП всех классов с автоматическим резервным автоматом и
-   единообразный шаг «Работы и ППО». Данные — демо-проект, расчёт
-   живой (calcProject), структура пополняется из мастера.
+   ОБОЛОЧКА ПРИЛОЖЕНИЯ: авторизация (локально / сервер),
+   сайдбар с навигацией и индикатором связи, рабочая область,
+   тосты. Режимы: локальный (apiBaseUrl пуст) и онлайн
+   (C#-бэкенд, автодетекция same-origin при запуске в сети).
    ============================================================ */
 
-const RATES: Rates = { design: 1800, production: 1800, software: 2200 };
+type Page = "projects" | "catalog" | "templates" | "rates" | "users";
 
-const DEMO_PROJECT: Project = {
-  id: "prj-demo",
-  number: "ТКП-2026-014",
-  title: "Реконструкция ГРЩ цеха №3",
-  client: "ЗАО «Эталон-Прибор»",
-  contact: "Султанов С.А. · +7 (351) 267-47-10",
-  direction: "nku",
-  status: "calc",
-  createdAt: Date.now() - 86400000 * 6,
-  updatedAt: Date.now() - 3600000 * 5,
-  markup: 15,
-  workMarkup: 25,
-  discount: 0,
-  vatRate: 20,
-  showWorkLines: true,
-  validDays: 30,
-  notes: "",
-  versions: [],
-  cabinets: [
-    {
-      id: genId("cab"), kind: "ГРЩ", name: "ГРЩ — ввод и отходящие линии",
-      items: [
-        { id: genId("li"), eqId: "enc-800", sku: "CQE N 2000×800×600", name: "Шкаф напольный в сборе 2000×800×600, IP54", brand: "DKC", unit: "шт", qty: 1, purchase: 68500 },
-        { id: genId("li"), eqId: "brk-nsx100", sku: "NSX100F TM-D 100", name: "Автомат в литом корпусе 3P 100 А", brand: "Schneider Electric", unit: "шт", qty: 1, purchase: 18400 },
-        { id: genId("li"), eqId: "brk-c16", sku: "ВА47-29 C16", name: "Автоматический выключатель 1P C16", brand: "IEK", unit: "шт", qty: 8, purchase: 210 },
-        { id: genId("li"), eqId: "uzp-t2", sku: "VAL-MS 400", name: "УЗИП класс II (тип 2), 40 кА 8/20", brand: "Phoenix Contact", unit: "компл.", qty: 1, purchase: 6400 },
-        { id: genId("li"), eqId: "uzp-backup", sku: "CB-SPD 3P C63", name: "Автомат резервной защиты УЗИП 3P C63", brand: "DKC", unit: "шт", qty: 1, purchase: 1180 },
-      ],
-      hours: 12, designHours: 6, softwareHours: 0,
-    },
-  ],
-};
-
-interface Toast { id: number; msg: string; kind: "ok" | "err" }
+const NAV: { id: Page; label: string; icon: (s: number) => React.ReactNode; adminOnly?: boolean }[] = [
+  { id: "projects", label: "Проекты ТКП", icon: (s) => <IcLayers size={s} /> },
+  { id: "catalog", label: "Справочник", icon: (s) => <IcDatabase size={s} /> },
+  { id: "templates", label: "Шаблоны шкафов", icon: (s) => <IcBox size={s} /> },
+  { id: "rates", label: "Тарифы", icon: (s) => <IcGear size={s} /> },
+  { id: "users", label: "Пользователи", icon: (s) => <IcUser size={s} />, adminOnly: true },
+];
 
 export default function App() {
-  const [project, setProject] = useState<Project>(DEMO_PROJECT);
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  const user = useStore((s) => s.user);
+  const settings = useStore((s) => s.settings);
+  const toasts = useStore((s) => s.toasts);
+  const dismissToast = useStore((s) => s.dismissToast);
+  const initAuth = useStore((s) => s.initAuth);
+  const autoDetectApi = useStore((s) => s.autoDetectApi);
+  const checkApi = useStore((s) => s.checkApi);
+  const logout = useStore((s) => s.logout);
+  const remoteLoading = useStore((s) => s.remoteLoading);
+  const outboxCount = useStore((s) => s.outbox.length);
+  const apiChecking = useStore((s) => s.apiChecking);
 
-  const calc = useMemo(() => calcProject(project, RATES), [project]);
-  const posCount = project.cabinets.reduce((s, c) => s + c.items.length, 0);
+  const [page, setPage] = useState<Page>("projects");
+  const [editorId, setEditorId] = useState<string | null>(null);
 
-  const toast = (msg: string, kind: "ok" | "err" = "ok") => {
-    const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, msg, kind }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4200);
-  };
+  /* старт: автодетекция API на том же origin (работа в локальной сети),
+     затем восстановление профиля по токену / сессии */
+  useEffect(() => {
+    void autoDetectApi().then(() => initAuth());
+  }, [autoDetectApi, initAuth]);
 
-  const handleCreate = (cabs: Cabinet[], opts: { showWorkLines: boolean; transportPct: number }) => {
-    setProject((p) => ({
-      ...p,
-      cabinets: [...p.cabinets, ...cabs],
-      showWorkLines: opts.showWorkLines,
-      transportPct: opts.transportPct,
-      updatedAt: Date.now(),
-    }));
-  };
+  if (!user) {
+    return (
+      <>
+        <LoginGate />
+        <Toasts toasts={toasts} dismiss={dismissToast} />
+      </>
+    );
+  }
+
+  const role = currentRole(user);
+  const online = settings.apiOnline === true;
+  const apiBase = (settings.apiBaseUrl ?? "").trim();
 
   return (
-    <div className="bg-blueprint min-h-screen">
-      {/* ---------- шапка ---------- */}
-      <header className="sticky top-0 z-40 border-b border-darkline bg-dark/95 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-5">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-white shadow-md shadow-accent/30">
-              <Zap size={17} />
-            </span>
-            <div className="leading-tight">
-              <div className="font-display text-[14px] font-bold tracking-wide text-white">ТКП·Про</div>
-              <div className="text-[9px] font-semibold tracking-widest text-darkmute uppercase">прототип · итерация А.3 + А.6</div>
-            </div>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <Badge tone="accent"><ShieldCheck size={11} /> УЗИП: классы I–III + автомат</Badge>
-            <span className="hidden rounded-md bg-dark2 px-2.5 py-1 text-[11px] font-bold text-darkmute sm:block">
-              Султанов С.А. · админ
-            </span>
+    <div className="bg-blueprint flex min-h-screen">
+      {/* ---------------- сайдбар ---------------- */}
+      <aside className="fixed inset-y-0 left-0 z-30 flex w-16 flex-col border-r border-darkline bg-dark lg:w-60">
+        <div className="flex items-center gap-2.5 px-3 py-4 lg:px-4">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-white shadow-md shadow-accent/30">
+            <IcBolt size={18} />
+          </span>
+          <div className="hidden min-w-0 lg:block">
+            <div className="font-display text-[15px] font-bold leading-tight text-white">ТКП·Про</div>
+            <div className="text-[9.5px] font-semibold tracking-[0.14em] text-darkmute uppercase">предложения · расчёт</div>
           </div>
         </div>
-      </header>
 
-      {/* ---------- рабочая область ---------- */}
-      <main className="mx-auto grid max-w-6xl gap-4 px-5 py-6 lg:grid-cols-[360px_1fr]">
-        {/* карточка проекта + экономика */}
-        <section className="anim-rise flex flex-col gap-4">
-          <div className="overflow-hidden rounded-xl border border-line bg-card shadow-sm">
-            <div className="border-b border-line bg-dark px-4 py-3.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="num font-mono text-[11px] font-bold tracking-wide text-darkmute">{project.number}</span>
-                <Badge tone="warn">{STATUS_LABEL[project.status]}</Badge>
-              </div>
-              <h1 className="mt-1 text-[15px] leading-snug font-bold text-white">{project.title}</h1>
-              <div className="mt-0.5 text-[11px] text-darkmute">{project.client}</div>
-            </div>
-            <div className="flex flex-col gap-2 px-4 py-3.5">
-              <div className="flex items-center justify-between text-[12px]">
-                <span className="text-mute">Направление</span>
-                <Badge tone="steel">{DIRECTIONS[project.direction].short}</Badge>
-              </div>
-              <div className="flex items-center justify-between text-[12px]">
-                <span className="text-mute">Шкафов / позиций</span>
-                <span className="num font-mono font-bold text-ink">{project.cabinets.length} / {posCount}</span>
-              </div>
-              <div className="flex items-center justify-between text-[12px]">
-                <span className="text-mute">Наценка / работы</span>
-                <span className="num font-mono font-bold text-ink">{fmtNum(project.markup)} % / +{fmtNum(project.workMarkup)} %</span>
-              </div>
-              <div className="mt-1 flex items-end justify-between border-t border-line pt-2.5">
-                <div>
-                  <div className="text-[9.5px] font-bold tracking-widest text-mute uppercase">Итог с НДС {fmtNum(project.vatRate)} %</div>
-                  <div key={calc.totalVat} className="num anim-pop font-mono text-[22px] leading-tight font-extrabold text-ink">
-                    {fmtMoney(calc.totalVat)}
-                  </div>
-                </div>
-                <div className="text-right text-[10.5px] leading-snug text-mute">
-                  оборудование {fmtMoney(calc.eqSell)}<br />работы {fmtMoney(calc.laborSell)}
-                </div>
-              </div>
-              <Btn className="mt-2 w-full" onClick={() => setWizardOpen(true)}>
-                <Wand size={15} /> Открыть мастер подбора
-              </Btn>
-            </div>
+        <nav className="mt-2 flex flex-1 flex-col gap-1 px-2 lg:px-3">
+          {NAV.filter((n) => !n.adminOnly || role === "admin").map((n) => {
+            const active = page === n.id && !editorId;
+            return (
+              <button
+                key={n.id}
+                onClick={() => { setPage(n.id); setEditorId(null); }}
+                title={n.label}
+                className={cx(
+                  "flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-[12.5px] font-bold transition-all duration-150 lg:px-3",
+                  active ? "bg-dark2 text-white shadow-inner" : "text-darkmute hover:bg-dark2/60 hover:text-white",
+                )}
+              >
+                <span className={cx("shrink-0", active && "text-accent")}>{n.icon(16)}</span>
+                <span className="hidden truncate lg:block">{n.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* индикатор связи с бэкендом — кликабельный */}
+        {apiBase && (
+          <button
+            onClick={() => { void checkApi(); }}
+            title={apiChecking ? "Проверяем связь…" : online ? "Нажмите, чтобы перепроверить связь" : "Связи нет — нажмите для повторной проверки"}
+            className={cx(
+              "mx-2 mb-2 flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-all duration-150 active:scale-[0.98] lg:mx-3 lg:px-3",
+              online ? "border-ok/30 bg-ok-soft/10 hover:bg-ok-soft/20" : "border-heat/30 bg-heat-soft/10 hover:bg-heat-soft/20",
+            )}
+          >
+            {apiChecking ? (
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center text-steel"><IcRefresh size={14} className="animate-spin" /></span>
+            ) : (
+              <span className={cx("blink-dot h-2.5 w-2.5 shrink-0 rounded-full", online ? "bg-ok" : "bg-heat")} />
+            )}
+            <span className="hidden min-w-0 lg:block">
+              <span className={cx("block text-[11.5px] font-bold", online ? "text-white" : "text-heat")}>
+                {apiChecking ? "Проверка связи…" : online ? "Онлайн" : "Офлайн"}
+              </span>
+              <span className="block truncate text-[9.5px] text-darkmute">
+                {apiChecking ? "опрашиваем сервер" : online
+                  ? (outboxCount > 0 ? `отложенных изменений: ${outboxCount}` : "все изменения на сервере")
+                  : "данные сохраняются локально"}
+              </span>
+            </span>
+          </button>
+        )}
+
+        {/* профиль */}
+        <div className="mx-2 mb-3 rounded-lg bg-dark2 px-3 py-2.5 lg:mx-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="hidden truncate text-[12px] font-bold text-white lg:block">{user.fullName}</div>
+            <span className="hidden shrink-0 rounded bg-darkline px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-darkmute uppercase lg:block">
+              {ROLE_LABEL[role]}
+            </span>
           </div>
+          <div className="hidden truncate text-[10px] text-darkmute lg:block">{user.email}</div>
+          {user.phone && <div className="hidden truncate text-[10px] text-darkmute lg:block">{user.phone}</div>}
+          <button onClick={() => { logout(); setEditorId(null); }} className="mt-1.5 flex cursor-pointer items-center gap-1 text-[10.5px] font-semibold text-heat transition-colors hover:text-white">
+            <IcX size={11} /> Выйти
+          </button>
+        </div>
+      </aside>
 
-          {/* ставки тарифов — источник для шага «Работы» */}
-          <div className="rounded-xl border border-line bg-card px-4 py-3.5 shadow-sm">
-            <div className="flex items-center gap-2 text-[11px] font-bold tracking-wide text-mute uppercase">
-              <Layers size={13} className="text-steel" /> Тарифы нормо-часов (А.6)
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {([["Сборка", RATES.production], ["Проект", RATES.design], ["ППО", RATES.software]] as const).map(([label, v]) => (
-                <div key={label} className="rounded-lg bg-paper px-2.5 py-2 text-center transition-transform duration-150 hover:-translate-y-0.5">
-                  <div className="text-[9.5px] font-bold tracking-wide text-mute uppercase">{label}</div>
-                  <div className="num font-mono text-[13px] font-bold text-ink">{fmtMoney(v)}/ч</div>
-                </div>
-              ))}
-            </div>
-            <p className="mt-2 text-[10.5px] leading-snug text-mute">
-              Шаг «Работы и ППО» умножает нормо-часы на эти ставки и показывает стоимость в продаже с наценкой {fmtNum(project.workMarkup)} %.
-            </p>
-          </div>
-        </section>
-
-        {/* структура проекта */}
-        <section className="anim-rise rounded-xl border border-line bg-card shadow-sm" style={{ animationDelay: "80ms" }}>
-          <div className="flex items-center justify-between border-b border-line px-4 py-3">
-            <div className="flex items-center gap-2 text-[13px] font-bold text-ink">
-              <Boxes size={15} className="text-accent" /> Структура проекта
-            </div>
-            <span className="num font-mono text-[11px] font-bold text-mute">{posCount} {plural(posCount, "позиция", "позиции", "позиций")}</span>
-          </div>
-
-          {project.cabinets.length === 0 ? (
-            <div className="px-6 py-14 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-paper text-mute"><Boxes size={22} /></div>
-              <div className="mt-3 text-[13px] font-bold text-ink2">Структура пуста</div>
-              <p className="mx-auto mt-1 max-w-xs text-[11.5px] leading-relaxed text-mute">Откройте мастер подбора — собранный шкаф появится здесь вместе с позициями и часами работ.</p>
-            </div>
+      {/* ---------------- рабочая область ---------------- */}
+      <main className="ml-16 min-w-0 flex-1 px-4 py-6 lg:ml-60 lg:px-8">
+        <div className="mx-auto max-w-[1400px]">
+          {editorId ? (
+            <Editor id={editorId} onBack={() => setEditorId(null)} />
+          ) : page === "projects" ? (
+            <Dashboard onOpen={(id) => setEditorId(id)} />
+          ) : page === "catalog" ? (
+            <CatalogPage />
+          ) : page === "templates" ? (
+            <CabinetConfigurator />
+          ) : page === "rates" ? (
+            <RatesPage />
           ) : (
-            <div className="flex flex-col">
-              {project.cabinets.map((cab) => {
-                const c = calc.cabs.find((x) => x.cab.id === cab.id);
-                return (
-                  <article key={cab.id} className="border-b border-line/70 px-4 py-3 transition-colors last:border-b-0 hover:bg-paper/50">
-                    <header className="flex flex-wrap items-center gap-2">
-                      <span className="rounded bg-dark px-1.5 py-0.5 font-mono text-[9.5px] font-bold text-white">{cab.kind}</span>
-                      <h2 className="text-[13px] font-bold text-ink">{cab.name}</h2>
-                      <span className="ml-auto flex items-center gap-2">
-                        <Badge tone="steel">{cab.hours + cab.designHours + cab.softwareHours} ч работ</Badge>
-                        <span className="num font-mono text-[13px] font-bold text-ink">{fmtMoney(c?.total ?? 0)}</span>
-                      </span>
-                    </header>
-                    <ul className="mt-2 grid gap-x-6 gap-y-1 md:grid-cols-2">
-                      {cab.items.map((it) => (
-                        <li key={it.id} className="flex items-baseline justify-between gap-3 border-b border-dotted border-line/70 py-0.5 text-[11.5px]">
-                          <span className="truncate text-ink2">{it.name}</span>
-                          <span className={cx(
-                            "num font-mono font-bold whitespace-nowrap",
-                            it.eqId === "uzp-backup" ? "text-ok" : "text-ink",
-                          )}>
-                            {it.qty} {it.unit}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    {cab.items.some((i) => i.eqId === "uzp-backup") && (
-                      <p className="mt-1.5 flex items-center gap-1.5 text-[10.5px] font-semibold text-ok">
-                        <ShieldCheck size={12} /> Резервный автомат УЗИП заложен автоматически
-                      </p>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
+            <UsersPage />
           )}
-
-          {project.cabinets.length > 0 && (
-            <button
-              onClick={() => setWizardOpen(true)}
-              className="group flex w-full cursor-pointer items-center justify-center gap-2 border-t border-line px-4 py-3 text-[12px] font-bold text-steel transition-colors hover:bg-steel-soft"
-            >
-              Добавить ещё шкаф мастером <ChevronRight size={14} className="transition-transform group-hover:translate-x-0.5" />
-            </button>
-          )}
-        </section>
+        </div>
       </main>
 
-      <footer className="mx-auto max-w-6xl px-5 pb-8">
-        <p className="text-center text-[10.5px] text-mute">
-          Прототип шагов А.3 «УЗИП» и А.6 «Работы и ППО» · ветка <span className="font-mono font-bold">feature/wizard-uzip-work</span> · полный мастер — в основной ветке проекта
-        </p>
-      </footer>
-
-      {wizardOpen && (
-        <Wizard
-          project={project}
-          rates={RATES}
-          onClose={() => setWizardOpen(false)}
-          onCreate={handleCreate}
-          onToast={toast}
-        />
+      {/* оверлей загрузки с сервера */}
+      {remoteLoading && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-dark/30 backdrop-blur-[2px]">
+          <div className="anim-scale flex items-center gap-3 rounded-xl border border-line bg-card px-5 py-3.5 shadow-2xl">
+            <IcRefresh size={18} className="animate-spin text-steel" />
+            <span className="text-[13px] font-bold text-ink">Загружаем данные с сервера…</span>
+          </div>
+        </div>
       )}
 
-      {/* тосты */}
-      <div className="pointer-events-none fixed right-4 bottom-4 z-[60] flex w-80 flex-col gap-2">
-        {toasts.map((t) => (
-          <div key={t.id} className={cx(
-            "anim-rise pointer-events-auto rounded-lg border px-3.5 py-2.5 text-[12px] font-bold shadow-lg",
-            t.kind === "ok" ? "border-ok/30 bg-ok-soft text-ok" : "border-heat/30 bg-heat-soft text-heat",
-          )}>
-            {t.msg}
-          </div>
-        ))}
-      </div>
+      <Toasts toasts={toasts} dismiss={dismissToast} />
+    </div>
+  );
+}
+
+/* ---------------- тосты ---------------- */
+
+function Toasts({ toasts, dismiss }: { toasts: { id: string; kind: "ok" | "err" | "info"; text: string }[]; dismiss: (id: string) => void }) {
+  return (
+    <div className="pointer-events-none fixed bottom-5 right-5 z-[60] flex w-[340px] flex-col gap-2">
+      {toasts.map((t) => (
+        <button
+          key={t.id}
+          onClick={() => dismiss(t.id)}
+          className={cx(
+            "anim-slide pointer-events-auto cursor-pointer rounded-lg border px-3.5 py-2.5 text-left text-[12.5px] font-semibold shadow-lg backdrop-blur",
+            t.kind === "ok" && "border-ok/30 bg-ok-soft text-ok",
+            t.kind === "err" && "border-heat/30 bg-heat-soft text-heat",
+            t.kind === "info" && "border-steel/30 bg-steel-soft text-steel",
+          )}
+        >
+          {t.text}
+        </button>
+      ))}
     </div>
   );
 }

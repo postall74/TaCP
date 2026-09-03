@@ -39,13 +39,15 @@ interface DraftTpl {
   note: string;
   autoCode: boolean;
   autoName: boolean;
+  createdAt: number;
+  updatedAt?: number;
 }
 
 const blank = (): DraftTpl => ({
   id: genId("tpl"), orderCode: "", name: suggestName("floor"), direction: "nku", brand: "ПРОВЕНТО",
   mount: "floor", h: 2000, w: 800, d: 600, ip: 54,
   kit: baseKit("floor", 2000, 800, 600), fillItems: [], assemblyHours: autoAssemblyHours("floor", 2000, 800),
-  note: "", autoCode: true, autoName: true,
+  note: "", autoCode: true, autoName: true, createdAt: Date.now(),
 });
 
 export default function CabinetConfigurator() {
@@ -83,7 +85,7 @@ export default function CabinetConfigurator() {
   };
   const startEdit = (t: CabinetTemplate) => {
     if (!canEdit) { toast(denyReason(user, "catalog.edit"), "err"); return; }
-    setEdit({ ...t, note: t.note ?? "", autoCode: false, autoName: false });
+    setEdit({ ...t, note: t.note ?? "", autoCode: false, autoName: false } as DraftTpl);
   };
 
   const save = () => {
