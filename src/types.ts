@@ -125,7 +125,12 @@ export interface Cabinet {
   form?: SeparationForm;
 }
 
-/** Снимок версии ТКП. */
+export type ProjectStatus = "draft" | "calc" | "sent" | "won" | "lost";
+
+export const STATUS_LABEL: Record<ProjectStatus, string> = {
+  draft: "Черновик", calc: "На расчёте", sent: "Отправлено", won: "Выиграно", lost: "Проиграно",
+};
+
 export interface ProjectVersion {
   id: string;
   ts: number;
@@ -144,7 +149,7 @@ export interface Project {
   contact: string;
   direction: Direction;
   status: ProjectStatus;
-  createdAt: number;
+  createdAt: number; // unix-мс
   updatedAt: number;
   /** Автор (Id пользователя) — задел на разделение данных. */
   owner?: string;
