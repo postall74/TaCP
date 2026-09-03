@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+/* Палитра повторяет дизайн-систему ТКП·Про (steel / dark / accent),
+   чтобы прототип шага визуально совпадал с реальным мастером. */
+@theme {
+  --font-display: "Unbounded", "Manrope", sans-serif;
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+
+  --color-paper: #f1f3f6;
+  --color-card: #ffffff;
+  --color-line: #e2e6eb;
+  --color-line2: #cdd5de;
+  --color-ink: #1c242e;
+  --color-ink2: #46525f;
+  --color-mute: #8b98a6;
+
+  --color-dark: #141b24;
+  --color-dark2: #1d2733;
+  --color-darkline: #2d3a49;
+  --color-darkmute: #8b98a9;
+
+  --color-accent: #d95d2e;
+  --color-accent-deep: #b04517;
+  --color-accent-soft: #fbeee7;
+
+  --color-steel: #4a718c;
+  --color-steel-soft: #e4edf3;
+  --color-ok: #1f8a5b;
+  --color-ok-soft: #e2f1e9;
+  --color-warn: #a8770e;
+  --color-warn-soft: #f7edd8;
+  --color-heat: #ce4432;
+  --color-heat-soft: #f9e6e2;
+}
+
+html, body, #root { min-height: 100%; }
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Многослойный «чертёжный» фон: мягкие цветовые пятна + миллиметровая сетка. */
+.bg-blueprint {
+  background-image:
+    radial-gradient(1100px 480px at 88% -12%, rgba(74, 113, 140, 0.12), transparent 60%),
+    radial-gradient(900px 460px at -8% 112%, rgba(217, 93, 46, 0.08), transparent 55%),
+    linear-gradient(rgba(74, 113, 140, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(74, 113, 140, 0.05) 1px, transparent 1px);
+  background-size: auto, auto, 26px 26px, 26px 26px;
+}
+
+.num { font-variant-numeric: tabular-nums; }
+
+/* Перескок итоговой суммы при каждом изменении — живой отклик. */
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.93); }
+  to { opacity: 1; transform: scale(1); }
+}
+.anim-pop { animation: pop-in 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.15); }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.anim-rise { animation: rise 0.45s ease-out both; }
+
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.anim-slide { animation: slide-down 0.25s ease-out both; }
