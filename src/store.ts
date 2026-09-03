@@ -4,7 +4,7 @@ import { ApiError, restApi, toCompany, getToken, setToken, type AuthUser, type P
 import { CATALOG } from "./data/catalog";
 import { buildTemplateCabinets } from "./data/templates";
 import type {
-  Cabinet, DeletedEquipment, Direction, Equipment, LineItem, Project, ProjectStatus, ProjectVersion, Rates, Settings,
+  Cabinet, CabinetTemplate, DeletedEquipment, Direction, Equipment, LineItem, Project, ProjectStatus, ProjectVersion, Rates, Settings,
 } from "./types";
 import { calcProject, genId } from "./utils";
 import { can, denyReason, type Role } from "./utils/roles";
@@ -174,6 +174,11 @@ interface StoreState {
   restoreVersion: (pid: string, vid: string) => void;
   deleteVersion: (pid: string, vid: string) => void;
 
+  /* шаблоны шкафов (Б.1 — конфигуратор пустых и преднаполненных) */
+  templates: CabinetTemplate[];
+  upsertTemplate: (t: CabinetTemplate) => void;
+  deleteTemplate: (id: string) => boolean;
+
   upsertEquipment: (e: Equipment) => void;
   deleteEquipment: (id: string) => void;
   importEquipment: (items: Omit<Equipment, "id">[], csv?: string) => number;
@@ -294,6 +299,7 @@ export const useStore = create<StoreState>()(
         catalog: CATALOG,
         deletedCatalog: [],
         outbox: [],
+        templates: [],
         apiChecking: false,
         settings: DEFAULT_SETTINGS,
         toasts: [],
@@ -740,6 +746,21 @@ export const useStore = create<StoreState>()(
             ),
           }));
           syncProject(pid);
+        },
+
+        /* ---------- шаблоны шкафов (Б.1) ---------- */
+
+        upsertTemplate: (t) =>
+          set((s) => ({
+            templates: s.templates.some((x) => x.id === t.id)
+              ? s.templates.map((x) => (x.id === t.id ? t : x))
+              : [t, ...s.templates],
+          })),
+
+        deleteTemplate: (id) => {
+          const exists = get().templates.some((x) => x.id === id);
+          if (exists) set((s) => ({ templates: s.templates.filter((x) => x.id !== id) }));
+          return exists;
         },
 
         /* ---------- справочник ---------- */
