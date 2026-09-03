@@ -4,6 +4,7 @@ import type { Cabinet, LineItem, Project, ProjectStatus, Rates } from "../types"
 import { CABINET_KINDS } from "../types";
 import { CATALOG, findEq } from "../data/catalog";
 import { fmtMoney, fmtNum, genId, plural } from "../utils";
+import { useStore } from "../store";
 import { Badge, Btn, CountRow, Field, NumInput, Select, SelectRow, Toggle, ToggleRow, cx } from "./ui";
 
 /* ============================================================
@@ -99,13 +100,11 @@ function busSelection(current: number) {
 
 const ZIP_CATS = ["Автоматические выключатели", "Контакторы и реле", "УЗИП и защита", "Блоки питания", "ПЛК и модули"];
 
-export default function Wizard({ project, rates, onClose, onCreate, onToast }: {
-  project: Project;
-  rates: Rates;
-  onClose: () => void;
-  onCreate: (cabs: Cabinet[], opts: { showWorkLines: boolean; transportPct: number }) => void;
-  onToast: (msg: string, kind?: "ok" | "err") => void;
-}) {
+export default function Wizard({ project, onClose }: { project: Project; onClose: () => void }) {
+  const rates = useStore((s) => s.settings.rates);
+  const addCabinetsBulk = useStore((s) => s.addCabinetsBulk);
+  const updateProject = useStore((s) => s.updateProject);
+  const toast = useStore((s) => s.toast);
   const [step, setStep] = useState(0);
   const [d, setD] = useState<Draft>(() => ({
     kind: CABINET_KINDS[project.direction][0],
@@ -226,7 +225,7 @@ export default function Wizard({ project, rates, onClose, onCreate, onToast }: {
 
   const apply = () => {
     if (bundle.main.length === 0) {
-      onToast("Мастер ничего не добавит — включите хотя бы один шаг", "err");
+      toast("Мастер ничего не добавит — включите хотя бы один шаг", "err");
       return;
     }
     const cabs: Cabinet[] = [{
@@ -235,8 +234,9 @@ export default function Wizard({ project, rates, onClose, onCreate, onToast }: {
     }];
     if (bundle.zipItems.length > 0)
       cabs.push({ id: genId("cab"), kind: "ЗИП", name: "ЗИП — запасные части", items: bundle.zipItems, hours: 0, designHours: 0, softwareHours: 0 });
-    onCreate(cabs, { showWorkLines: d.separateLine, transportPct: d.transportOn ? d.transportPct : 0 });
-    onToast(`Добавлено: ${cabs.length} ${plural(cabs.length, "шкаф", "шкафа", "шкафов")}, ${bundle.main.length + bundle.zipItems.length} позиций`);
+    addCabinetsBulk(project.id, cabs);
+    updateProject(project.id, { showWorkLines: d.separateLine, transportPct: d.transportOn ? d.transportPct : 0 });
+    toast(`Добавлено: ${cabs.length} ${plural(cabs.length, "шкаф", "шкафа", "шкафов")}, ${bundle.main.length + bundle.zipItems.length} позиций`);
     onClose();
   };
 
@@ -352,7 +352,7 @@ export default function Wizard({ project, rates, onClose, onCreate, onToast }: {
                       <b className="text-ok">Резервный автомат добавится автоматически: {uzpPowerCount} шт</b>
                       <span className="text-mute"> — по числу комплектов силовых УЗИП (требование производителей, отключение повреждённого УЗИП).</span>
                     </div>
-                    <Badge tone="dark">{fmtMoney(uzpPowerCount * (findEq("uzp-backup")?.purchase ?? 0))}</Badge>
+                    <Badge cls="bg-dark text-white">{fmtMoney(uzpPowerCount * (findEq("uzp-backup")?.purchase ?? 0))}</Badge>
                   </div>
 
                   {uzpPowerCount === 0 && (
