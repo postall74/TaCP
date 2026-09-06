@@ -1,25 +1,12 @@
-# --- Node / фронтенд ---
+```
+# Dependencies
 node_modules/
+
+# Build artifacts
 dist/
-*.local
-npm-debug.log*
-
-# --- .NET / бэкенд ---
-[Bb]in/
-[Oo]bj/
-*.user
-*.suo
-appsettings.Development.json
-
-# --- IDE ---
-.vs/
-.vscode/*
-!.vscode/extensions.json
-.idea/
-
-# --- ОС ---
-.DS_Store
-Thumbs.db
-.next/
 build/
-*.log
+target/
+
+# Cache directories
+.vite/
+```
