@@ -92,14 +92,11 @@ public class Cabinet
     public string? Note { get; set; }
     public List<LineItem> Items { get; set; } = new();
 
-    /// <summary>Отсеки секционирования. Пока [NotMapped]: персист в таблицу
-    /// cabinet_segments приедет с EF-миграцией (дорожная карта, п. 1). Фронтенд
-    /// хранит их в локальной копии проекта — данные не теряются.</summary>
-    [NotMapped]
+    /// <summary>Отсеки секционирования (ГОСТ IEC 61439-2). Хранятся в БД,
+    /// мапятся в отдельную таблицу cabinet_segments.</summary>
     public List<CabinetSegment>? Segments { get; set; }
 
     /// <summary>Форма внутреннего разделения: "1"…"4b" (ГОСТ IEC 61439-2).</summary>
-    [NotMapped]
     public string? Form { get; set; }
 }
 

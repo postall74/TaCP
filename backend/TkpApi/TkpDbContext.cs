@@ -17,6 +17,7 @@ public class TkpDbContext(DbContextOptions<TkpDbContext> options) : IdentityDbCo
     public DbSet<Equipment> Equipment => Set<Equipment>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<Cabinet> Cabinets => Set<Cabinet>();
+    public DbSet<CabinetSegment> Segments => Set<CabinetSegment>();
     public DbSet<LineItem> Items => Set<LineItem>();
     public DbSet<ProjectVersion> Versions => Set<ProjectVersion>();
     public DbSet<CompanySettingsRow> CompanySettings => Set<CompanySettingsRow>();
@@ -48,6 +49,13 @@ public class TkpDbContext(DbContextOptions<TkpDbContext> options) : IdentityDbCo
         {
             c.ToTable("project_cabinets");
             c.HasMany(x => x.Items).WithOne().OnDelete(DeleteBehavior.Cascade);
+            c.HasMany(x => x.Segments).WithOne().OnDelete(DeleteBehavior.Cascade);
+        });
+
+        mb.Entity<CabinetSegment>(s =>
+        {
+            s.ToTable("cabinet_segments");
+            s.Property(x => x.Partitions).HasColumnName("partitions");
         });
 
         mb.Entity<LineItem>(i =>

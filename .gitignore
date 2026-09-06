@@ -3,10 +3,10 @@
 node_modules/
 
 # Build artifacts
-dist/
-build/
-target/
+node_modules/.vite/
 
-# Cache directories
-.vite/
+# Environment
+.env
+.env.local
+*.env.*
 ```
