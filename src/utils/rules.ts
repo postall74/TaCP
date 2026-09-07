@@ -271,7 +271,39 @@ const ruleHeatNoThermo = (ctx: ValidateCtx): Issue[] => {
 
 /* ---------------- публичный API ---------------- */
 
-const PER_CABINET = [ruleBreakerOverBus, ruleManyBreakersNoBus, ruleUzipNoBreaker, rulePlcNoPsu, ruleHmiNoPlc];
+
+/** 9. Суммарный ток отходящих автоматов превышает допустимый ток шины (сечение шин по току). */
+const ruleBusbarOverload = (cab: Cabinet, ctx: ValidateCtx): Issue[] => {
+  const map = byId(ctx);
+  const devices = cab.items
+    .map((it) => ({ it, eq: eqOf(it, map, ctx.catalog) }))
+    .filter(({ eq }) => isDevice(eq));
+  const buses = cab.items
+    .map((it) => ({ it, eq: eqOf(it, map, ctx.catalog) }))
+    .filter(({ eq }) => isBusbar(eq) && eq!.ratedCurrent !== undefined);
+
+  if (!buses.length || devices.length < 2) return [];
+
+  const sorted = [...devices].sort((a, b) => b.eq!.ratedCurrent! - a.eq!.ratedCurrent!);
+  const outgoing = sorted.slice(1); // без вводного
+  const totalOutgoing = outgoing.reduce((sum, { eq }) => sum + (eq!.ratedCurrent ?? 0), 0);
+  const bus = buses.reduce((a, b) => (a.eq!.ratedCurrent! <= b.eq!.ratedCurrent! ? a : b));
+
+  if (totalOutgoing > 0 && totalOutgoing > bus.eq!.ratedCurrent!) {
+    return [
+      issue(
+        `${cab.id}-bus-overload`,
+        "warn",
+        `Суммарный номинал отходящих автоматов (${totalOutgoing} А) превышает допустимый ток шины ${bus.eq!.name} (${bus.eq!.ratedCurrent} А).`,
+        cab,
+        "Проверьте коэффициент неодновременности или выберите шину большего сечения."
+      ),
+    ];
+  }
+  return [];
+};
+
+const PER_CABINET = [ruleBreakerOverBus, ruleManyBreakersNoBus, ruleUzipNoBreaker, rulePlcNoPsu, ruleHmiNoPlc, ruleBusbarOverload];
 
 /** Проверить один шкаф (используется для мгновенной реакции при добавлении позиции). */
 export function validateCabinet(cab: Cabinet, ctx: ValidateCtx): Issue[] {

@@ -369,6 +369,19 @@ app.MapPost("/api/catalog/import", async (HttpRequest req, TkpDbContext db, Clai
 /* ---------------- Тарифы и настройки ---------------- */
 
 // Тарифы — общие для всех (единые нормо-часы компании), админ.
+
+/* ---------------- Конфигуратор составных шкафов ---------------- */
+/* Серверное зеркало фронтового src/utils/kit.ts для тонких клиентов. */
+app.MapGet("/api/kits/systems", () => KitEngine.Systems);
+
+app.MapPost("/api/kits/calculate", (KitInput input) =>
+{
+    var lines = KitEngine.BuildKit(input);
+    var hours = KitEngine.KitAssemblyHours(input);
+    var total = lines.Sum(l => l.Qty * l.Purchase);
+    return Results.Ok(new { lines, hours, total });
+});
+
 var rates = new Rates();
 app.MapGet("/api/rates", () => rates).RequireAuthorization("Staff");
 app.MapPut("/api/rates", (Rates r) => { rates = r; return Results.Ok(rates); }).RequireAuthorization("AdminOnly");
