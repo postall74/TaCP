@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useStore } from "../../store";
 import { Plus, Edit2, Trash2, Shield, X } from "lucide-react";
-import type { AuthUser } from "../../types";
+import type { AuthUser } from "../../api/client";
 
 /**
  * ПОЛНОЦЕННАЯ страница управления пользователями.

@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.OpenApi.Models;
 using TkpApi;
+using TkpApi.Services;
 
 /* ============================================================
    TKP·PRO BACKEND — ASP.NET Core 8, Minimal API + EF Core + PostgreSQL.

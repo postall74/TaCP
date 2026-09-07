@@ -42,30 +42,30 @@ public class ThermalEngine
         return total;
     }
 
-    private double GetHeatForCategory(string category, Equipment eq, int qty)
+    private double GetHeatForCategory(string category, Equipment eq, decimal qty)
     {
         // Специальные случаи
         if (category.Contains("Преобразователь частоты"))
         {
             // Примерно 3% от мощности двигателя
             var powerKw = ParsePowerFromAttrs(eq.Attrs);
-            return powerKw * 30 * qty; // 30 Вт на 1 кВт
+            return powerKw * 30 * (double)qty; // 30 Вт на 1 кВт
         }
 
         if (category.Contains("Автоматический выключатель"))
         {
             var poles = ParsePolesFromAttrs(eq.Attrs);
-            return 3.5 * poles * qty;
+            return 3.5 * poles * (double)qty;
         }
 
         // Стандартные значения
         foreach (var kvp in HeatDissipation)
         {
             if (category.Contains(kvp.Key))
-                return kvp.Value * qty;
+                return kvp.Value * (double)qty;
         }
 
-        return 5.0 * qty; // Значение по умолчанию
+        return 5.0 * (double)qty; // Значение по умолчанию
     }
 
     private int ParsePolesFromAttrs(string? attrs)
