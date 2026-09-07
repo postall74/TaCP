@@ -20,7 +20,7 @@ import { can, currentRole, ROLE_LABEL } from "./utils/roles";
    к C#-бэкенду, JWT-вход. Тосты — глобальные.
    ============================================================ */
 
-type Route = "board" | "editor" | "catalog" | "rates" | "users";
+type Route = "board" | "editor" | "catalog" | "rates" | "users" | "admin";
 
 const NAV: { key: Route; label: string; hint: string; icon: (p: { size?: number }) => ReactNode; adminOnly?: boolean }[] = [
   { key: "board", label: "Дашборд", hint: "проекты и статусы", icon: IcFolder },
@@ -28,6 +28,7 @@ const NAV: { key: Route; label: string; hint: string; icon: (p: { size?: number 
   { key: "catalog", label: "Справочник", hint: "оборудование", icon: IcBox },
   { key: "rates", label: "Тарифы", hint: "нормо-часы", icon: IcClock },
   { key: "users", label: "Пользователи", hint: "роли и доступ", icon: IcUser, adminOnly: true },
+  { key: "admin", label: "Админ-панель", hint: "управление системой", icon: IcGear, adminOnly: true },
 ];
 
 export default function App() {
@@ -67,6 +68,7 @@ export default function App() {
   const activeRoute: Route =
     route === "editor" ? (editorProject ? "editor" : "board")
     : route === "users" ? (can(user, "users.manage") ? "users" : "board")
+    : route === "admin" ? (currentRole(user) === "admin" ? "admin" : "board")
     : route;
 
   /* тема: класс на <html> переключает все CSS-переменные токенов */
@@ -274,6 +276,7 @@ export default function App() {
             {activeRoute === "catalog" && <CatalogPage />}
             {activeRoute === "rates" && <RatesPage />}
             {activeRoute === "users" && <UsersPage />}
+            {activeRoute === "admin" && <AdminRouter onBack={() => setRoute("board")} />}
           </div>
         </div>
       </main>
