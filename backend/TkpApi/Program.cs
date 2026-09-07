@@ -533,7 +533,7 @@ var assemblyService = new CabinetAssemblyService();
 app.MapPost("/api/cabinets/thermal-calc", (Cabinet cabinet, List<Equipment> catalog) =>
 {
     var heatW = thermalEngine.CalculateHeatDissipation(cabinet, catalog);
-    return Results.Ok(new { heatWatts: heatW });
+    return Results.Ok(new { heatWatts = heatW });
 });
 
 app.MapPost("/api/cabinets/configure-empty", (string brand, int h, int w, int d, int ip, string mount) =>

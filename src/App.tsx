@@ -161,7 +161,7 @@ export default function App() {
               </button>
             );
           })}
-                    {can(currentRole(user), "admin_panel") && (
+                    {can(user, "admin_panel") && (
               <button onClick={() => setRoute("admin")} className={cx("flex items-center gap-3 px-3 py-2 rounded-md transition-colors", route === "admin" ? "bg-blue-600 text-white" : "hover:bg-slate-800 text-slate-300")}>
                 <IcGear size={18} /> <span>Админ-панель</span>
               </button>
