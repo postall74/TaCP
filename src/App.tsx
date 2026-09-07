@@ -5,6 +5,7 @@ import CatalogPage from "./components/CatalogPage";
 import Dashboard from "./components/Dashboard";
 import Editor from "./components/Editor";
 import LoginGate from "./components/LoginGate";
+import AdminRouter from "./admin/AdminRouter";
 import RatesPage from "./components/RatesPage";
 import UsersPage from "./components/UsersPage";
 import { Field, Input, Modal, Textarea, ToastHost, cx } from "./components/ui";
@@ -158,7 +159,12 @@ export default function App() {
               </button>
             );
           })}
-        </nav>
+                    {can(currentRole(), "admin_panel") && (
+              <button onClick={() => setRoute("admin")} className={cx("flex items-center gap-3 px-3 py-2 rounded-md transition-colors", route === "admin" ? "bg-blue-600 text-white" : "hover:bg-slate-800 text-slate-300")}>
+                <IcGear size={18} /> <span>Админ-панель</span>
+              </button>
+            )}
+</nav>
 
         {/* профиль (если авторизован) */}
         {user && (
