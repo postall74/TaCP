@@ -29,7 +29,8 @@ export type Perm =
   | "catalog.import"   // импорт прайсов CSV — менеджер/админ
   | "rates.edit"       // тарифы нормо-часов
   | "settings.edit"    // реквизиты компании — менеджер/админ
-  | "users.manage";    // страница пользователей
+  | "users.manage"    // страница пользователей
+  | "admin_panel";    // доступ к админ-панели
 
 export const ROLE_LABEL: Record<Role, string> = {
   admin: "Администратор",
@@ -41,7 +42,7 @@ const ADMIN: Perm[] = [
   "project.create", "project.edit", "project.delete", "project.duplicate",
   "status.workflow", "status.decide",
   "catalog.add", "catalog.edit", "catalog.delete", "catalog.import",
-  "rates.edit", "settings.edit", "users.manage",
+  "rates.edit", "settings.edit", "users.manage", "admin_panel",
 ];
 const MANAGER: Perm[] = [
   "project.create", "project.edit", "project.delete", "project.duplicate",
@@ -86,6 +87,7 @@ export const denyReason = (user: AuthUser | null, perm: Perm): string => {
       return `Реквизиты компании заполняют менеджер и администратор (вы — ${role})`;
     case "rates.edit":
     case "users.manage":
+    case "admin_panel":
       return `Раздел доступен только администратору (вы — ${role})`;
     default:
       return `Недостаточно прав (вы — ${role})`;
