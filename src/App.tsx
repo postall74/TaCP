@@ -68,7 +68,7 @@ export default function App() {
   const activeRoute: Route =
     route === "editor" ? (editorProject ? "editor" : "board")
     : route === "users" ? (can(user, "users.manage") ? "users" : "board")
-    : route === "admin" ? (user?.role === "admin" ? "admin" : "board")
+    : route === "admin" ? (currentRole(user) === "admin" ? "admin" : "board")
     : route;
 
   /* тема: класс на <html> переключает все CSS-переменные токенов */
