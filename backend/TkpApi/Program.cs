@@ -465,9 +465,6 @@ app.MapPost("/api/cabinets/assemble-front-back", (string name, List<Cabinet> cab
 });
 
 // Разбор CSV прайс-листа вынесен в CatalogCsv.cs (чистая часть + Import).
-
-app.Run();
-
 /* ---------------- доп. таблицы и «корзина» справочника ---------------- */
 
 /// <summary>Создаёт company_settings и deleted_equipment в уже существующей БД
@@ -561,3 +558,6 @@ static bool HasAnyTable(TkpDbContext db)
         return false;
     }
 }
+
+
+app.Run();
