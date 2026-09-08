@@ -429,6 +429,43 @@ app.MapFallback(async ctx =>
     await ctx.Response.SendFileAsync(Path.Combine(staticDir, "index.html"));
 });
 
+/* ---------------- Тепловой расчёт и конфигурация шкафов ---------------- */
+var thermalEngine = new ThermalEngine();
+var cabinetConfigurator = new CabinetConfigurator();
+var assemblyService = new CabinetAssemblyService();
+
+app.MapPost("/api/cabinets/thermal-calc", (Cabinet cabinet, List<Equipment> catalog) =>
+{
+    var heatW = thermalEngine.CalculateHeatDissipation(cabinet, catalog);
+    return Results.Ok(new { heatWatts = heatW });
+});
+
+app.MapPost("/api/cabinets/configure-empty", (string brand, int h, int w, int d, int ip, string mount) =>
+{
+    var config = cabinetConfigurator.CreateEmptyCabinet(brand, h, w, d, ip, mount);
+    return Results.Ok(config);
+});
+
+app.MapPost("/api/cabinets/configure-preassembled", (string brand, int h, int w, int d, int ip, List<LineItem> items) =>
+{
+    var config = cabinetConfigurator.CreatePreassembledCabinet(brand, h, w, d, ip, items);
+    return Results.Ok(config);
+});
+
+app.MapPost("/api/cabinets/assemble-side", (string name, List<Cabinet> cabinets) =>
+{
+    var assembly = assemblyService.CreateSideBySideAssembly(name, cabinets);
+    return Results.Ok(assembly);
+});
+
+app.MapPost("/api/cabinets/assemble-front-back", (string name, List<Cabinet> cabinets) =>
+{
+    var assembly = assemblyService.CreateFrontToBackAssembly(name, cabinets);
+    return Results.Ok(assembly);
+});
+
+// Разбор CSV прайс-листа вынесен в CatalogCsv.cs (чистая часть + Import).
+
 app.Run();
 
 /* ---------------- доп. таблицы и «корзина» справочника ---------------- */
@@ -524,40 +561,3 @@ static bool HasAnyTable(TkpDbContext db)
         return false;
     }
 }
-
-/* ---------------- Тепловой расчёт и конфигурация шкафов ---------------- */
-var thermalEngine = new ThermalEngine();
-var cabinetConfigurator = new CabinetConfigurator();
-var assemblyService = new CabinetAssemblyService();
-
-app.MapPost("/api/cabinets/thermal-calc", (Cabinet cabinet, List<Equipment> catalog) =>
-{
-    var heatW = thermalEngine.CalculateHeatDissipation(cabinet, catalog);
-    return Results.Ok(new { heatWatts = heatW });
-});
-
-app.MapPost("/api/cabinets/configure-empty", (string brand, int h, int w, int d, int ip, string mount) =>
-{
-    var config = cabinetConfigurator.CreateEmptyCabinet(brand, h, w, d, ip, mount);
-    return Results.Ok(config);
-});
-
-app.MapPost("/api/cabinets/configure-preassembled", (string brand, int h, int w, int d, int ip, List<LineItem> items) =>
-{
-    var config = cabinetConfigurator.CreatePreassembledCabinet(brand, h, w, d, ip, items);
-    return Results.Ok(config);
-});
-
-app.MapPost("/api/cabinets/assemble-side", (string name, List<Cabinet> cabinets) =>
-{
-    var assembly = assemblyService.CreateSideBySideAssembly(name, cabinets);
-    return Results.Ok(assembly);
-});
-
-app.MapPost("/api/cabinets/assemble-front-back", (string name, List<Cabinet> cabinets) =>
-{
-    var assembly = assemblyService.CreateFrontToBackAssembly(name, cabinets);
-    return Results.Ok(assembly);
-});
-
-// Разбор CSV прайс-листа вынесен в CatalogCsv.cs (чистая часть + Import).

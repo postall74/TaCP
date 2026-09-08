@@ -8,6 +8,7 @@ import LoginGate from "./components/LoginGate";
 import AdminRouter from "./admin/AdminRouter";
 import RatesPage from "./components/RatesPage";
 import UsersPage from "./components/UsersPage";
+import CabinetDraftsPage from "./components/CabinetDraftsPage";
 import { Field, Input, Modal, Textarea, ToastHost, cx } from "./components/ui";
 import {
   IcBolt, IcBox, IcClock, IcFolder, IcGear, IcMoon, IcPanel, IcRefresh, IcSun, IcUser, IcWand, IcX,
@@ -20,12 +21,13 @@ import { can, currentRole, ROLE_LABEL } from "./utils/roles";
    к C#-бэкенду, JWT-вход. Тосты — глобальные.
    ============================================================ */
 
-type Route = "board" | "editor" | "catalog" | "rates" | "users" | "admin";
+type Route = "board" | "editor" | "catalog" | "rates" | "users" | "admin" | "drafts";
 
 const NAV: { key: Route; label: string; hint: string; icon: (p: { size?: number }) => ReactNode; adminOnly?: boolean }[] = [
   { key: "board", label: "Дашборд", hint: "проекты и статусы", icon: IcFolder },
   { key: "editor", label: "Конструктор", hint: "структура ТКП", icon: IcPanel },
   { key: "catalog", label: "Справочник", hint: "оборудование", icon: IcBox },
+  { key: "drafts", label: "Чертежи", hint: "шкафы ГОСТ", icon: IcBox },
   { key: "rates", label: "Тарифы", hint: "нормо-часы", icon: IcClock },
   { key: "users", label: "Пользователи", hint: "роли и доступ", icon: IcUser, adminOnly: true },
   { key: "admin", label: "Админ-панель", hint: "управление системой", icon: IcGear, adminOnly: true },
@@ -161,11 +163,6 @@ export default function App() {
               </button>
             );
           })}
-                    {can(user, "admin_panel") && (
-              <button onClick={() => setRoute("admin")} className={cx("flex items-center gap-3 px-3 py-2 rounded-md transition-colors", route === "admin" ? "bg-blue-600 text-white" : "hover:bg-slate-800 text-slate-300")}>
-                <IcGear size={18} /> <span>Админ-панель</span>
-              </button>
-            )}
 </nav>
 
         {/* профиль (если авторизован) */}
@@ -276,6 +273,7 @@ export default function App() {
             {activeRoute === "catalog" && <CatalogPage />}
             {activeRoute === "rates" && <RatesPage />}
             {activeRoute === "users" && <UsersPage />}
+            {activeRoute === "drafts" && <CabinetDraftsPage />}
             {activeRoute === "admin" && <AdminRouter onBack={() => setRoute("board")} />}
           </div>
         </div>
