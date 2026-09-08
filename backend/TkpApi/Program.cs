@@ -434,35 +434,37 @@ var thermalEngine = new ThermalEngine();
 var cabinetConfigurator = new CabinetConfigurator();
 var assemblyService = new CabinetAssemblyService();
 
-app.MapPost("/api/cabinets/thermal-calc", (Cabinet cabinet, List<Equipment> catalog) =>
+app.MapPost("/api/cabinets/thermal-calc", (ThermalCalcRequest req) =>
 {
-    var heatW = thermalEngine.CalculateHeatDissipation(cabinet, catalog);
+    var heatW = thermalEngine.CalculateHeatDissipation(req.Cabinet, req.Catalog);
     return Results.Ok(new { heatWatts = heatW });
 });
 
-app.MapPost("/api/cabinets/configure-empty", (string brand, int h, int w, int d, int ip, string mount) =>
+app.MapPost("/api/cabinets/configure-empty", (ConfigureEmptyRequest req) =>
 {
-    var config = cabinetConfigurator.CreateEmptyCabinet(brand, h, w, d, ip, mount);
+    var config = cabinetConfigurator.CreateEmptyCabinet(req.Brand, req.H, req.W, req.D, req.Ip, req.Mount);
     return Results.Ok(config);
 });
 
-app.MapPost("/api/cabinets/configure-preassembled", (string brand, int h, int w, int d, int ip, List<LineItem> items) =>
+app.MapPost("/api/cabinets/configure-preassembled", (ConfigurePreassembledRequest req) =>
 {
-    var config = cabinetConfigurator.CreatePreassembledCabinet(brand, h, w, d, ip, items);
+    var config = cabinetConfigurator.CreatePreassembledCabinet(req.Brand, req.H, req.W, req.D, req.Ip, req.Items);
     return Results.Ok(config);
 });
 
-app.MapPost("/api/cabinets/assemble-side", (string name, List<Cabinet> cabinets) =>
+app.MapPost("/api/cabinets/assemble-side", (AssembleRequest req) =>
 {
-    var assembly = assemblyService.CreateSideBySideAssembly(name, cabinets);
+    var assembly = assemblyService.CreateSideBySideAssembly(req.Name, req.Cabinets);
     return Results.Ok(assembly);
 });
 
-app.MapPost("/api/cabinets/assemble-front-back", (string name, List<Cabinet> cabinets) =>
+app.MapPost("/api/cabinets/assemble-front-back", (AssembleRequest req) =>
 {
-    var assembly = assemblyService.CreateFrontToBackAssembly(name, cabinets);
+    var assembly = assemblyService.CreateFrontToBackAssembly(req.Name, req.Cabinets);
     return Results.Ok(assembly);
 });
+
+app.Run();
 
 // Разбор CSV прайс-листа вынесен в CatalogCsv.cs (чистая часть + Import).
 /* ---------------- доп. таблицы и «корзина» справочника ---------------- */
@@ -558,6 +560,3 @@ static bool HasAnyTable(TkpDbContext db)
         return false;
     }
 }
-
-
-app.Run();
