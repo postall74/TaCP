@@ -24,7 +24,7 @@ export default function AdminRouter({ onBack }: AdminRouterProps) {
   };
 
   return (
-    <AdminLayout onBack={onBack}>
+    <AdminLayout onBack={onBack} tab={tab} setTab={setTab}>
       {renderContent()}
     </AdminLayout>
   );

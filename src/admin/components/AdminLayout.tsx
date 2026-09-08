@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { Users, BookOpen, BarChart3, Clock, ArrowLeft } from "lucide-react";
 import { cx } from "../../components/ui";
 import { IcGear } from "../../components/icons";
@@ -8,11 +8,11 @@ type AdminTab = "users" | "catalog" | "statistics" | "time";
 interface AdminLayoutProps {
   children: ReactNode;
   onBack: () => void;
+  tab: AdminTab;
+  setTab: (tab: AdminTab) => void;
 }
 
-export default function AdminLayout({ children, onBack }: AdminLayoutProps) {
-  const [tab, setTab] = useState<AdminTab>("users");
-
+export default function AdminLayout({ children, onBack, tab, setTab }: AdminLayoutProps) {
   const links = [
     { id: "users" as const, label: "Пользователи", hint: "роли и доступ", icon: Users },
     { id: "catalog" as const, label: "Справочник", hint: "оборудование", icon: BookOpen },
