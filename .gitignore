@@ -1,1 +1,1 @@
-Nothing should be ignored since the changes only include source code files (.tsx) and no build artifacts, dependencies, or temporary files.
+Nothing should be ignored since the changes only include documentation files (.md files) which are source/config files and not build artifacts, dependencies, or temporary files.
