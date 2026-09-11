@@ -502,7 +502,7 @@ export const useStore = create<StoreState>()(
           const a = api();
           if (a) {
             // Серверный эндпоинт для админа: PUT /api/auth/users/:id
-            await a.updateUserProfile(id, patch);
+            await a.putUser(id, patch);
             syncOk();
           } else {
             // Локально: обновляем в localStorage
@@ -513,6 +513,8 @@ export const useStore = create<StoreState>()(
             const me = get().user;
             if (me) set({ user: { ...me, ...patch } });
           }
+          // Обновляем список пользователей в UI
+          await loadUsers();
         },
 
         /* Свой профиль: смена телефона/ФИО — сам пользователь, без админа.
