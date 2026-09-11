@@ -178,16 +178,21 @@ export default function UsersPage() {
                 <td className="px-6 py-4 text-ink">{u.fullName || "—"}</td>
                 <td className="px-6 py-4 text-mute">{u.position || "—"}</td>
                 <td className="px-6 py-4">
-                  <select
-                    value={u.role}
-                    onChange={(e) => handleRoleChange(u, e.target.value)}
-                    disabled={u.id === user?.id}
-                    className={`px-2 py-1 text-xs rounded-full border-0 cursor-pointer font-semibold ${ROLE_COLORS[u.role] || "bg-line text-mute"}`}
-                  >
-                    <option value="admin">Администратор</option>
-                    <option value="manager">Менеджер</option>
-                    <option value="engineer">Инженер</option>
-                  </select>
+                  {(() => {
+                    const currentRole = u.roles[0] || "engineer";
+                    return (
+                      <select
+                        value={currentRole}
+                        onChange={(e) => handleRoleChange(u, e.target.value)}
+                        disabled={u.id === user?.id}
+                        className={`px-2 py-1 text-xs rounded-full border-0 cursor-pointer font-semibold ${ROLE_COLORS[currentRole] || "bg-line text-mute"}`}
+                      >
+                        <option value="admin">Администратор</option>
+                        <option value="manager">Менеджер</option>
+                        <option value="engineer">Инженер</option>
+                      </select>
+                    );
+                  })()}
                 </td>
                 <td className="px-6 py-4 flex gap-2">
                   <button

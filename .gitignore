@@ -1,3 +1,116 @@
 ```
+# Build artifacts
 dist/
+build/
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment variables
+.env
+.env.local
+.env.*
+!.env.example
+
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# OS generated
+.DS_Store
+Thumbs.db
+
+# Python specific (if applicable)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git/modules/
+*.sublime-workspace
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
+
+# Node specific (if applicable)
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+node_modules/
+jspm_packages/
+typings/
+.commit
+.nyc_output
+coverage/
+lib-cov
+*.tsbuildinfo
+.next/
+.nuxt/
+.vuepress/dist
+.serverless/
+.fusebox/
+.dynamodb/
+
+# Go specific (if applicable)
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Java specific (if applicable)
+*.class
+*.jar
+*.war
+*.ear
+*.zip
+target/
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# C/C++ specific (if applicable)
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+*.exe
+*.out
+*.obj
+
+# Ruby specific (if applicable)
+*.gem
+*.rbc
+.bundle
+.config
+.yardoc
+_yardoc
+doc/
+.rspec
+Gemfile.lock
+Guardfile
+Rakefile
+README.md
+.chruby-version
+.rbenv-version
 ```
