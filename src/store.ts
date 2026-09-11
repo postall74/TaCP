@@ -176,6 +176,7 @@ interface StoreState {
 
   upsertEquipment: (e: Equipment) => void;
   deleteEquipment: (id: string) => void;
+  restoreEquipment: (id: string) => Promise<void>;
   importEquipment: (items: Omit<Equipment, "id">[], csv?: string) => number;
 }
 
@@ -775,7 +776,20 @@ export const useStore = create<StoreState>()(
             get().toast(denyReason(get().user, "catalog.delete"), "err");
             return;
           }
-          set((s) => ({ catalog: s.catalog.filter((e) => e.id !== id) }));
+          const eq = get().catalog.find((e) => e.id === id);
+          if (!eq) return;
+          
+          const deletedItem: DeletedEquipment = {
+            ...eq,
+            deletedAt: Date.now(),
+            deletedBy: get().user?.email || "unknown",
+          };
+          
+          set((s) => ({
+            catalog: s.catalog.filter((e) => e.id !== id),
+            deletedCatalog: [deletedItem, ...s.deletedCatalog],
+          }));
+          
           const a = api();
           if (a) {
             const op: OutboxOp = { kind: "equipment.delete", eqId: id, ts: Date.now() };
@@ -783,6 +797,36 @@ export const useStore = create<StoreState>()(
             a.deleteEquipment(id)
               .then(() => { dequeue(op); syncOk(); })
               .catch((e) => { if (e instanceof ApiError) { dequeue(op); syncFail(e); } else syncFail(e); });
+          }
+        },
+
+        /* Восстановление позиции из корзины — только менеджер/админ. */
+        restoreEquipment: async (id) => {
+          if (!can(get().user, "catalog.delete")) {
+            get().toast(denyReason(get().user, "catalog.delete"), "err");
+            return;
+          }
+          const deletedItem = get().deletedCatalog.find((e) => e.id === id);
+          if (!deletedItem) {
+            get().toast("Позиция не найдена в корзине", "err");
+            return;
+          }
+          
+          set((s) => ({
+            catalog: [...s.catalog, { ...deletedItem, deletedAt: undefined, deletedBy: undefined } as Equipment],
+            deletedCatalog: s.deletedCatalog.filter((e) => e.id !== id),
+          }));
+          
+          const a = api();
+          if (a) {
+            try {
+              await a.restoreEquipment(id);
+              get().toast(`"${deletedItem.name}" восстановлен`, "ok");
+            } catch (e) {
+              get().toast("Ошибка восстановления на сервере (требуется бэкенд)", "err");
+            }
+          } else {
+            get().toast(`"${deletedItem.name}" восстановлен локально`, "ok");
           }
         },
 

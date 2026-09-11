@@ -14,6 +14,7 @@ export default function CatalogPage() {
   const catalog = useStore((s) => s.catalog);
   const deletedCatalog = useStore((s) => s.deletedCatalog);
   const deleteEquipment = useStore((s) => s.deleteEquipment);
+  const restoreEquipment = useStore((s) => s.restoreEquipment);
   const toast = useStore((s) => s.toast);
   
   const [tab, setTab] = useState<"active" | "deleted">("active");
@@ -51,7 +52,7 @@ export default function CatalogPage() {
   };
 
   const handleRestore = (eq: DeletedEquipment) => {
-    toast(`Восстановление "${eq.name}" — функция требует бэкенд-эндпоинта POST /api/catalog/restore`, "info");
+    restoreEquipment(eq.id);
   };
 
   const formatDate = (ts: number) => {
