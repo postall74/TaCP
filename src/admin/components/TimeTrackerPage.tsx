@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import { useStore } from "../../store";
 import { Play, Square, Clock, Download } from "lucide-react";
+import { Btn } from "../../components/ui";
 
 /**
  * Учёт времени подготовки ТКП (видит только админ).
  * Регистрирует время начала/окончания работы над каждым проектом.
+ * Стиль соответствует основному приложению (токены bg-card, text-ink и т.д.)
  */
 export default function TimeTrackerPage() {
   const projects = useStore((s) => s.projects);
@@ -116,46 +118,43 @@ export default function TimeTrackerPage() {
     <div className="max-w-6xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-2xl font-bold">Учёт времени подготовки ТКП</h2>
-          <p className="text-slate-500 mt-1">
+          <h2 className="font-display text-[26px] font-bold tracking-tight text-ink">Учёт времени подготовки ТКП</h2>
+          <p className="mt-1 text-[13.5px] text-mute">
             Записей: {entries.length} · Общее время: {formatDuration(totalHours)}
           </p>
         </div>
-        <button
-          onClick={exportCSV}
-          className="flex items-center gap-2 text-blue-600 hover:text-blue-800"
-        >
+        <Btn variant="ghost" onClick={exportCSV}>
           <Download size={18} /> Экспорт CSV
-        </button>
+        </Btn>
       </div>
 
       {/* Список проектов с таймерами */}
-      <div className="bg-white rounded-lg shadow mb-6 overflow-hidden">
-        <div className="px-6 py-4 border-b bg-slate-50">
-          <h3 className="font-semibold">Запуск/остановка таймера</h3>
+      <div className="bg-card rounded-lg shadow mb-6 overflow-hidden border border-line">
+        <div className="px-6 py-4 border-b border-line bg-dark">
+          <h3 className="font-semibold text-ink">Запуск/остановка таймера</h3>
         </div>
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-line">
           {projects.map((p) => {
             const isActive = !!activeTimers[p.id];
             const elapsed = isActive ? Date.now() - activeTimers[p.id] : 0;
             return (
-              <div key={p.id} className="px-6 py-3 flex items-center justify-between hover:bg-slate-50">
+              <div key={p.id} className="px-6 py-3 flex items-center justify-between hover:bg-dark/30 transition-colors">
                 <div>
-                  <div className="font-medium">{p.title}</div>
-                  <div className="text-sm text-slate-500">{p.direction || "Без направления"}</div>
+                  <div className="font-medium text-ink">{p.title}</div>
+                  <div className="text-sm text-muted">{p.direction || "Без направления"}</div>
                 </div>
                 <div className="flex items-center gap-3">
                   {isActive && (
-                    <span className="font-mono text-green-600">{formatDuration(elapsed)}</span>
+                    <span className="font-mono text-ok">{formatDuration(elapsed)}</span>
                   )}
                   <button
                     onClick={() =>
                       isActive ? stopTimer(p.id, p.title) : startTimer(p.id, p.title)
                     }
-                    className={`px-3 py-1.5 rounded-md flex items-center gap-2 text-sm ${
+                    className={`px-3 py-1.5 rounded-md flex items-center gap-2 text-sm transition-colors ${
                       isActive
-                        ? "bg-red-100 text-red-700 hover:bg-red-200"
-                        : "bg-green-100 text-green-700 hover:bg-green-200"
+                        ? "bg-heat/10 text-heat hover:bg-heat/20"
+                        : "bg-ok/10 text-ok hover:bg-ok/20"
                     }`}
                   >
                     {isActive ? <Square size={14} /> : <Play size={14} />}
@@ -166,7 +165,7 @@ export default function TimeTrackerPage() {
             );
           })}
           {projects.length === 0 && (
-            <div className="px-6 py-8 text-center text-slate-500">
+            <div className="px-6 py-8 text-center text-muted">
               Нет проектов. Создайте проект чтобы начать учёт времени.
             </div>
           )}
@@ -174,12 +173,12 @@ export default function TimeTrackerPage() {
       </div>
 
       {/* История записей */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="px-6 py-4 border-b bg-slate-50">
-          <h3 className="font-semibold">История рабочего времени</h3>
+      <div className="bg-card rounded-lg shadow overflow-hidden border border-line">
+        <div className="px-6 py-4 border-b border-line bg-dark">
+          <h3 className="font-semibold text-ink">История рабочего времени</h3>
         </div>
         <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-slate-600 uppercase text-xs">
+          <thead className="bg-dark text-darkmute text-xs uppercase tracking-wide">
             <tr>
               <th className="px-6 py-3 text-left">Проект</th>
               <th className="px-6 py-3 text-left">Начало</th>
@@ -187,19 +186,19 @@ export default function TimeTrackerPage() {
               <th className="px-6 py-3 text-right">Длительность</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-line">
             {entries.map((e, i) => (
-              <tr key={i} className="hover:bg-slate-50">
-                <td className="px-6 py-3">{e.projectTitle}</td>
-                <td className="px-6 py-3">{formatDateTime(e.startTime)}</td>
-                <td className="px-6 py-3">
+              <tr key={i} className="hover:bg-dark/30 transition-colors">
+                <td className="px-6 py-3 text-ink">{e.projectTitle}</td>
+                <td className="px-6 py-3 text-ink2">{formatDateTime(e.startTime)}</td>
+                <td className="px-6 py-3 text-ink2">
                   {e.endTime ? formatDateTime(e.endTime) : (
-                    <span className="text-green-600 flex items-center gap-1">
+                    <span className="text-ok flex items-center gap-1">
                       <Clock size={14} /> В процессе
                     </span>
                   )}
                 </td>
-                <td className="px-6 py-3 text-right font-mono">
+                <td className="px-6 py-3 text-right font-mono text-ink">
                   {e.endTime ? formatDuration(e.endTime - e.startTime) : "—"}
                 </td>
               </tr>
@@ -207,7 +206,7 @@ export default function TimeTrackerPage() {
           </tbody>
         </table>
         {entries.length === 0 && (
-          <div className="px-6 py-8 text-center text-slate-500">
+          <div className="px-6 py-8 text-center text-muted">
             Записей пока нет. Запустите таймер для проекта выше.
           </div>
         )}
