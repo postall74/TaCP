@@ -177,7 +177,7 @@ export default function CatalogPage() {
                     <td className="px-4 py-3 max-w-[300px] truncate text-ink" title={eq.name}>{eq.name}</td>
                     <td className="px-4 py-3 text-ink">{eq.brand}</td>
                     <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 text-xs rounded bg-dark text-ink2">{eq.category}</span>
+                      <span className="px-2 py-0.5 text-xs rounded border border-line bg-card text-ink">{eq.category}</span>
                     </td>
                     <td className="px-4 py-3 text-mute">{eq.direction || "—"}</td>
                     <td className="px-4 py-3 text-right font-mono text-ink">
