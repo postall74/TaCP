@@ -1,16 +1,20 @@
 import { useState, useEffect } from "react";
 import { useStore } from "../../store";
-import { Plus, Edit2, Trash2, Shield, X } from "lucide-react";
+import { Plus, Edit2, Trash2, Shield, X, UserCog } from "lucide-react";
 import type { AuthUser } from "../../api/client";
+import { Btn, Field, Input, Modal, Select, cx } from "../../components/ui";
+import { ROLE_LABEL } from "../../utils/roles";
 
 /**
  * ПОЛНОЦЕННАЯ страница управления пользователями.
- * Функции: просмотр списка, добавление, удаление, смена роли.
+ * Функции: просмотр списка, добавление, удаление, смена роли, редактирование профиля.
+ * Стиль соответствует основному приложению (токены bg-paper, text-ink и т.д.)
  */
 export default function UsersPage() {
   const listUsers = useStore((s) => s.listUsers);
   const setUserRole = useStore((s) => s.setUserRole);
   const register = useStore((s) => s.register);
+  const updateUserProfile = useStore((s) => s.updateUserProfile);
   const user = useStore((s) => s.user);
   const toast = useStore((s) => s.toast);
 
@@ -25,6 +29,12 @@ export default function UsersPage() {
   const [newPassword, setNewPassword] = useState("");
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState("engineer");
+  
+  // Форма редактирования
+  const [editEmail, setEditEmail] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editPosition, setEditPosition] = useState("");
+  const [editPhone, setEditPhone] = useState("");
 
   useEffect(() => {
     loadUsers();
@@ -74,10 +84,35 @@ export default function UsersPage() {
   const handleRoleChange = async (u: AuthUser, role: string) => {
     try {
       await setUserRole(u.id, role);
-      toast(`Роль ${u.email} изменена на ${role}`, "ok");
+      toast(`Роль ${u.email} изменена на ${ROLE_LABEL[role as keyof typeof ROLE_LABEL] || role}`, "ok");
       await loadUsers();
-    } catch (e) {
-      toast("Не удалось изменить роль", "err");
+    } catch (e: any) {
+      toast(e.message || "Не удалось изменить роль", "err");
+    }
+  };
+  
+  const openEditModal = (u: AuthUser) => {
+    setEditingUser(u);
+    setEditEmail(u.email);
+    setEditName(u.fullName || "");
+    setEditPosition(u.position || "");
+    setEditPhone(u.phone || "");
+  };
+  
+  const handleSaveEdit = async () => {
+    if (!editingUser) return;
+    try {
+      await updateUserProfile(editingUser.id, {
+        email: editEmail.trim(),
+        fullName: editName.trim(),
+        position: editPosition.trim(),
+        phone: editPhone.trim(),
+      });
+      toast(`Профиль ${editEmail} обновлён`, "ok");
+      setEditingUser(null);
+      await loadUsers();
+    } catch (e: any) {
+      toast(e.message || "Не удалось обновить профиль", "err");
     }
   };
 
@@ -87,23 +122,17 @@ export default function UsersPage() {
       (u.fullName || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const ROLE_LABELS: Record<string, string> = {
-    admin: "Администратор",
-    manager: "Менеджер",
-    engineer: "Инженер",
-  };
-
   const ROLE_COLORS: Record<string, string> = {
-    admin: "bg-red-100 text-red-800",
-    manager: "bg-blue-100 text-blue-800",
-    engineer: "bg-green-100 text-green-800",
+    admin: "bg-heat/10 text-heat",
+    manager: "bg-accent/10 text-accent",
+    engineer: "bg-ok/10 text-ok",
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-3 text-slate-500">Загрузка пользователей...</span>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+        <span className="ml-3 text-mute">Загрузка пользователей...</span>
       </div>
     );
   }
@@ -113,15 +142,12 @@ export default function UsersPage() {
       {/* Заголовок */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-2xl font-bold">Управление пользователями</h2>
-          <p className="text-slate-500 mt-1">Всего: {users.length} пользователей</p>
+          <h2 className="font-display text-[26px] font-bold tracking-tight text-ink">Управление пользователями</h2>
+          <p className="mt-1 text-[13.5px] text-mute">Всего: {users.length} пользователей</p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-md flex items-center gap-2 hover:bg-blue-700 transition-colors"
-        >
+        <Btn onClick={() => setShowAddModal(true)}>
           <Plus size={18} /> Добавить пользователя
-        </button>
+        </Btn>
       </div>
 
       {/* Поиск */}
@@ -130,13 +156,13 @@ export default function UsersPage() {
         placeholder="Поиск по email или имени..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className="w-full mb-4 px-4 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        className="w-full mb-4 px-4 py-2 border border-line bg-card text-ink rounded-md focus:border-accent outline-none"
       />
 
       {/* Таблица пользователей */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-card rounded-lg shadow overflow-hidden border border-line">
         <table className="w-full text-left">
-          <thead className="bg-slate-100 text-slate-600 text-sm uppercase">
+          <thead className="bg-dark text-darkmute text-xs uppercase tracking-wide">
             <tr>
               <th className="px-6 py-3">Email</th>
               <th className="px-6 py-3">Имя</th>
@@ -145,28 +171,33 @@ export default function UsersPage() {
               <th className="px-6 py-3">Действия</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200">
+          <tbody className="divide-y divide-line">
             {filtered.map((u) => (
-              <tr key={u.id} className="hover:bg-slate-50 transition-colors">
-                <td className="px-6 py-4 font-mono text-sm">{u.email}</td>
-                <td className="px-6 py-4">{u.fullName || "—"}</td>
-                <td className="px-6 py-4 text-slate-500">{u.position || "—"}</td>
+              <tr key={u.id} className="hover:bg-dark/30 transition-colors">
+                <td className="px-6 py-4 font-mono text-sm text-ink2">{u.email}</td>
+                <td className="px-6 py-4 text-ink">{u.fullName || "—"}</td>
+                <td className="px-6 py-4 text-mute">{u.position || "—"}</td>
                 <td className="px-6 py-4">
-                  <select
-                    value={u.role}
-                    onChange={(e) => handleRoleChange(u, e.target.value)}
-                    disabled={u.id === user?.id}
-                    className={`px-2 py-1 text-xs rounded-full border-0 cursor-pointer ${ROLE_COLORS[u.role] || "bg-gray-100"}`}
-                  >
-                    <option value="admin">Администратор</option>
-                    <option value="manager">Менеджер</option>
-                    <option value="engineer">Инженер</option>
-                  </select>
+                  {(() => {
+                    const currentRole = u.roles[0] || "engineer";
+                    return (
+                      <select
+                        value={currentRole}
+                        onChange={(e) => handleRoleChange(u, e.target.value)}
+                        disabled={u.id === user?.id}
+                        className={`px-2 py-1 text-xs rounded-full border-0 cursor-pointer font-semibold ${ROLE_COLORS[currentRole] || "bg-line text-mute"}`}
+                      >
+                        <option value="admin">Администратор</option>
+                        <option value="manager">Менеджер</option>
+                        <option value="engineer">Инженер</option>
+                      </select>
+                    );
+                  })()}
                 </td>
                 <td className="px-6 py-4 flex gap-2">
                   <button
-                    onClick={() => setEditingUser(u)}
-                    className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                    onClick={() => openEditModal(u)}
+                    className="p-1 text-accent hover:bg-accent/10 rounded transition-colors"
                     title="Редактировать"
                   >
                     <Edit2 size={16} />
@@ -174,7 +205,7 @@ export default function UsersPage() {
                   <button
                     onClick={() => handleDeleteUser(u)}
                     disabled={u.id === user?.id}
-                    className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-30"
+                    className="p-1 text-heat hover:bg-heat/10 rounded transition-colors disabled:opacity-30"
                     title="Удалить"
                   >
                     <Trash2 size={16} />
@@ -185,106 +216,111 @@ export default function UsersPage() {
           </tbody>
         </table>
         {filtered.length === 0 && (
-          <div className="text-center py-8 text-slate-500">
-            Пользователи не найдены
-          </div>
+          <div className="text-center py-8 text-mute">Пользователи не найдены</div>
         )}
       </div>
 
       {/* Модальное окно добавления */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold">Новый пользователь</h3>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X size={20} />
+        <Modal
+          open={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          title="Новый пользователь"
+          footer={
+            <>
+              <button onClick={() => setShowAddModal(false)} className="mr-auto text-mute hover:text-ink text-sm font-semibold">
+                Отмена
               </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Email</label>
-                <input
-                  type="email"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                  placeholder="user@company.ru"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">ФИО</label>
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                  placeholder="Иванов Иван Иванович"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Пароль</label>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                  placeholder="••••••••"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Роль</label>
-                <select
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                >
-                  <option value="engineer">Инженер</option>
-                  <option value="manager">Менеджер</option>
-                  <option value="admin">Администратор</option>
-                </select>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={handleAddUser}
-                  className="flex-1 bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700"
-                >
-                  Создать
-                </button>
-                <button
-                  onClick={() => setShowAddModal(false)}
-                  className="flex-1 border border-slate-300 py-2 rounded-md hover:bg-slate-50"
-                >
-                  Отмена
-                </button>
-              </div>
-            </div>
+              <Btn onClick={handleAddUser}>Создать</Btn>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <Field label="Email">
+              <Input
+                type="email"
+                value={newEmail}
+                onChange={(v) => setNewEmail(v)}
+                placeholder="user@company.ru"
+              />
+            </Field>
+            <Field label="ФИО">
+              <Input
+                type="text"
+                value={newName}
+                onChange={(v) => setNewName(v)}
+                placeholder="Иванов Иван Иванович"
+              />
+            </Field>
+            <Field label="Пароль">
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(v) => setNewPassword(v)}
+                placeholder="••••••••"
+              />
+            </Field>
+            <Field label="Роль">
+              <Select value={newRole} onChange={(v) => setNewRole(v)}>
+                <option value="engineer">Инженер</option>
+                <option value="manager">Менеджер</option>
+                <option value="admin">Администратор</option>
+              </Select>
+            </Field>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Модальное окно редактирования */}
       {editingUser && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold">Редактирование: {editingUser.email}</h3>
-              <button onClick={() => setEditingUser(null)} className="text-slate-400 hover:text-slate-600">
-                <X size={20} />
+        <Modal
+          open={!!editingUser}
+          onClose={() => setEditingUser(null)}
+          title={`Редактирование: ${editingUser.email}`}
+          footer={
+            <>
+              <button onClick={() => setEditingUser(null)} className="mr-auto text-mute hover:text-ink text-sm font-semibold">
+                Отмена
               </button>
-            </div>
-            <p className="text-slate-500 mb-4">
-              Редактирование профиля пользователя будет доступно после реализации бэкенд-эндпоинта
-              <code className="bg-slate-100 px-1 rounded"> PUT /api/auth/users/:id</code>
-            </p>
-            <button
-              onClick={() => setEditingUser(null)}
-              className="w-full border border-slate-300 py-2 rounded-md hover:bg-slate-50"
-            >
-              Закрыть
-            </button>
+              <Btn onClick={handleSaveEdit}>Сохранить</Btn>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <Field label="Email">
+              <Input
+                type="email"
+                value={editEmail}
+                onChange={(v) => setEditEmail(v)}
+                placeholder="user@company.ru"
+              />
+            </Field>
+            <Field label="ФИО">
+              <Input
+                type="text"
+                value={editName}
+                onChange={(v) => setEditName(v)}
+                placeholder="Иванов Иван Иванович"
+              />
+            </Field>
+            <Field label="Должность">
+              <Input
+                type="text"
+                value={editPosition}
+                onChange={(v) => setEditPosition(v)}
+                placeholder="Инженер-проектировщик"
+              />
+            </Field>
+            <Field label="Телефон">
+              <Input
+                type="tel"
+                value={editPhone}
+                onChange={(v) => setEditPhone(v)}
+                placeholder="+7 (999) 000-00-00"
+              />
+            </Field>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

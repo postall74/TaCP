@@ -10,7 +10,7 @@ import { calcProject, genId } from "./utils";
 import { can, denyReason, type Role } from "./utils/roles";
 import {
   ensureLocalAdmin, localListUsers, localLogin, localLogout, localMe, localRegister, localSetUserRole,
-  localUpdateProfile,
+  localUpdateProfile, localUpdateUserProfile,
 } from "./utils/localAuth";
 
 /* ============================================================
@@ -149,6 +149,8 @@ interface StoreState {
   listUsers: () => Promise<AuthUser[]>;
   /** Смена роли пользователя (сервер: PUT /api/auth/users/{id}/role, локально: сразу). */
   setUserRole: (id: string, role: string) => Promise<void>;
+  /** Редактирование профиля любого пользователя (только admin через API). */
+  updateUserProfile: (id: string, patch: { fullName?: string; position?: string; phone?: string; email?: string }) => Promise<void>;
 
   createProject: (a: {
     title: string; client: string; contact: string; direction: Direction;
@@ -176,6 +178,7 @@ interface StoreState {
 
   upsertEquipment: (e: Equipment) => void;
   deleteEquipment: (id: string) => void;
+  restoreEquipment: (id: string) => Promise<void>;
   importEquipment: (items: Omit<Equipment, "id">[], csv?: string) => number;
 }
 
@@ -495,6 +498,25 @@ export const useStore = create<StoreState>()(
           }
         },
 
+        updateUserProfile: async (id, patch) => {
+          const a = api();
+          if (a) {
+            // Серверный эндпоинт для админа: PUT /api/auth/users/:id
+            await a.putUser(id, patch);
+            syncOk();
+          } else {
+            // Локально: обновляем в localStorage
+            localUpdateUserProfile(id, patch);
+          }
+          // Если обновили текущего пользователя — синхронизируем в стейте
+          if (get().user?.id === id) {
+            const me = get().user;
+            if (me) set({ user: { ...me, ...patch } });
+          }
+          // Обновляем список пользователей в UI
+          await loadUsers();
+        },
+
         /* Свой профиль: смена телефона/ФИО — сам пользователь, без админа.
            Сервер: PUT /api/auth/me; локально: localStorage. Ошибки (в т.ч.
            сетевые) пробрасываем — UI показывает причину тостом. */
@@ -775,7 +797,20 @@ export const useStore = create<StoreState>()(
             get().toast(denyReason(get().user, "catalog.delete"), "err");
             return;
           }
-          set((s) => ({ catalog: s.catalog.filter((e) => e.id !== id) }));
+          const eq = get().catalog.find((e) => e.id === id);
+          if (!eq) return;
+          
+          const deletedItem: DeletedEquipment = {
+            ...eq,
+            deletedAt: Date.now(),
+            deletedBy: get().user?.email || "unknown",
+          };
+          
+          set((s) => ({
+            catalog: s.catalog.filter((e) => e.id !== id),
+            deletedCatalog: [deletedItem, ...s.deletedCatalog],
+          }));
+          
           const a = api();
           if (a) {
             const op: OutboxOp = { kind: "equipment.delete", eqId: id, ts: Date.now() };
@@ -783,6 +818,36 @@ export const useStore = create<StoreState>()(
             a.deleteEquipment(id)
               .then(() => { dequeue(op); syncOk(); })
               .catch((e) => { if (e instanceof ApiError) { dequeue(op); syncFail(e); } else syncFail(e); });
+          }
+        },
+
+        /* Восстановление позиции из корзины — только менеджер/админ. */
+        restoreEquipment: async (id) => {
+          if (!can(get().user, "catalog.delete")) {
+            get().toast(denyReason(get().user, "catalog.delete"), "err");
+            return;
+          }
+          const deletedItem = get().deletedCatalog.find((e) => e.id === id);
+          if (!deletedItem) {
+            get().toast("Позиция не найдена в корзине", "err");
+            return;
+          }
+          
+          set((s) => ({
+            catalog: [...s.catalog, { ...deletedItem, deletedAt: undefined, deletedBy: undefined } as Equipment],
+            deletedCatalog: s.deletedCatalog.filter((e) => e.id !== id),
+          }));
+          
+          const a = api();
+          if (a) {
+            try {
+              await a.restoreEquipment(id);
+              get().toast(`"${deletedItem.name}" восстановлен`, "ok");
+            } catch (e) {
+              get().toast("Ошибка восстановления на сервере (требуется бэкенд)", "err");
+            }
+          } else {
+            get().toast(`"${deletedItem.name}" восстановлен локально`, "ok");
           }
         },
 

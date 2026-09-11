@@ -1,134 +1,64 @@
-
-# =========================
-# Visual Studio Code (.vscode)
-# =========================
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-!.vscode/*.code-snippets
-.history/
-*.vsidx
-.vsx
-
-# =========================
-# Node.js / NPM / Yarn / Frontend
-# =========================
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-.DS_Store
-.idea/
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+```
+# Build artifacts
 dist/
 build/
-.output
-.cache
-*.tsbuildinfo
 
-# =========================
-# .NET / C# Backend
-# =========================
-[Dd]ebug/
-[Rr]elease/
-x64/
-x86/
-[Aa][Rr][Mm]/
-[Aa][Rr][Mm]64/
-bld/
-[Bb]in/
-[Oo]bj/
-[Ll]og/
-[Ll]ogs/
-*.user
-*.suo
-*.userosscache
-*.sln.docstates
-*.rsuser
-*.userprefs
-.vs/
-[Dd]ebugPublic/
-[Rr]eleases/
-x64/
-x86/
-[Ww][Ii][Nn]32/
-[Aa][Rr][Mm]/
-[Aa][Rr][Mm]64/
-bld/
-[Bb]in/
-[Oo]bj/
-[Ll]og/
-[Ll]ogs/
-*.cachefile
-*.VC.db
-*.VC.VC.opendb
-*.VC.opendb
-*.dbmdl
-*.jmconfig
-*.mdf
-*.ldf
-*.ndf
-*.publishsettings
-*.bacpac
-*.dacpac
-*.dbproj
-packages/
-*.nupkg
-*.snupkg
-**/[Pp]ackages/*
-!**/[Pp]ackages/build/
-*.nuget.props
-*.nuget.targets
-project.lock.json
-project.fragment.lock.json
-artifacts/
-TestResult.xml
-*.Cache
-!?*.[Cc]ache/
-Release/
-*.publishxml
-*.pdb
-*.user
-*.userprefs
-*.ncb
-*.suo
-*.opensdf
-*.sdf
-*.cachefile
-*.VC.db
-*.VC.VC.opendb
-ipch/
-*.aps
-*.ncb
-*.opendb
-*.opensdf
-*.sdf
-*.VC.db
-ipch/
-Release/
-Release64/
-x64/
-x86/
-Win32/
-ARM/
-ARM64/
-bld/
-Bin/
-Obj/
-Log/
-Logs/
-TestResult.xml
-*.publishsettings
-*.dbmdl
-*.jmconfig
-*.mdf
-*.ldf
-*.ndf
-*.publishxml
+# Dependencies
+node_modules/
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Compiled files
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
+```
