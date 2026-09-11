@@ -130,8 +130,8 @@ export default function TimeTrackerPage() {
 
       {/* Список проектов с таймерами */}
       <div className="bg-card rounded-lg shadow mb-6 overflow-hidden border border-line">
-        <div className="px-6 py-4 border-b border-line bg-accent/5">
-          <h3 className="font-semibold text-ink2">Запуск/остановка таймера</h3>
+        <div className="px-6 py-4 border-b border-line bg-dark text-darkmute">
+          <h3 className="font-semibold text-xs uppercase tracking-wide">Запуск/остановка таймера</h3>
         </div>
         <div className="divide-y divide-line">
           {projects.map((p) => {
@@ -174,11 +174,11 @@ export default function TimeTrackerPage() {
 
       {/* История записей */}
       <div className="bg-card rounded-lg shadow overflow-hidden border border-line">
-        <div className="px-6 py-4 border-b border-line bg-accent/5">
-          <h3 className="font-semibold text-ink2">История рабочего времени</h3>
+        <div className="px-6 py-4 border-b border-line bg-dark text-darkmute">
+          <h3 className="font-semibold text-xs uppercase tracking-wide">История рабочего времени</h3>
         </div>
         <table className="w-full text-sm">
-          <thead className="bg-accent/5 text-ink2 text-xs uppercase tracking-wide">
+          <thead className="bg-dark text-darkmute text-xs uppercase tracking-wide">
             <tr>
               <th className="px-6 py-3 text-left">Проект</th>
               <th className="px-6 py-3 text-left">Начало</th>
