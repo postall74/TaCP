@@ -131,7 +131,8 @@ dotnet run                            # http://localhost:5085, Swagger: /swagger
 |---|---|
 | [DOCS.md](./DOCS.md) | Архитектура, схема БД, формулы расчёта, правила валидаций, авторизация и роли, контракты API, дорожная карта |
 | [QUICKSTART.md](./QUICKSTART.md) | Пошаговый локальный запуск + решение типовых проблем |
-| [GIT_WORKFLOW.md](./GIT_WORKFLOW.md) | Регламент ветвления, коммитов, PR и тэгов |
+| [GIT_WORKFLOW.md](./GIT_WORKFLOW.md) | Регламент ветвления, коммитов, PR и тэгов (**коммиты на русском!**) |
+| [TODOList.md](./TODOList.md) | **Список задач**: реализованные функции, планы работ по каждому пункту, ссылки на ветки |
 | [backend/README.md](./backend/README.md) | Запуск бэкенда, таблица эндпоинтов |
 | [backend/MIGRATIONS.md](./backend/MIGRATIONS.md) | EF-миграции: генерация, baseline, откат, политики доступа |
 
