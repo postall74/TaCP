@@ -10,7 +10,7 @@ import { calcProject, genId } from "./utils";
 import { can, denyReason, type Role } from "./utils/roles";
 import {
   ensureLocalAdmin, localListUsers, localLogin, localLogout, localMe, localRegister, localSetUserRole,
-  localUpdateProfile,
+  localUpdateProfile, localUpdateUserProfile,
 } from "./utils/localAuth";
 
 /* ============================================================
@@ -149,6 +149,8 @@ interface StoreState {
   listUsers: () => Promise<AuthUser[]>;
   /** Смена роли пользователя (сервер: PUT /api/auth/users/{id}/role, локально: сразу). */
   setUserRole: (id: string, role: string) => Promise<void>;
+  /** Редактирование профиля любого пользователя (только admin через API). */
+  updateUserProfile: (id: string, patch: { fullName?: string; position?: string; phone?: string; email?: string }) => Promise<void>;
 
   createProject: (a: {
     title: string; client: string; contact: string; direction: Direction;
@@ -493,6 +495,23 @@ export const useStore = create<StoreState>()(
           if (get().user?.id === id) {
             const u = get().user && { ...get().user!, roles: [role] };
             if (u) set({ user: u });
+          }
+        },
+
+        updateUserProfile: async (id, patch) => {
+          const a = api();
+          if (a) {
+            // Серверный эндпоинт для админа: PUT /api/auth/users/:id
+            await a.updateUserProfile(id, patch);
+            syncOk();
+          } else {
+            // Локально: обновляем в localStorage
+            localUpdateUserProfile(id, patch);
+          }
+          // Если обновили текущего пользователя — синхронизируем в стейте
+          if (get().user?.id === id) {
+            const me = get().user;
+            if (me) set({ user: { ...me, ...patch } });
           }
         },
 
