@@ -1,19 +1,20 @@
 import { useState, useEffect } from "react";
 import { useStore } from "../../store";
-import { Plus, Edit2, Trash2, Shield, X } from "lucide-react";
+import { Plus, Edit2, Trash2, Shield, X, UserCog } from "lucide-react";
 import type { AuthUser } from "../../api/client";
 import { Btn, Field, Input, Modal, Select, cx } from "../../components/ui";
 import { ROLE_LABEL } from "../../utils/roles";
 
 /**
  * ПОЛНОЦЕННАЯ страница управления пользователями.
- * Функции: просмотр списка, добавление, удаление, смена роли.
+ * Функции: просмотр списка, добавление, удаление, смена роли, редактирование профиля.
  * Стиль соответствует основному приложению (токены bg-paper, text-ink и т.д.)
  */
 export default function UsersPage() {
   const listUsers = useStore((s) => s.listUsers);
   const setUserRole = useStore((s) => s.setUserRole);
   const register = useStore((s) => s.register);
+  const updateUserProfile = useStore((s) => s.updateUserProfile);
   const user = useStore((s) => s.user);
   const toast = useStore((s) => s.toast);
 
@@ -28,6 +29,12 @@ export default function UsersPage() {
   const [newPassword, setNewPassword] = useState("");
   const [newName, setNewName] = useState("");
   const [newRole, setNewRole] = useState("engineer");
+  
+  // Форма редактирования
+  const [editEmail, setEditEmail] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editPosition, setEditPosition] = useState("");
+  const [editPhone, setEditPhone] = useState("");
 
   useEffect(() => {
     loadUsers();
@@ -77,10 +84,35 @@ export default function UsersPage() {
   const handleRoleChange = async (u: AuthUser, role: string) => {
     try {
       await setUserRole(u.id, role);
-      toast(`Роль ${u.email} изменена на ${role}`, "ok");
+      toast(`Роль ${u.email} изменена на ${ROLE_LABEL[role as keyof typeof ROLE_LABEL] || role}`, "ok");
       await loadUsers();
-    } catch (e) {
-      toast("Не удалось изменить роль", "err");
+    } catch (e: any) {
+      toast(e.message || "Не удалось изменить роль", "err");
+    }
+  };
+  
+  const openEditModal = (u: AuthUser) => {
+    setEditingUser(u);
+    setEditEmail(u.email);
+    setEditName(u.fullName || "");
+    setEditPosition(u.position || "");
+    setEditPhone(u.phone || "");
+  };
+  
+  const handleSaveEdit = async () => {
+    if (!editingUser) return;
+    try {
+      await updateUserProfile(editingUser.id, {
+        email: editEmail.trim(),
+        fullName: editName.trim(),
+        position: editPosition.trim(),
+        phone: editPhone.trim(),
+      });
+      toast(`Профиль ${editEmail} обновлён`, "ok");
+      setEditingUser(null);
+      await loadUsers();
+    } catch (e: any) {
+      toast(e.message || "Не удалось обновить профиль", "err");
     }
   };
 
@@ -159,7 +191,7 @@ export default function UsersPage() {
                 </td>
                 <td className="px-6 py-4 flex gap-2">
                   <button
-                    onClick={() => setEditingUser(u)}
+                    onClick={() => openEditModal(u)}
                     className="p-1 text-accent hover:bg-accent/10 rounded transition-colors"
                     title="Редактировать"
                   >
@@ -241,15 +273,48 @@ export default function UsersPage() {
           onClose={() => setEditingUser(null)}
           title={`Редактирование: ${editingUser.email}`}
           footer={
-            <button onClick={() => setEditingUser(null)} className="w-full Btn">
-              Закрыть
-            </button>
+            <>
+              <button onClick={() => setEditingUser(null)} className="mr-auto text-mute hover:text-ink text-sm font-semibold">
+                Отмена
+              </button>
+              <Btn onClick={handleSaveEdit}>Сохранить</Btn>
+            </>
           }
         >
-          <p className="text-mute mb-4">
-            Редактирование профиля пользователя будет доступно после реализации бэкенд-эндпоинта
-            <code className="bg-dark px-1 rounded text-ink2"> PUT /api/auth/users/:id</code>
-          </p>
+          <div className="space-y-4">
+            <Field label="Email">
+              <Input
+                type="email"
+                value={editEmail}
+                onChange={(v) => setEditEmail(v)}
+                placeholder="user@company.ru"
+              />
+            </Field>
+            <Field label="ФИО">
+              <Input
+                type="text"
+                value={editName}
+                onChange={(v) => setEditName(v)}
+                placeholder="Иванов Иван Иванович"
+              />
+            </Field>
+            <Field label="Должность">
+              <Input
+                type="text"
+                value={editPosition}
+                onChange={(v) => setEditPosition(v)}
+                placeholder="Инженер-проектировщик"
+              />
+            </Field>
+            <Field label="Телефон">
+              <Input
+                type="tel"
+                value={editPhone}
+                onChange={(v) => setEditPhone(v)}
+                placeholder="+7 (999) 000-00-00"
+              />
+            </Field>
+          </div>
         </Modal>
       )}
     </div>

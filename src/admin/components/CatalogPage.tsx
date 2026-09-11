@@ -51,8 +51,13 @@ export default function CatalogPage() {
     toast(`"${eq.name}" перемещён в корзину`, "ok");
   };
 
-  const handleRestore = (eq: DeletedEquipment) => {
-    restoreEquipment(eq.id);
+  const handleRestore = async (eq: DeletedEquipment) => {
+    try {
+      await restoreEquipment(eq.id);
+      toast(`"${eq.name}" восстановлен из корзины`, "ok");
+    } catch (e: any) {
+      toast(e.message || "Не удалось восстановить позицию", "err");
+    }
   };
 
   const formatDate = (ts: number) => {
