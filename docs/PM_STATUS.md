@@ -20,6 +20,14 @@
 
 ## Контакты и handoff
 
+CORE-003: PM проверил и согласовал список QA `qa/core-003-tracked-artifacts.txt`:
+16042 пути, только node_modules/ (15914), backend/TkpApi/bin/ (98),
+backend/TkpApi/obj/ (30). Разрешены dry-run и `git rm -r --cached` ровно для
+этих трёх каталогов; без force, удаления с диска и переписывания истории.
+QA сравнивает staged deletions со списком и подтверждает наличие локальных
+каталогов. Workflow просмотрен PM; фактический GitHub Actions run и branch
+protection ещё не подтверждены. Это согласование плана, не приёмка результата.
+
 Frontend developer: `01a0ca37-b2cf-7461-b3d0-008ff133cd0f`.
 Backend developer: `01a0ca37-66ff-7f62-9c84-d47738886e31`.
 QA engineer: `01a0ca39-0d43-7082-8714-a198f97acc92`.
