@@ -6,10 +6,10 @@
 | ID | Владелец | Статус | Контракт | Ветка | Следующий handoff |
 |---|---|---|---|---|---|
 | CORE-001 | Frontend | in progress: handoff получен, ждёт QA/PR | HTTP не меняется | codex/frontend/core-001-user-forms, 0d095d42 | независимые проверки QA |
-| CORE-002 | QA | in progress | HTTP не меняется | codex/qa/core-002-test-baseline | чистая установка; интеграция CORE-001; результаты PM |
-| CORE-003 | QA | blocked: CORE-002 | ci-v1 | — | единый workflow и план очистки tracked artifacts |
+| CORE-002 | QA | in progress: проверки приняты, ждёт PR/CI | HTTP не меняется | codex/qa/core-002-test-baseline, 49c21df4 | PR и штатные версии CI |
+| CORE-003 | QA | ready: техническая база CORE-002 проверена | ci-v1 | назначена отдельная ветка QA | единый workflow и план очистки tracked artifacts |
 | CORE-004 | PM | in progress | процесс; HTTP не меняется | codex/pm/core-004-coordination | решения, реестр и назначения; подтверждения команды |
-| CORE-005 | Backend | in progress | runtime-config-v1 | codex/backend/core-005-production-config | реализация после ADR-006a; negative cases → QA |
+| CORE-005 | Backend | in progress | runtime-config-v1 | codex/backend/core-005-runtime-config | backend-core-005 worktree; negative cases → QA |
 | SEC-001 | Backend | blocked: CORE-005 handoff | auth-v2 | — | отдельная задача; не менять AuthExtensions одновременно |
 
 ## Передача результатов
@@ -32,6 +32,16 @@ PM передаёт дефект владельцу, исправление во
 Не принимать «тесты прошли» из другой ветки как доказательство интеграции.
 
 ## Текущие блокеры выпуска
+
+Финальный QA handoff CORE-002: commit 49c21df4 поверх cherry-pick CORE-001
+9ba1def4 (исходный 0d095d42). Независимо: typecheck успешен, 76/76 frontend
+тестов, frontend build успешен, backend 57/57 и Release build успешны.
+QA использовал Node 24.19.0/npm 11.17.0/SDK 10.0.400 с target net8.0;
+Node 22/SDK 8 в CI ещё не проверены. Чистая установка была до интеграции,
+CORE-001 зависимостей не меняет. Ручные формы подтверждены автором, не QA.
+PM принимает техническую базу для начала CORE-003; формальный done и merge
+не объявлены без PR/CI. Следующий шаг QA — workflow и план очистки индекса.
+Инвентаризация QA: 15914 tracked node_modules, 98 bin, 30 obj; ещё не удалены.
 
 Frontend передал 0d095d42: 3 production-файла, успешные typecheck/build и
 71 Vitest test прямой командой; ручные локальные формы в двух темах проверены.
