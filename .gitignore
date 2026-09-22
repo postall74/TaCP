@@ -1,7 +1,9 @@
-```
 # Build artifacts
 dist/
 build/
+**/bin/
+**/obj/
+.worktrees/
 
 # Dependencies
 node_modules/
@@ -61,4 +63,3 @@ htmlcov/
 *.tar.bz2
 *.tar.xz
 *.tar.zst
-```
