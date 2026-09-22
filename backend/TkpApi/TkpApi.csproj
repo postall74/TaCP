@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>
     <OutputType>Exe</OutputType>
+    <UserSecretsId>TkpApi-local-development</UserSecretsId>
     <!-- единый идентификатор сущностей с фронтендом — строковый (см. Models.cs) -->
   </PropertyGroup>
 

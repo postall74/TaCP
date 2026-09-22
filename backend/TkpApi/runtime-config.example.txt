@@ -1,0 +1,17 @@
+# runtime-config-v1. TEMPLATE ONLY: replace placeholders using your secret store.
+# ASP.NET Core does not load this file or .env automatically.
+DOTNET_ENVIRONMENT=Production
+ConnectionStrings__Tkp=Host=<db-host>;Database=<db-name>;Username=<db-user>;Password=<db-secret>
+Jwt__Key=<random-secret-at-least-32-UTF8-bytes>
+Jwt__Issuer=<deployment-issuer>
+Jwt__Audience=<deployment-audience>
+Jwt__ExpireMinutes=480
+AllowedHosts=app.example.com
+Cors__AllowedOrigins__0=https://app.example.com
+Swagger__Enabled=false
+Admin__Enabled=false
+# First bootstrap only: enable and supply both values, then disable and remove them.
+# Admin__Email=<administrator-email>
+# Admin__Password=<administrator-secret>
+# Explicit interface/port for the selected hosting environment:
+# URLS=http://0.0.0.0:5085
