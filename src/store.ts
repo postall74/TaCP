@@ -513,8 +513,6 @@ export const useStore = create<StoreState>()(
             const me = get().user;
             if (me) set({ user: { ...me, ...patch } });
           }
-          // Обновляем список пользователей в UI
-          await loadUsers();
         },
 
         /* Свой профиль: смена телефона/ФИО — сам пользователь, без админа.

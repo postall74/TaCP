@@ -261,11 +261,15 @@ export default function UsersPage() {
               />
             </Field>
             <Field label="Роль">
-              <Select value={newRole} onChange={(v) => setNewRole(v)}>
-                <option value="engineer">Инженер</option>
-                <option value="manager">Менеджер</option>
-                <option value="admin">Администратор</option>
-              </Select>
+              <Select
+                value={newRole}
+                onChange={setNewRole}
+                options={[
+                  { value: "engineer", label: ROLE_LABEL.engineer },
+                  { value: "manager", label: ROLE_LABEL.manager },
+                  { value: "admin", label: ROLE_LABEL.admin },
+                ]}
+              />
             </Field>
           </div>
         </Modal>
