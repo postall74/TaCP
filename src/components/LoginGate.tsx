@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useStore } from "../store";
 import { IcBolt, IcCheck, IcLayers, IcBox, IcDoc } from "./icons";
 import { cx } from "./ui";
@@ -28,12 +28,20 @@ export default function LoginGate() {
   const isRemote = !!apiBaseUrl.trim();
 
   const [mode, setMode] = useState<"login" | "register">("login");
+  const activeMode = isRemote ? "login" : mode;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState<"engineer" | "manager">("engineer");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (isRemote) {
+      setMode("login");
+      setError("");
+    }
+  }, [isRemote]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -44,7 +52,7 @@ export default function LoginGate() {
     }
     setBusy(true);
     try {
-      if (mode === "login") {
+      if (activeMode === "login") {
         await login(email.trim(), password);
         toast("Добро пожаловать!");
       } else {
@@ -172,10 +180,10 @@ export default function LoginGate() {
 
           <div className="rounded-2xl border border-line bg-card p-7 shadow-xl shadow-dark/5">
             <h2 className="font-display text-[20px] font-bold tracking-tight text-ink">
-              {mode === "login" ? "Вход" : "Регистрация"}
+              {activeMode === "login" ? "Вход" : "Регистрация"}
             </h2>
             <p className="mt-1 text-[12.5px] text-mute">
-              {mode === "login" ? "Войдите, чтобы продолжить работу с проектами" : "Создайте учётную запись сотрудника"}
+              {activeMode === "login" ? "Войдите, чтобы продолжить работу с проектами" : "Создайте учётную запись сотрудника"}
             </p>
 
             {/* режим аутентификации */}
@@ -185,7 +193,7 @@ export default function LoginGate() {
             </div>
 
             {/* переключатель */}
-            <div className="mt-5 grid grid-cols-2 gap-1 rounded-lg bg-paper p-1">
+            {!isRemote && <div className="mt-5 grid grid-cols-2 gap-1 rounded-lg bg-paper p-1">
               {(["login", "register"] as const).map((m) => (
                 <button
                   key={m}
@@ -199,10 +207,10 @@ export default function LoginGate() {
                   {m === "login" ? "Вход" : "Регистрация"}
                 </button>
               ))}
-            </div>
+            </div>}
 
             <form onSubmit={submit} className="mt-5 space-y-3.5">
-              {mode === "register" && (
+              {activeMode === "register" && (
                 <>
                   <Field label="ФИО">
                     <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Иванов Иван Иванович" className={inputCls} />
@@ -232,9 +240,9 @@ export default function LoginGate() {
                 <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.ru" type="email" autoComplete="email" className={inputCls} />
               </Field>
               <Field label="Пароль">
-                <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} className={inputCls} placeholder="••••••••" />
+                <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" autoComplete={activeMode === "login" ? "current-password" : "new-password"} className={inputCls} placeholder="••••••••" />
               </Field>
-              {mode === "register" && (
+              {activeMode === "register" && (
                 <p className="-mt-1 text-[11px] leading-relaxed text-mute">
                   Требования: минимум 6 символов, хотя бы одна цифра. Ошибки сервера показываются здесь же — вместо «HTTP 400».
                 </p>
@@ -249,12 +257,14 @@ export default function LoginGate() {
                 disabled={busy}
                 className="mt-1 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-[13.5px] font-bold text-white transition-all duration-150 hover:bg-accent-deep active:scale-[0.99] disabled:opacity-60"
               >
-                {busy ? "Проверяем…" : mode === "login" ? "Войти" : "Создать аккаунт"}
+                {busy ? "Проверяем…" : activeMode === "login" ? "Войти" : "Создать аккаунт"}
               </button>
             </form>
 
             <p className="mt-4 text-center text-[11px] leading-relaxed text-mute">
-              Администратор по умолчанию: <span className="font-mono">admin@tkp.local</span> / <span className="font-mono">Admin#12345</span> — смените пароль после первого входа.
+              {isRemote ? "Для получения доступа обратитесь к администратору" : <>
+                Администратор по умолчанию: <span className="font-mono">admin@tkp.local</span> / <span className="font-mono">Admin#12345</span> — смените пароль после первого входа.
+              </>}
             </p>
           </div>
         </div>
