@@ -16,14 +16,15 @@ HTTP-контракт, production-код, зависимости и lockfile н�
 
 PM согласовал список до исполнения (docs PM commit `281b631c`).
 Точный список: [core-003-tracked-artifacts.txt](core-003-tracked-artifacts.txt).
-SHA256 файла: `D056FCC9C8DBAF2D4D9F0FE452D9FFE25F267C3F03D5B3FCBA3B843AB79F3FDE`.
+SHA256 итогового файла: `5A1043DA281D3F9B02378530FD19F2D0AEBA9D01994461EF9B116B6C7767F71C`.
 
 | Путь | Отслеживаемых файлов |
 |---|---:|
 | node_modules/ | 15914 |
 | backend/TkpApi/bin/ | 98 |
 | backend/TkpApi/obj/ | 30 |
-| Всего | 16042 |
+| dist/ (отдельно согласовано PM) | 5 |
+| Всего | 16047 |
 
 Выполнены exit 0:
 
@@ -48,9 +49,11 @@ git rm -r --cached -- node_modules backend/TkpApi/bin backend/TkpApi/obj
   Node 22/.NET SDK 8 пока не проверены. Задача не объявлена done.
 
 Дополнительно обнаружены пять tracked dist-файлов, не входящих в первоначальное
-согласование: index.html и vendor-core/other/recharts/xlsx JS. Отдельный запрос
-PM отправлен; до его ответа эти файлы в индекс очистки не добавляются.
-Изменённый сборкой dist/index.html не должен попасть в commit.
+согласование: index.html и vendor-core/other/recharts/xlsx JS. PM отдельно
+согласовал dry-run и `git rm -r --cached -- dist`; обе команды выполнены успешно.
+Итоговый diff относительно 49c21df4: 16047 удалённых artifact paths, расхождений
+с расширенным списком 0. Локальный dist/index.html сохранён. Удаление build.yml
+учитывается отдельно от этих артефактов. Первый cleanup commit: `12124752`.
 
 ## Очередь после handoff
 

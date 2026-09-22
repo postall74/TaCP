@@ -16040,3 +16040,8 @@ node_modules/zustand/vanilla.d.ts
 node_modules/zustand/vanilla.js
 node_modules/zustand/vanilla/shallow.d.ts
 node_modules/zustand/vanilla/shallow.js
+dist/assets/vendor-core-DAB1OxaK.js
+dist/assets/vendor-other-DtBGzzNz.js
+dist/assets/vendor-recharts-CVLZ8o8P.js
+dist/assets/vendor-xlsx-3SA47z_C.js
+dist/index.html
