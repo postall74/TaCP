@@ -7,7 +7,7 @@
 |---|---|---|---|---|---|
 | CORE-001 | Frontend | in progress: handoff получен, ждёт QA/PR | HTTP не меняется | codex/frontend/core-001-user-forms, 0d095d42 | независимые проверки QA |
 | CORE-002 | QA | in progress: проверки приняты, ждёт PR/CI | HTTP не меняется | codex/qa/core-002-test-baseline, 49c21df4 | PR и штатные версии CI |
-| CORE-003 | QA | ready: техническая база CORE-002 проверена | ci-v1 | назначена отдельная ветка QA | единый workflow и план очистки tracked artifacts |
+| CORE-003 | QA | in progress: локальный handoff принят, ждёт PR/Actions | ci-v1 | codex/qa/core-003-ci-gate, e19da9c2 | Actions Node22/SDK8 и обязательные checks |
 | CORE-004 | PM | in progress | процесс; HTTP не меняется | codex/pm/core-004-coordination | решения, реестр и назначения; подтверждения команды |
 | CORE-005 | Backend | in progress | runtime-config-v1 | codex/backend/core-005-runtime-config | backend-core-005 worktree; negative cases → QA |
 | SEC-001 | Backend | blocked: CORE-005 handoff | auth-v2 | — | отдельная задача; не менять AuthExtensions одновременно |
@@ -40,6 +40,15 @@ PM передаёт дефект владельцу, исправление во
 Не принимать «тесты прошли» из другой ветки как доказательство интеграции.
 
 ## Текущие блокеры выпуска
+
+CORE-003 handoff 2026-09-23: 12124752 + e19da9c2; PM прочитал
+`qa/CORE-003.md` и подтвердил отсутствие tracked node_modules/bin/obj/dist в
+QA-ветке. По отчёту QA точный список 16047 удалений совпал с diff, локальные
+каталоги сохранены; build.yml удалён отдельно. Единый workflow подготовлен.
+YAML/actionlint не выполнен, Actions/PR/branch protection не проверены.
+Локальная подготовка принята, задача не done. QA продолжает отдельный ретест
+SEC-002 6d01c4a0. Backend исправляет обработку ошибки startup CORE-005,
+проверяет positive smoke в отдельной PostgreSQL; окончательного SHA ещё нет.
 
 Обновление 2026-09-23: QA сообщил выполнение согласованной очистки индекса
 16042 путей с точным сравнением списка и сохранением локальных каталогов;
