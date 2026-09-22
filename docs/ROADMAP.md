@@ -58,7 +58,56 @@ CORE-001, CORE-002 и CORE-003 — блокеры любого продукто�
 - Производственная эксплуатация: TLS, бэкапы, наблюдаемость, rate limiting и
   аудит — после ADR-006.
 
-## Контрактный реестр
+## Дополнение PM: внешний выпуск и изоляция (2026-09-22)
+
+Активные статусы: [PM_STATUS](PM_STATUS.md). Эти задачи имеют приоритет перед
+внешним релизом. Продуктовые P1-срезы не обязаны ждать будущей контейнеризации.
+CORE-004 выполняется в PM-ветке; это изменение плана, не feature-реализация.
+
+| ID | Владелец | Контракт / зависимость | Критерии приёмки |
+|---|---|---|---|
+| CORE-005 (уточнение) | Backend | runtime-config-v1; ADR-006a accepted | Fail-fast вне Development без обязательных настроек и с demo secrets; CORS allowlist, Swagger off, opt-in bootstrap без fallback; шаблон параметров; QA запускает positive/negative cases; HTTP DTO не меняются |
+| SEC-001 | Backend | auth-v2; ADR-008; после handoff CORE-005 | register: anonymous 401, manager/engineer 403, без побочных записей; admin success; login доступен; опубликован fixture; QA HTTP-проверки; frontend подтвердил JWT административного клиента |
+| TEN-001 | Backend | tenant-deploy-v1 planned; ADR-007; CORE-005, SEC-001 | Опубликован handoff конфигурации двух tenant: отдельные БД, credentials, JWT issuer/audience/key, storage; план переноса исходной БД в один tenant и rollback; без предположений по OwnerId |
+| OPS-001 | Backend | deploy-v1 planned; TEN-001, CORE-003 | Проверены Dockerfile API и Compose двух стеков, volumes, private DB networks, health checks и restart; web image — отдельная передача Frontend; повторный запуск сохраняет данные; QA воспроизводит на чистом хосте |
+| OPS-002 | QA | ci-release-v1 planned; OPS-001 | PR CI обоих слоёв; доверенный build публикует GHCR SHA/digest; staging/production используют один digest; секреты недоступны PR; deploy сериализован; настройки environments и rollback документированы; до выбора сервера CD blocked |
+| TEN-002 | QA | tenant-deploy-v1; OPS-001 | Два tenant: чужие JWT/ID/импорт/экспорт/поиск не раскрывают данные; цены и пользователи раздельны; перезапуск и восстановление A не меняют B; результаты на конкретном digest |
+| OPS-003 | PM | release-v1 planned; OPS-002, TEN-002, ADR-006 | Backend передал backup/restore/migrations runbook, QA доказал восстановление и smoke; согласованы хост/домен/RPO/RTO/retention; PM принимает release evidence и последовательность rollout/rollback |
+
+Для CORE-001/002/004 HTTP-контракт не меняется. CORE-003 использует `ci-v1`:
+набор проверок из роли QA; план удаления tracked artifacts сначала передаётся PM.
+TEN/OPS задачи пока blocked до зависимостей и публикации точного контракта;
+таблица задаёт критерии, но не разрешает придумывать неизвестные DTO.
+
+## Версии новых контрактов
+
+### SEC-002 — совместимость экрана входа с auth-v2
+
+Владелец: Frontend. Статус: ready, после CORE-001; версия: auth-v2 / ADR-008.
+Подтверждённый аудитом дефект: LoginGate предлагает анонимную регистрацию в
+серверном режиме, которая будет отклоняться auth-v2. Область: LoginGate и
+необходимые UI-компоненты; client DTO и серверные права не менять.
+
+Критерии: серверный режим показывает только вход и сообщение «Для получения
+доступа обратитесь к администратору»; переключение local → remote сбрасывает
+режим регистрации; локальное demo-поведение сохранено; административное
+создание пользователя сохраняет JWT текущего admin. Проверки роли и ручной
+сценарий обеих тем обязательны. Реальный API smoke — после backend fixture и
+SEC-001, до него handoff считается частичным. QA владеет регрессионными тестами.
+Rollback: возврат UI commit допустим только до включения auth-v2 на сервере.
+
+## Статусы публикации новых контрактов
+
+| Версия | Статус | Публикует | Потребляют |
+|---|---|---|---|
+| runtime-config-v1 | accepted requirements; ждёт backend handoff | Backend | QA, PM |
+| auth-v2 | accepted access policy; ждёт fixture | Backend | Frontend, QA |
+| tenant-deploy-v1 | planned | Backend | Frontend, QA |
+| deploy-v1 | planned | Backend | QA, PM |
+| ci-v1 / ci-release-v1 | planned | QA | PM, Backend |
+| release-v1 | planned | PM | Вся команда |
+
+## Реестр существующих HTTP-контрактов
 
 | Версия | Назначение | Статус | Публикует | Потребляют |
 |---|---|---|---|---|
