@@ -42,9 +42,7 @@ public static class AuthExtensions
     public static IServiceCollection AddTkpAuth(this IServiceCollection services, IConfiguration config)
     {
         // Identity: пользователи + роли, без Cookie (токены вместо сессий).
-        // Политика пароля сознательно совпадает с локальным режимом
-        // (localAuth.ts: «минимум 6 символов») и паролем сида Admin#12345 —
-        // внутренний инструмент, жёсткость повышается в проде настройками.
+        // Политика пароля совпадает с локальным режимом (минимум 6 символов).
         services.AddIdentityCore<AppUser>(o =>
             {
                 o.Password.RequireDigit = true;
@@ -219,20 +217,30 @@ public static class AuthExtensions
 
         foreach (var r in new[] { Roles.Admin, Roles.Manager, Roles.Engineer })
             if (!await roles.RoleExistsAsync(r))
-                await roles.CreateAsync(new IdentityRole(r));
+            {
+                var result = await roles.CreateAsync(new IdentityRole(r));
+                if (!result.Succeeded)
+                    throw new InvalidOperationException("Role bootstrap failed; check the Identity database configuration.");
+            }
 
-        // администратор по умолчанию (пароль из конфигурации, смена при первом входе)
-        var email = cfg["Admin:Email"] ?? "admin@tkp.local";
+        if (!cfg.GetValue<bool>("Admin:Enabled")) return;
+
+        // Credentials are validated before any database access. Existing users are unchanged.
+        var email = cfg["Admin:Email"]!;
         if (await users.FindByEmailAsync(email) is null)
         {
             var admin = new AppUser { UserName = email, Email = email, FullName = "Администратор", Position = "admin" };
-            var password = cfg["Admin:Password"] ?? "Admin#12345";
+            var password = cfg["Admin:Password"]!;
             var res = await users.CreateAsync(admin, password);
             if (res.Succeeded)
             {
-                await users.AddToRoleAsync(admin, Roles.Admin);
-                log.LogInformation("Создан администратор {Email} (смените пароль!)", email);
+                var roleResult = await users.AddToRoleAsync(admin, Roles.Admin);
+                if (!roleResult.Succeeded)
+                    throw new InvalidOperationException("Admin bootstrap role assignment failed; manual recovery is required.");
+                log.LogInformation("Bootstrap administrator created; disable Admin:Enabled after initial setup.");
             }
+            else
+                throw new InvalidOperationException("Admin bootstrap failed; check Admin configuration and the Identity database.");
         }
     }
 
