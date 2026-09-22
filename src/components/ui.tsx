@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, type HTMLInputTypeAttribute, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "../store";
 import { IcCheck, IcAlert, IcInfo, IcMinus, IcPlus, IcX, IcChevronDown } from "./icons";
@@ -85,12 +85,14 @@ const inputCls =
   "h-9 w-full rounded-md border border-line bg-card px-3 text-[13px] font-medium text-ink outline-none transition-all duration-150 placeholder:font-normal placeholder:text-mute/70 focus:border-accent focus:ring-2 focus:ring-accent/15";
 
 export const Input = ({
+  type = "text",
   value,
   onChange,
   placeholder,
   className,
   autoFocus,
 }: {
+  type?: HTMLInputTypeAttribute;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
@@ -98,6 +100,7 @@ export const Input = ({
   autoFocus?: boolean;
 }) => (
   <input
+    type={type}
     className={cx(inputCls, className)}
     value={value}
     autoFocus={autoFocus}
