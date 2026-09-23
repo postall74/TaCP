@@ -9,8 +9,8 @@
 | CORE-002 | QA | in progress: проверки приняты, ждёт PR/CI | HTTP не меняется | codex/qa/core-002-test-baseline, 49c21df4 | PR и штатные версии CI |
 | CORE-003 | QA | in progress: локальный handoff принят, ждёт PR/Actions | ci-v1 | codex/qa/core-003-ci-gate, e19da9c2 | Actions Node22/SDK8 и обязательные checks |
 | CORE-004 | PM | in progress | процесс; HTTP не меняется | codex/pm/core-004-coordination | решения, реестр и назначения; подтверждения команды |
-| CORE-005 | Backend | in progress | runtime-config-v1 | codex/backend/core-005-runtime-config | backend-core-005 worktree; negative cases → QA |
-| SEC-001 | Backend | blocked: CORE-005 handoff | auth-v2 | — | отдельная задача; не менять AuthExtensions одновременно |
+| CORE-005 | Backend | in progress: handoff получен, ждёт QA/PR | runtime-config-v1 | codex/backend/core-005-runtime-config, 685b674a | независимые startup/HTTP/bootstrap проверки QA |
+| SEC-001 | Backend | in progress: назначена после CORE-005 handoff | auth-v2 | отдельная ветка от 685b674a; имя ожидается | contract/fixtures → Frontend и QA |
 
 ## Передача результатов
 
@@ -40,6 +40,15 @@ PM передаёт дефект владельцу, исправление во
 Не принимать «тесты прошли» из другой ветки как доказательство интеграции.
 
 ## Текущие блокеры выпуска
+
+CORE-005: получен 685b674a788bf69bc65e4a5af2c2363d2001032d, PM сверил 9
+файлов backend/TkpApi и CORE-005-HANDOFF.md. Автор сообщил 57 unit tests,
+чистый Release build, 18 negative startup и 9 positive HTTP/bootstrap checks
+на отдельном временном PostgreSQL 18. Исправлен Windows crash dialog:
+RuntimeConfigurationException обрабатывается через stderr/exit 1. Это отчёт
+разработчика, не независимый QA. QA получил SHA, контракт, fixture и запрос
+регрессии fail-fast/секретов/Host/CORS/Swagger/bootstrap. SEC-001 продолжает
+backend отдельной веткой; анонимная регистрация в CORE-005 ещё не закрыта.
 
 CORE-003 handoff 2026-09-23: 12124752 + e19da9c2; PM прочитал
 `qa/CORE-003.md` и подтвердил отсутствие tracked node_modules/bin/obj/dist в
@@ -98,3 +107,20 @@ PM отвечает за критерии и разрешение релиза; 
 Backend — runtime, миграциями и серверным контейнером; Frontend — web-сборкой.
 Последовательность и задачи: [ROADMAP](ROADMAP.md),
 [план эксплуатации](DEPLOYMENT_PLAN.md). Решения: [DECISIONS](DECISIONS.md).
+
+## Мониторинг и публикация — 2026-09-23
+
+Опрос всех трёх агентов настроен каждые 30 минут: проверять SHA, критерии,
+незавершённые команды и причины простоя; выдавать следующую ready-задачу,
+не дублировать активную работу. Последние остановки всех агентов связаны с
+usage limit, не с тестами. Свежая проверка разрешила работу; PM отправил
+каждому распоряжение продолжить, инструменты подтвердили доставку.
+Предыдущая попытка передачи CORE-005 QA была заблокирована автоматической
+проверкой из-за usage limit; успешная повторная передача выполнена сейчас.
+
+Пользователь поручил публиковать изменения в GitHub: отдельная codex-ветка,
+только относящиеся к задаче файлы, commit, push без force и проверка remote SHA.
+Не добавлять generated artifacts, локальные worktrees, IDE-файлы и секреты;
+проверять не только .gitignore, но и уже tracked paths. CORE-003 содержит
+согласованную очистку исторически tracked artifacts; не дублировать её в каждой
+feature-ветке. Публикация ветки не означает принятие PR или готовность релиза.
