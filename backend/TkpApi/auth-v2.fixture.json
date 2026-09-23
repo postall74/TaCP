@@ -1,0 +1,53 @@
+{
+  "contract": "auth-v2",
+  "task": "SEC-001",
+  "register": {
+    "method": "POST",
+    "path": "/api/auth/register",
+    "authorization": "Bearer token with admin role",
+    "request": {
+      "email": "engineer@example.test",
+      "password": "<generated-test-password>",
+      "fullName": "Тестовый инженер",
+      "position": "Инженер",
+      "role": "engineer",
+      "phone": "+70000000000"
+    },
+    "success": {
+      "status": 200,
+      "body": {
+        "id": "<generated-string-id>",
+        "email": "engineer@example.test",
+        "fullName": "Тестовый инженер",
+        "role": "engineer"
+      }
+    },
+    "errors": [
+      { "case": "anonymous or invalid token", "status": 401, "body": null, "databaseWrites": false },
+      { "case": "manager or engineer token", "status": 403, "body": null, "databaseWrites": false },
+      { "case": "admin submits short password", "status": 400, "body": { "errors": ["Пароль слишком короткий — минимум 6 символов"] } }
+    ]
+  },
+  "login": {
+    "method": "POST",
+    "path": "/api/auth/login",
+    "authorization": "anonymous",
+    "request": { "email": "engineer@example.test", "password": "<generated-test-password>" },
+    "success": {
+      "status": 200,
+      "body": {
+        "token": "<signed-jwt>",
+        "expiresAt": 1790148600000,
+        "user": {
+          "id": "<generated-string-id>",
+          "email": "engineer@example.test",
+          "fullName": "Тестовый инженер",
+          "position": "Инженер",
+          "phone": "+70000000000",
+          "roles": ["engineer"]
+        }
+      }
+    },
+    "invalidCredentialsStatus": 401
+  }
+}
