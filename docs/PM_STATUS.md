@@ -41,6 +41,16 @@ PM передаёт дефект владельцу, исправление во
 
 ## Текущие блокеры выпуска
 
+SEC-002 QA 0eaf3204: PM прочитал qa/SEC-002.md, независимые 80 tests,
+typecheck/build и браузерные сценарии двух тем прошли. UI-критерии приняты,
+реальный API smoke ждёт SEC-001. QA-005 P3 (stale Failed to fetch при remote →
+local) выделен в SEC-003 и передан Frontend, не переопределяет готовый UI scope.
+QA сообщил публикацию и сверку remote SHA CORE-003 e19da9c2 и SEC-002
+0eaf3204. PR пока блокирован: gh/connector отсутствуют, GitHub в IAB требует
+входа. Actions и обязательные branch checks не подтверждены. QA продолжает
+CORE-005 на отдельной ветке; публикация backend ранее остановлена approval
+review, точное разрешение адреса запрошено backend у пользователя.
+
 CORE-005: получен 685b674a788bf69bc65e4a5af2c2363d2001032d, PM сверил 9
 файлов backend/TkpApi и CORE-005-HANDOFF.md. Автор сообщил 57 unit tests,
 чистый Release build, 18 negative startup и 9 positive HTTP/bootstrap checks
