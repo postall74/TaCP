@@ -1,5 +1,9 @@
 # QA: журнал проверок и передача PM
 
+CORE-005: [независимый QA-отчёт](CORE-005.md). Backend source `685b674a`,
+QA base `6045076a`: 96 .NET tests и 12 HTTP assertions прошли. Файлы переданы
+PM без нового commit/push. Следующая адресная проверка — SEC-001 `b1bb51eb`.
+
 SEC-002: [QA-отчёт auth-v2](SEC-002.md), frontend `6d01c4a0` проверен
 в ветке `codex/qa/sec-002-auth-regression` как `d3561126`: 80 тестов,
 typecheck/build и браузерный smoke обеих тем. QA-005 передан PM.
