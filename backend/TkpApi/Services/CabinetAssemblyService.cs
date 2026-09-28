@@ -1,11 +1,15 @@
 namespace TkpApi.Services;
 
 /// <summary>
-/// Сервис управления шкафными сборками.
+/// Прототип предварительной компоновки шкафных сборок; требуется инженерная проверка.
 /// Поддерживает соединения "стенка к стенке" и "дверь к задней стенке".
 /// </summary>
 public class CabinetAssemblyService
 {
+    private const string PreliminaryAssessment =
+        "Предварительная компоновка; соответствие нормативным требованиям не проверено. " +
+        "Требуется инженерная проверка. Габариты оценены по названию или значениям по умолчанию.";
+
     /// <summary>
     /// Создаёт сборку шкафов "стенка к стенке".
     /// </summary>
@@ -30,19 +34,19 @@ public class CabinetAssemblyService
             CabinetIds: cabinets.Select(c => c.Id).ToList(),
             TotalWidth: totalWidth,
             TotalDepth: depth,
-            ConnectionStandard: "ГОСТ IEC 61439-2 п.8.4.2"
+            ConnectionStandard: PreliminaryAssessment
         );
     }
 
     /// <summary>
     /// Создаёт сборку шкафов "передняя дверь к задней стенке".
-    /// Согласно ГОСТ IEC 61439-2, максимальное количество корпусов в такой сборке — 2.
+    /// Число корпусов не является нормативной проверкой; результат предварительный.
     /// </summary>
     public CabinetConnection CreateFrontToBackAssembly(
         string assemblyName, List<Cabinet> cabinets)
     {
-        if (cabinets.Count != 2)
-            throw new ArgumentException("Сборка 'дверь к задней стенке' допускает только 2 корпуса");
+        if (cabinets.Count < 2)
+            throw new ArgumentException("Для сборки нужно минимум 2 шкафа");
 
         // Проверяем что ширина одинаковая
         var widths = cabinets.Select(c => GetWidth(c)).Distinct().ToList();
@@ -59,7 +63,7 @@ public class CabinetAssemblyService
             CabinetIds: cabinets.Select(c => c.Id).ToList(),
             TotalWidth: width,
             TotalDepth: totalDepth,
-            ConnectionStandard: "ГОСТ IEC 61439-2 п.8.4.3"
+            ConnectionStandard: PreliminaryAssessment
         );
     }
 

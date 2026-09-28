@@ -54,7 +54,7 @@ public record ThermalRecommendation(
 public enum CabinetConnectionType
 {
     SideBySide,         // Стенка к стенке (N корпусов в ряд)
-    FrontToBack         // Передняя дверь к задней стенке (макс 2 корпуса)
+    FrontToBack         // Передняя дверь к задней стенке; предварительная компоновка
 }
 
 /// <summary>
@@ -67,5 +67,5 @@ public record CabinetConnection(
     List<string> CabinetIds,        // ID соединённых шкафов
     int TotalWidth,                 // Общая ширина сборки, мм
     int TotalDepth,                 // Общая глубина сборки, мм
-    string ConnectionStandard       // ГОСТ/ТУ: "ГОСТ IEC 61439-2 п.8.4"
+    string ConnectionStandard       // Оговорка прототипа; поле сохранено для совместимости, не подтверждает соответствие нормам
 );
