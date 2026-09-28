@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.OpenApi.Models;
 using TkpApi;
+using TkpApi.Services;
 
 /* ============================================================
    TKP·PRO BACKEND — ASP.NET Core 8, Minimal API + EF Core + PostgreSQL.
@@ -428,8 +429,44 @@ app.MapFallback(async ctx =>
     await ctx.Response.SendFileAsync(Path.Combine(staticDir, "index.html"));
 });
 
+/* ---------------- Тепловой расчёт и конфигурация шкафов ---------------- */
+var thermalEngine = new ThermalEngine();
+var cabinetConfigurator = new CabinetConfigurator();
+var assemblyService = new CabinetAssemblyService();
+
+app.MapPost("/api/cabinets/thermal-calc", (ThermalCalcRequest req) =>
+{
+    var heatW = thermalEngine.CalculateHeatDissipation(req.Cabinet, req.Catalog);
+    return Results.Ok(new { heatWatts = heatW });
+});
+
+app.MapPost("/api/cabinets/configure-empty", (ConfigureEmptyRequest req) =>
+{
+    var config = cabinetConfigurator.CreateEmptyCabinet(req.Brand, req.H, req.W, req.D, req.Ip, req.Mount);
+    return Results.Ok(config);
+});
+
+app.MapPost("/api/cabinets/configure-preassembled", (ConfigurePreassembledRequest req) =>
+{
+    var config = cabinetConfigurator.CreatePreassembledCabinet(req.Brand, req.H, req.W, req.D, req.Ip, req.Items);
+    return Results.Ok(config);
+});
+
+app.MapPost("/api/cabinets/assemble-side", (AssembleRequest req) =>
+{
+    var assembly = assemblyService.CreateSideBySideAssembly(req.Name, req.Cabinets);
+    return Results.Ok(assembly);
+});
+
+app.MapPost("/api/cabinets/assemble-front-back", (AssembleRequest req) =>
+{
+    var assembly = assemblyService.CreateFrontToBackAssembly(req.Name, req.Cabinets);
+    return Results.Ok(assembly);
+});
+
 app.Run();
 
+// Разбор CSV прайс-листа вынесен в CatalogCsv.cs (чистая часть + Import).
 /* ---------------- доп. таблицы и «корзина» справочника ---------------- */
 
 /// <summary>Создаёт company_settings и deleted_equipment в уже существующей БД
@@ -523,5 +560,3 @@ static bool HasAnyTable(TkpDbContext db)
         return false;
     }
 }
-
-// Разбор CSV прайс-листа вынесен в CatalogCsv.cs (чистая часть + Import).

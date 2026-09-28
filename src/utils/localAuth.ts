@@ -125,6 +125,18 @@ export function localUpdateUser(id: string, patch: { fullName?: string; position
   localUpdateProfile(id, patch);
 }
 
+/** Правка профиля любого пользователя админом с email (зеркало PUT /api/auth/users/{id}). */
+export function localUpdateUserProfile(id: string, patch: { fullName?: string; position?: string; phone?: string; email?: string }): void {
+  const users = readUsers();
+  const u = users.find((x) => x.id === id);
+  if (!u) throw new Error("Пользователь не найден");
+  if (patch.fullName !== undefined) u.fullName = patch.fullName.trim();
+  if (patch.position !== undefined) u.position = patch.position.trim();
+  if (patch.phone !== undefined) u.phone = patch.phone.trim();
+  if (patch.email !== undefined) u.email = patch.email.trim();
+  writeUsers(users);
+}
+
 export async function localSetUserRole(id: string, role: Role): Promise<void> {
   const users = readUsers();
   const u = users.find((x) => x.id === id);

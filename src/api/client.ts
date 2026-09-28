@@ -156,6 +156,7 @@ export const restApi = (base: string) => ({
   deleteEquipment: (id: string) => req<void>(base, `/api/catalog/${id}`, { method: "DELETE" }),
   /* «корзина» справочника: удалённые позиции (хранятся 90 дней) */
   deletedEquipment: () => req<DeletedEquipment[]>(base, "/api/catalog/deleted"),
+  restoreEquipment: (id: string) => req<void>(base, `/api/catalog/${id}/restore`, { method: "POST" }),
   importCsv: (csv: string) =>
     req<{ added: number; updated: number; skipped: number }>(base, "/api/catalog/import", {
       method: "POST",
