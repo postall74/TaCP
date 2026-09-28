@@ -1,5 +1,9 @@
 # QA: журнал проверок и передача PM
 
+SEC-001: [независимый QA auth-v2](SEC-001.md), production `b1bb51eb`:
+96 .NET tests и 21 адресная HTTP/DB проверка прошли. Новых дефектов защиты
+registration не найдено. Git-операции оставлены PM.
+
 CORE-005: [независимый QA-отчёт](CORE-005.md). Backend source `685b674a`,
 QA base `6045076a`: 96 .NET tests и 12 HTTP assertions прошли. Файлы переданы
 PM без нового commit/push. Следующая адресная проверка — SEC-001 `b1bb51eb`.
