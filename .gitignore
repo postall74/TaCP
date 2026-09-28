@@ -11,11 +11,32 @@ node_modules/
 # Logs and temp files
 *.log
 *.tmp
+*.bak
+*.swp
+*.swo
+.cache/
+TestResults/
 
 # Environment
 .env
 .env.local
 .env.*
+!.env.example
+
+# Local secrets and machine-specific configuration
+*.pem
+*.key
+*.pfx
+*.p12
+**/secrets.json
+**/appsettings.Production.json
+**/appsettings.Local.json
+**/appsettings.*.local.json
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
 
 # Editors
 .vscode/
@@ -26,6 +47,16 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS and IDE user files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.user
+*.suo
 
 # Compiled files
 *.o
