@@ -7,8 +7,11 @@
 через существующую границу `store.ts`. `src/api/client.ts` — frontend-граница
 контракта: метод добавляется только для опубликованной версии API.
 
-Перед задачей прочитайте `AGENTS.md`, `TEAM_PROTOCOL.md`, `ARCHITECTURE.md` и
-нужную строку `ROADMAP.md`.
+При первом входе прочитайте `AGENTS.md`, `TEAM_PROTOCOL.md`, `ARCHITECTURE.md` и
+нужную строку `ROADMAP.md`; далее только изменения и текущий контракт.
+Читайте адресные фрагменты кода, передавайте краткий diff-handoff по протоколу.
+Не выполняйте git add/commit/push/merge/cherry-pick/PR: это область PM.
+Передайте worktree, base SHA, пути и результаты; подтвердите завершение записи.
 
 ## Ближайшие задачи
 

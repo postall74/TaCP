@@ -21,6 +21,18 @@
 
 ## Что проверено сейчас
 
+Дополнение PM 2026-09-22: чтением `AuthExtensions.cs` подтверждены
+`AllowAnonymous` на auth group и назначение роли из RegisterDto при регистрации.
+Это блокер внешнего релиза SEC-001, а не доказанная эксплуатация уязвимости.
+Docker/tenant-isolation пока только запланированы в [DEPLOYMENT_PLAN](DEPLOYMENT_PLAN.md).
+
+Промежуточный отчёт QA CORE-002 на базе fbd78d0b, отдельный worktree:
+после добавления `npm test` чистый `npm ci` успешен, 71 frontend и 57 backend
+тестов прошли, backend Release build без предупреждений/ошибок. Typecheck
+на исходной базе всё ещё выдаёт 9 диагностик; интеграция CORE-001 не проверена.
+Эти данные получены из handoff QA, PM не повторял команды. Ниже сохранён
+первоначальный baseline, различия установок не означают закрытие CORE-002.
+
 | Проверка | Результат |
 |---|---|
 | `dotnet test backend/TkpApi.Tests --no-restore` | Успех: 57 xUnit-тестов |
