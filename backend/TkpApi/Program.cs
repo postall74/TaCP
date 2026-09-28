@@ -10,8 +10,8 @@ using TkpApi.Services;
 /* ============================================================
    TKP·PRO BACKEND — ASP.NET Core 8, Minimal API + EF Core + PostgreSQL.
 
-   Запуск (см. ../README.md):
-     1) appsettings.json → ConnectionStrings:Tkp
+   Запуск (см. CONFIGURATION.md):
+     1) внешние секреты и явное окружение → runtime-config-v1
      2) dotnet run  →  http://localhost:5085 (Swagger: /swagger)
    При пустой БД каталог автоматически наполняется из seed-catalog.csv.
 
@@ -20,9 +20,21 @@ using TkpApi.Services;
    ============================================================ */
 
 var builder = WebApplication.CreateBuilder(args);
+try
+{
+    StartupConfiguration.Validate(builder.Configuration, builder.Environment);
+}
+catch (RuntimeConfigurationException ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    Environment.ExitCode = 1;
+    return;
+}
 builder.Services.AddDbContext<TkpDbContext>(o =>
     o.UseNpgsql(builder.Configuration.GetConnectionString("Tkp")));
-builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
+    p.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod()));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o =>
 {
@@ -57,8 +69,11 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 
 var app = builder.Build();
 app.UseCors();
-app.UseSwagger();
-app.UseSwaggerUI();
+if (builder.Configuration.GetValue("Swagger:Enabled", app.Environment.IsDevelopment()))
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 app.UseTkpAuth();        // UseAuthentication + UseAuthorization (до Map*)
 app.MapAuthEndpoints();  // /api/auth/register|login|me|users
 
