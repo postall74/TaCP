@@ -1,0 +1,94 @@
+{
+  "contractVersion": "tenant-deploy-v1",
+  "kind": "deployment-planning-fixture-not-runtime-config",
+  "tenants": [
+    {
+      "name": "tenant-a",
+      "purpose": "one existing database becomes the initial tenant",
+      "environment": {
+        "DOTNET_ENVIRONMENT": "Production",
+        "URLS": "http://0.0.0.0:8080",
+        "ConnectionStrings__Tkp": "Host=db-a;Port=5432;Database=tkp_a;Username=tkp_a_app;Password=<tenant-a-db-password>",
+        "Jwt__Key": "<tenant-a-random-jwt-key>",
+        "Jwt__Issuer": "tkp-tenant-a-api",
+        "Jwt__Audience": "tkp-tenant-a-web",
+        "Jwt__ExpireMinutes": "480",
+        "AllowedHosts": "tenant-a.example.test",
+        "Cors__AllowedOrigins__0": "https://tenant-a.example.test",
+        "Admin__Enabled": "false",
+        "Swagger__Enabled": "false",
+        "StaticFilesPath": "/app/web"
+      },
+      "secretReferences": {
+        "databasePassword": "tenant-a/database-password",
+        "jwtKey": "tenant-a/jwt-key",
+        "bootstrapEmail": "tenant-a/bootstrap-email",
+        "bootstrapPassword": "tenant-a/bootstrap-password"
+      },
+      "resources": {
+        "composeProject": "tkp-tenant-a",
+        "apiService": "api-a",
+        "databaseService": "db-a",
+        "privateDbNetwork": "tkp-tenant-a-db",
+        "ingressNetwork": "tkp-tenant-a-ingress",
+        "databaseVolume": "tkp-tenant-a-pgdata",
+        "databasePublishedPorts": [],
+        "operatorManagedFilesRoot": "/srv/tkp/tenant-a/files",
+        "operatorManagedLogsRoot": "/srv/tkp/tenant-a/logs",
+        "backupNamespace": "tkp/tenant-a/",
+        "imageDigestReference": "<same-reviewed-image-digest-for-both-tenants>"
+      },
+      "qaData": {
+        "catalogSku": "TEN-A-CATALOG-001",
+        "catalogPurchase": 123.45,
+        "projectName": "Only tenant A",
+        "userEmail": "isolation@example.test",
+        "userPasswordReference": "qa/tenant-a/user-password"
+      }
+    },
+    {
+      "name": "tenant-b",
+      "purpose": "new empty company or personal workspace; never restore A data here",
+      "environment": {
+        "DOTNET_ENVIRONMENT": "Production",
+        "URLS": "http://0.0.0.0:8080",
+        "ConnectionStrings__Tkp": "Host=db-b;Port=5432;Database=tkp_b;Username=tkp_b_app;Password=<tenant-b-db-password>",
+        "Jwt__Key": "<tenant-b-random-jwt-key>",
+        "Jwt__Issuer": "tkp-tenant-b-api",
+        "Jwt__Audience": "tkp-tenant-b-web",
+        "Jwt__ExpireMinutes": "480",
+        "AllowedHosts": "tenant-b.example.test",
+        "Cors__AllowedOrigins__0": "https://tenant-b.example.test",
+        "Admin__Enabled": "false",
+        "Swagger__Enabled": "false",
+        "StaticFilesPath": "/app/web"
+      },
+      "secretReferences": {
+        "databasePassword": "tenant-b/database-password",
+        "jwtKey": "tenant-b/jwt-key",
+        "bootstrapEmail": "tenant-b/bootstrap-email",
+        "bootstrapPassword": "tenant-b/bootstrap-password"
+      },
+      "resources": {
+        "composeProject": "tkp-tenant-b",
+        "apiService": "api-b",
+        "databaseService": "db-b",
+        "privateDbNetwork": "tkp-tenant-b-db",
+        "ingressNetwork": "tkp-tenant-b-ingress",
+        "databaseVolume": "tkp-tenant-b-pgdata",
+        "databasePublishedPorts": [],
+        "operatorManagedFilesRoot": "/srv/tkp/tenant-b/files",
+        "operatorManagedLogsRoot": "/srv/tkp/tenant-b/logs",
+        "backupNamespace": "tkp/tenant-b/",
+        "imageDigestReference": "<same-reviewed-image-digest-for-both-tenants>"
+      },
+      "qaData": {
+        "catalogSku": "TEN-B-CATALOG-001",
+        "catalogPurchase": 678.90,
+        "projectName": "Only tenant B",
+        "userEmail": "isolation@example.test",
+        "userPasswordReference": "qa/tenant-b/user-password"
+      }
+    }
+  ]
+}
