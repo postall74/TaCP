@@ -97,9 +97,9 @@ public static class AuthExtensions
 
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
-        var g = app.MapGroup("/api/auth").AllowAnonymous();
+        var g = app.MapGroup("/api/auth");
 
-        // Регистрация (в проде — закрыть или оставить только админу; см. RequireAdmin).
+        // auth-v2: создание пользователей только администратором во всех окружениях.
         // Ошибки Identity переводим на русский — фронтенд показывает их как есть
         // (раньше клиент видел безликий «HTTP 400 Bad Request»).
         g.MapPost("/register", async (RegisterDto dto, UserManager<AppUser> users) =>
@@ -116,7 +116,7 @@ public static class AuthExtensions
 
             await users.AddToRoleAsync(user, NormalizeRole(dto.Role));
             return Results.Ok(new { user.Id, user.Email, user.FullName, role = NormalizeRole(dto.Role) });
-        });
+        }).RequireAuthorization("AdminOnly");
 
         // Логин → JWT
         g.MapPost("/login", async (LoginDto dto, SignInManager<AppUser> signIn,
@@ -129,7 +129,7 @@ public static class AuthExtensions
             var roles = await users.GetRolesAsync(user);
             var token = IssueToken(user, roles, config);
             return Results.Ok(new { token = token.Token, expiresAt = token.ExpiresAt, user = ToDto(user, roles) });
-        });
+        }).AllowAnonymous();
 
         // Текущий пользователь по токену
         app.MapGet("/api/auth/me", async (ClaimsPrincipal cp, UserManager<AppUser> users) =>
