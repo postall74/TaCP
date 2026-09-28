@@ -2,6 +2,19 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "check-api-config",
+      "command": "pwsh",
+      "type": "process",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/scripts/check-api-dev.ps1"
+      ],
+      "problemMatcher": []
+    },
+    {
       "label": "build-api",
       "command": "dotnet",
       "type": "process",
@@ -12,6 +25,28 @@
         "/consoleloggerparameters:NoSummary;ForceNoAlign"
       ],
       "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "prepare-api",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "check-api-config",
+        "build-api"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "configure-api-dev",
+      "command": "pwsh",
+      "type": "process",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/scripts/configure-api-dev.ps1"
+      ],
+      "problemMatcher": []
     }
   ]
 }
