@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useStore } from "../store";
 import { IcBolt, IcCheck, IcLayers, IcBox, IcDoc } from "./icons";
 import { cx } from "./ui";
@@ -35,11 +35,13 @@ export default function LoginGate() {
   const [role, setRole] = useState<"engineer" | "manager">("engineer");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const connectionRevision = useRef(0);
 
   useEffect(() => {
+    connectionRevision.current += 1;
+    setError("");
     if (isRemote) {
       setMode("login");
-      setError("");
     }
   }, [isRemote]);
 
@@ -51,6 +53,7 @@ export default function LoginGate() {
       return;
     }
     setBusy(true);
+    const submittedRevision = connectionRevision.current;
     try {
       if (activeMode === "login") {
         await login(email.trim(), password);
@@ -73,7 +76,10 @@ export default function LoginGate() {
         setMode("login");
       }
     } catch (err: any) {
-      setError(err?.message ?? "Не удалось войти. Проверьте данные или подключение к API.");
+      // Ответ прежнего режима не должен возвращать уже очищенную ошибку.
+      if (submittedRevision === connectionRevision.current) {
+        setError(err?.message ?? "Не удалось войти. Проверьте данные или подключение к API.");
+      }
     } finally {
       setBusy(false);
     }
