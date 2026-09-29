@@ -1,0 +1,71 @@
+# Run this file twice with the two example configurations and different project names.
+services:
+  db:
+    image: ${POSTGRES_IMAGE:?Set a reviewed PostgreSQL 17 image tag or digest}
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: ${TKP_DB_NAME:?Set database name}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_bootstrap_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+      TKP_DB_USER: ${TKP_DB_USER:?Set application database role}
+    secrets:
+      - db_bootstrap_password
+      - db_app_password
+    volumes:
+      - database:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/10-tkp.sh:ro
+    networks: [database]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: '3'}
+  api:
+    image: ${API_IMAGE:?Set API image tag or digest}
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      URLS: http://0.0.0.0:8080
+      StaticFilesPath: /app/web
+      TKP_DB_NAME: ${TKP_DB_NAME:?Set database name}
+      TKP_DB_USER: ${TKP_DB_USER:?Set application database role}
+      Jwt__Issuer: ${JWT_ISSUER:?Set tenant issuer}
+      Jwt__Audience: ${JWT_AUDIENCE:?Set tenant audience}
+      AllowedHosts: ${TENANT_HOST:?Set tenant hostname}
+      Cors__AllowedOrigins__0: ${TENANT_ORIGIN:?Set tenant origin}
+      Admin__Enabled: 'false'
+      Swagger__Enabled: 'false'
+    secrets: [db_app_password, jwt_key]
+    ports:
+      - '127.0.0.1:${API_PORT:?Set unique loopback API port}:8080'
+    networks: [database, ingress]
+    depends_on:
+      db: {condition: service_healthy}
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: '3'}
+secrets:
+  db_bootstrap_password:
+    file: ${DB_BOOTSTRAP_PASSWORD_FILE:?Set external bootstrap secret path}
+  db_app_password:
+    file: ${DB_APP_PASSWORD_FILE:?Set external application secret path}
+  jwt_key:
+    file: ${JWT_KEY_FILE:?Set external JWT secret path}
+volumes:
+  database:
+networks:
+  database:
+    internal: true
+  ingress:

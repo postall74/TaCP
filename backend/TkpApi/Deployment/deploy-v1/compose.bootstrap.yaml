@@ -1,0 +1,10 @@
+# Include only for the explicitly planned initial administrator bootstrap.
+services:
+  api:
+    environment:
+      Admin__Enabled: 'true'
+      Admin__Email: ${ADMIN_EMAIL:?Set bootstrap administrator email}
+    secrets: [admin_password]
+secrets:
+  admin_password:
+    file: ${ADMIN_PASSWORD_FILE:?Set external bootstrap administrator secret path}

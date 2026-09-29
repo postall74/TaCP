@@ -1,0 +1,11 @@
+# Only source and explicitly selected runtime assets enter the build context.
+**
+!**/
+!**/*.cs
+!TkpApi.csproj
+!appsettings.json
+!seed-catalog.csv
+!Deployment/deploy-v1/api-entrypoint.sh
+!Deployment/deploy-v1/api-healthcheck.sh
+**/bin/**
+**/obj/**
