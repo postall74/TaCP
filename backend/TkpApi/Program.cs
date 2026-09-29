@@ -398,9 +398,25 @@ app.MapPost("/api/kits/calculate", (KitInput input) =>
     return Results.Ok(new { lines, hours, total });
 });
 
-var rates = new Rates();
-app.MapGet("/api/rates", () => rates).RequireAuthorization("Staff");
-app.MapPut("/api/rates", (Rates r) => { rates = r; return Results.Ok(rates); }).RequireAuthorization("AdminOnly");
+app.MapGet("/api/rates", async (TkpDbContext db, CancellationToken ct) =>
+    await db.RateCards.AsNoTracking().Where(x => x.Id == 1).Select(x => new Rates
+    {
+        Design = x.Design, Production = x.Production, Software = x.Software,
+        Smr = x.Smr, Pnr = x.Pnr
+    }).SingleAsync(ct)).RequireAuthorization("Staff");
+app.MapPut("/api/rates", async (Rates r, TkpDbContext db, CancellationToken ct) =>
+{
+    // One SQL UPDATE replaces the whole DTO, including concurrent writes.
+    var updated = await db.RateCards.Where(x => x.Id == 1).ExecuteUpdateAsync(s => s
+        .SetProperty(x => x.Design, r.Design)
+        .SetProperty(x => x.Production, r.Production)
+        .SetProperty(x => x.Software, r.Software)
+        .SetProperty(x => x.Smr, r.Smr)
+        .SetProperty(x => x.Pnr, r.Pnr), ct);
+    if (updated != 1)
+        throw new InvalidOperationException("The tenant rates row is missing. Check database migrations.");
+    return Results.Ok(r);
+}).RequireAuthorization("AdminOnly");
 
 /* Реквизиты компании ПРИВЯЗАНЫ К УЧЁТНОЙ ЗАПИСИ и хранятся в БД (company_settings):
    у каждого пользователя свой исполнитель/контакты в документах. Строки нет —
@@ -545,15 +561,14 @@ static void EnsureSchema(TkpDbContext db, ILogger logger)
 
     if (applied.Count == 0 && db.Database.CanConnect() && HasAnyTable(db))
     {
-        // Существующая БД от EnsureCreated: baseline — помечаем все миграции применёнными.
+        // Legacy baseline covers only the initial schema, never subsequent migrations.
         // Имя таблицы — константа (не интерполяция), поэтому EF1002 (SQL-injection) не срабатывает.
         db.Database.ExecuteSqlRaw(
             "CREATE TABLE IF NOT EXISTS \"__EFMigrationsHistory\" (\"MigrationId\" varchar(150) NOT NULL PRIMARY KEY, \"ProductVersion\" varchar(32) NOT NULL)");
-        foreach (var m in pending)
+        foreach (var m in pending.Where(x => x == "20260906110630_AddCabinetSegmentsPersistence"))
             db.Database.ExecuteSqlRaw(
                 "INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES (@p0, @p1)", m, "8.0.8");
-        logger.LogInformation("Baseline: {Count} миграций помечены как применённые (схема уже существовала)", pending.Count);
-        return;
+        logger.LogInformation("Legacy baseline recorded; subsequent migrations will now run");
     }
 
     db.Database.Migrate();

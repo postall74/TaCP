@@ -1,0 +1,20 @@
+{
+  "contract": "rates-persistence-v1",
+  "get": { "path": "/api/rates", "policy": "Staff", "successStatus": 200 },
+  "put": { "path": "/api/rates", "policy": "AdminOnly", "successStatus": 200 },
+  "defaults": { "design": 1800, "production": 1800, "software": 2200, "smr": 1800, "pnr": 1800 },
+  "tenantA": { "design": 1234.56789, "production": -9.87654, "software": 0, "smr": 4567.12345, "pnr": 9876.54321 },
+  "tenantB": { "design": 3100, "production": 3200, "software": 3300, "smr": 3400, "pnr": 3500 },
+  "invalidDecimal": { "design": "invalid" },
+  "expected": {
+    "anonymousGetOrPut": 401,
+    "staffGet": 200,
+    "engineerOrManagerPut": 403,
+    "invalidDecimalPut": 400,
+    "crossTenantJwt": 401,
+    "putResponse": "same five numeric properties as bound request DTO",
+    "emptyObjectPut": "existing DTO defaults, not PATCH",
+    "restart": "last successful complete PUT remains in the same tenant database",
+    "concurrentPuts": "one complete submitted DTO wins; no mixed fields"
+  }
+}

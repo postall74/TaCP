@@ -23,10 +23,27 @@ public class TkpDbContext(DbContextOptions<TkpDbContext> options) : IdentityDbCo
     public DbSet<CompanySettingsRow> CompanySettings => Set<CompanySettingsRow>();
     public DbSet<DeletedEquipment> DeletedEquipment => Set<DeletedEquipment>();
 
+    public DbSet<RatesRow> RateCards => Set<RatesRow>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         // таблицы Identity (пользователи, роли, связи)
         base.OnModelCreating(mb);
+
+        mb.Entity<RatesRow>(r =>
+        {
+            r.ToTable("rate_cards", t => t.HasCheckConstraint("CK_rate_cards_singleton", "\"Id\" = 1"));
+            r.HasKey(x => x.Id);
+            r.Property(x => x.Id).ValueGeneratedNever();
+            // Unconstrained numeric preserves the existing decimal DTO without rounding.
+            r.Property(x => x.Design).HasColumnType("numeric");
+            r.Property(x => x.Production).HasColumnType("numeric");
+            r.Property(x => x.Software).HasColumnType("numeric");
+            r.Property(x => x.Smr).HasColumnType("numeric");
+            r.Property(x => x.Pnr).HasColumnType("numeric");
+            r.HasData(new RatesRow { Id = 1, Design = 1800m, Production = 1800m,
+                Software = 2200m, Smr = 1800m, Pnr = 1800m });
+        });
 
         mb.Entity<Equipment>(e =>
         {
