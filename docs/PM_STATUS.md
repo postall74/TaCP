@@ -1,5 +1,13 @@
 # Доска PM
 
+## DEV-001 принят — 2026-09-29
+
+На main `1edff933` PM и независимый QA подтвердили безопасную проверку User
+Secrets, понятный negative case с изолированным пустым APPDATA, Debug build без
+предупреждений и ошибок, запуск из `backend/TkpApi` в Development и
+`GET /api/health` 200. Реальные секреты не выводились и не изменялись. QA
+evidence: `qa/DEV-001.md` в worktree `qa-dev-001`; main не изменён.
+
 ## Нормативное исследование 2026-09-28
 
 Получен пакет `research/normative/` на базе main `1e03fef2`. PM принял его как
