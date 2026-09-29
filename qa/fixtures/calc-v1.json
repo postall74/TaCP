@@ -1,0 +1,36 @@
+{
+  "version": "calc-v1",
+  "comparisonTolerance": 0.000000001,
+  "scenarios": [
+    {
+      "id": "fractional-rounding",
+      "rates": { "production": 1000.25, "design": 1200.5, "software": 1750.75, "smr": 0, "pnr": 0 },
+      "project": { "markup": 17.5, "workMarkup": 12.5, "discount": 7.25, "vatRate": 20, "tzzPct": 1.5, "thirdParty": 10.1, "extraCosts": 20.2, "unforeseenPct": 2.5, "tripCosts": 30.3, "transportPct": 3.5, "smrCost": 40.4, "smrSell": 50.5, "pnrCost": 60.6, "pnrSell": 70.7 },
+      "cabinets": [
+        { "hours": 1.25, "designHours": 2.5, "softwareHours": 0.75, "items": [{ "qty": 3, "purchase": 0.1 }, { "qty": 1.5, "purchase": 333.335 }] }
+      ],
+      "expected": { "eqBase": 500.3025, "eqCost": 500.3025, "markupSum": 87.5529375, "laborCost": 5564.625, "laborSell": 6260.203125, "laborHours": 4.5, "cabinetsSell": 6848.0585625, "tzzSum": 7.5045375, "plannedCost": 6255.3003384375, "unforeseenSum": 152.5683009375, "totalCost": 6386.6003384375, "transportSum": 17.5105875, "sellBase": 6986.76915, "discountSum": 506.540763375, "afterDiscount": 6480.228386625, "vatSum": 1296.045677325, "total": 7776.27406395, "profit": 93.6280481875, "marginPct": 1.444826364156, "markupPct": 1.466007628879, "posCount": 2 }
+    },
+    {
+      "id": "discount-vat-order-without-cent-rounding",
+      "rates": { "production": 1000, "design": 1000, "software": 2000, "smr": 0, "pnr": 0 },
+      "project": { "markup": 0, "workMarkup": 0, "discount": 10, "vatRate": 20, "tzzPct": 0, "thirdParty": 0, "extraCosts": 0, "unforeseenPct": 0, "tripCosts": 0, "transportPct": 0, "smrCost": 0, "smrSell": 0, "pnrCost": 0, "pnrSell": 0 },
+      "cabinets": [{ "hours": 0, "designHours": 0, "softwareHours": 0, "items": [{ "qty": 1, "purchase": 100.05 }] }],
+      "expected": { "eqBase": 100.05, "eqCost": 100.05, "markupSum": 0, "laborCost": 0, "laborSell": 0, "laborHours": 0, "cabinetsSell": 100.05, "tzzSum": 0, "plannedCost": 100.05, "unforeseenSum": 0, "totalCost": 100.05, "transportSum": 0, "sellBase": 100.05, "discountSum": 10.005, "afterDiscount": 90.045, "vatSum": 18.009, "total": 108.054, "profit": -10.005, "marginPct": -11.111111111111, "markupPct": -10, "posCount": 1 }
+    },
+    {
+      "id": "labor-roles-and-work-markup",
+      "rates": { "production": 999.99, "design": 1234.56, "software": 2345.67, "smr": 0, "pnr": 0 },
+      "project": { "markup": 0, "workMarkup": 25, "discount": 0, "vatRate": 0, "tzzPct": 0, "thirdParty": 0, "extraCosts": 0, "unforeseenPct": 0, "tripCosts": 0, "transportPct": 0, "smrCost": 0, "smrSell": 0, "pnrCost": 0, "pnrSell": 0 },
+      "cabinets": [{ "hours": 10.5, "designHours": 2.25, "softwareHours": 1.125, "items": [] }],
+      "expected": { "eqBase": 0, "eqCost": 0, "markupSum": 0, "laborCost": 15916.53375, "laborSell": 19895.6671875, "laborHours": 13.875, "cabinetsSell": 19895.6671875, "tzzSum": 0, "plannedCost": 15916.53375, "unforeseenSum": 0, "totalCost": 15916.53375, "transportSum": 0, "sellBase": 19895.6671875, "discountSum": 0, "afterDiscount": 19895.6671875, "vatSum": 0, "total": 19895.6671875, "profit": 3979.1334375, "marginPct": 20, "markupPct": 25, "posCount": 0 }
+    },
+    {
+      "id": "zero-values-and-ratio-guards",
+      "rates": { "production": 0, "design": 0, "software": 0, "smr": 0, "pnr": 0 },
+      "project": { "markup": 0, "workMarkup": 0, "discount": 0, "vatRate": 0, "tzzPct": 0, "thirdParty": 0, "extraCosts": 0, "unforeseenPct": 0, "tripCosts": 0, "transportPct": 0, "smrCost": 0, "smrSell": 0, "pnrCost": 0, "pnrSell": 0 },
+      "cabinets": [],
+      "expected": { "eqBase": 0, "eqCost": 0, "markupSum": 0, "laborCost": 0, "laborSell": 0, "laborHours": 0, "cabinetsSell": 0, "tzzSum": 0, "plannedCost": 0, "unforeseenSum": 0, "totalCost": 0, "transportSum": 0, "sellBase": 0, "discountSum": 0, "afterDiscount": 0, "vatSum": 0, "total": 0, "profit": 0, "marginPct": 0, "markupPct": 0, "posCount": 0 }
+    }
+  ]
+}
