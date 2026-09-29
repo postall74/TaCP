@@ -143,7 +143,7 @@ h1{font-size:19px}h3{font-size:13.5px}</style></head><body>${inner}</body></html
               {cc.cab.segments && cc.cab.segments.length > 0 && (
                 <p style={{ fontSize: 11, color: "#444", margin: "0 0 6px" }}>
                   <b>Отсеки:</b> {cc.cab.segments.map((s) => s.name).join(", ")}
-                  {cc.cab.form && <> · внутреннее разделение — {FORM_META[cc.cab.form].label} (ГОСТ IEC 61439-2)</>}
+                  {cc.cab.form && <> · внутреннее разделение — {FORM_META[cc.cab.form].label} (предварительно; требует проверки инженером)</>}
                 </p>
               )}
               <table style={{ width: "100%", borderCollapse: "collapse" }}>

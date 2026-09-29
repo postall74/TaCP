@@ -327,7 +327,7 @@ function ValidationPanel({
     <div
       className={cx(
         "anim-up overflow-hidden rounded-xl border bg-card",
-        sum.error ? "border-heat/50" : sum.warn ? "border-warn/50" : sum.total ? "border-line" : "border-ok/40"
+        sum.error ? "border-heat/50" : sum.warn ? "border-warn/50" : "border-line"
       )}
     >
       <button
@@ -338,14 +338,14 @@ function ValidationPanel({
         <span
           className={cx(
             "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-white",
-            sum.error ? "bg-heat" : sum.warn ? "bg-warn" : "bg-ok"
+            sum.error ? "bg-heat" : sum.warn ? "bg-warn" : "bg-steel"
           )}
         >
-          {sum.error || sum.warn ? <IcAlert size={15} /> : <IcCheck size={15} />}
+          <IcAlert size={15} />
         </span>
-        <span className="text-[13px] font-bold text-ink">Проверка совместимости</span>
+        <span className="text-[13px] font-bold text-ink">Предварительная проверка совместимости</span>
         {sum.total === 0 ? (
-          <span className="rounded bg-ok-soft px-2 py-0.5 text-[11px] font-bold text-ok">замечаний нет</span>
+          <span className="rounded bg-steel-soft px-2 py-0.5 text-[11px] font-bold text-steel">нет замечаний по доступным правилам</span>
         ) : (
           <>
             {sum.error > 0 && (
@@ -372,6 +372,8 @@ function ValidationPanel({
           <IcChevronDown size={16} />
         </span>
       </button>
+
+      <p className="px-4 pb-3 text-[12px] text-mute">Требует проверки инженером. Соответствие нормативным требованиям не подтверждено.</p>
 
       {open && sum.total > 0 && (
         <ul className="border-t border-line/70">
@@ -403,7 +405,7 @@ function ValidationPanel({
 
       {open && sum.total === 0 && (
         <div className="border-t border-line/70 px-4 py-3 text-[12px] text-mute">
-          Конфликтов не найдено: номиналы аппаратов согласованы с шинами, защиты на месте.
+          Доступные правила не выявили замечаний. Полноту исходных данных и применимость решений проверяет инженер.
         </div>
       )}
     </div>
@@ -621,7 +623,7 @@ function AddCabinetBtn({
 }
 
 /* ============================================================
-   СЕКЦИОНИРОВАНИЕ ШКАФА (ГОСТ IEC 61439-2): функциональные отсеки,
+   ПРЕДВАРИТЕЛЬНОЕ СЕКЦИОНИРОВАНИЕ ШКАФА: функциональные отсеки,
    перегородки и форма разделения. Комплект отсеков добавляется
    в состав шкафа снапшотами (utils/segments.ts) — экономика
    считается как обычно через calcProject.
@@ -678,7 +680,7 @@ function SegmentationPanel({
           </Badge>
         )}
         {inItems && <span className="flex items-center gap-1 text-[10.5px] font-semibold text-ok"><IcCheck size={12} /> комплект в составе</span>}
-        <span className="ml-auto font-mono text-[10.5px] font-semibold text-mute">ГОСТ IEC 61439-2</span>
+        <span className="ml-auto font-mono text-[10.5px] font-semibold text-mute">Предварительно · требует проверки инженером</span>
       </button>
 
       {open && (

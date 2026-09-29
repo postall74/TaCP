@@ -27,7 +27,7 @@ const NAV: { key: Route; label: string; hint: string; icon: (p: { size?: number 
   { key: "board", label: "Дашборд", hint: "проекты и статусы", icon: IcFolder },
   { key: "editor", label: "Конструктор", hint: "структура ТКП", icon: IcPanel },
   { key: "catalog", label: "Справочник", hint: "оборудование", icon: IcBox },
-  { key: "drafts", label: "Чертежи", hint: "шкафы ГОСТ", icon: IcBox },
+  { key: "drafts", label: "Чертежи", hint: "эскизы шкафов", icon: IcBox },
   { key: "rates", label: "Тарифы", hint: "нормо-часы", icon: IcClock },
   { key: "users", label: "Пользователи", hint: "роли и доступ", icon: IcUser, adminOnly: true },
   { key: "admin", label: "Админ-панель", hint: "управление системой", icon: IcGear, adminOnly: true },

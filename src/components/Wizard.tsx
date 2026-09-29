@@ -27,7 +27,7 @@ import { IcAlert, IcArrowLeft, IcCheck, IcChevronRight, IcWand, IcX } from "./ic
    Шины — в т.ч. секционированные. Микроклимат: вентиляторы,
    решётки, обогрев, кондиционирование. ПЛК — с барьерами
    искрозащиты и преобразователями сигналов. Секционирование —
-   опросник форм 1/2a/3a/3b/4a/4b по ГОСТ IEC 61439-2. Работы,
+   предварительный опросник форм 1/2a/3a/3b/4a/4b. Работы,
    ЗИП (мин. 1 шт), транспорт, сводка.
    ============================================================ */
 
@@ -136,7 +136,7 @@ const STEP_META: { id: StepId; title: string; desc: string }[] = [
   { id: "layout", title: "Компоновка", desc: "стенки, цоколи" },
   { id: "climate", title: "Микроклимат", desc: "вентиляция, обогрев" },
   { id: "plc", title: "ПЛК и модули", desc: "сигналы, искрозащита" },
-  { id: "section", title: "Секционирование", desc: "формы 1…4b (61439-2)" },
+  { id: "section", title: "Секционирование", desc: "формы 1…4b · предварительно" },
   { id: "work", title: "Работы и ППО", desc: "нормо-часы" },
   { id: "zip", title: "ЗИП и транспорт", desc: "% запаса, доставка" },
   { id: "summary", title: "Сводка", desc: "проверка и применение" },
@@ -171,7 +171,7 @@ function busSelection(current: number) {
     return { label: "Медная шина 25×3 — 2 м + 4 шинодержателя ШД-1", items: [li("bus-cu25", 2), li("holder-1", 4)], note: "для токов 63…160 А" };
   if (current <= 250)
     return { label: "Медная шина 40×4 — 2 м + 6 шинодержателей ШД-1", items: [li("bus-cu40", 2), li("holder-1", 6)], note: "для токов 160…250 А" };
-  return { label: "Медная шина 40×4 — 4 м + 10 шинодержателей", items: [li("bus-cu40", 4), li("holder-1", 10)], note: "свыше 250 А — рекомендуется проверка сечения по ГОСТ" };
+  return { label: "Медная шина 40×4 — 4 м + 10 шинодержателей", items: [li("bus-cu40", 4), li("holder-1", 10)], note: "предварительный подбор; сечение требует проверки инженером" };
 }
 
 const ZIP_CATS = [
@@ -491,7 +491,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
             <IcWand size={16} />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="truncate font-display text-[14px] font-bold text-white">Мастер подбора шкафа</div>
+            <div className="truncate font-display text-[14px] font-bold text-white">Предварительный подбор шкафа</div>
             <div className="truncate text-[11px] text-darkmute">
               {project.number} · «{project.title}» · <span className="uppercase">{DIRECTIONS[project.direction].label}</span>
             </div>
@@ -504,6 +504,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
           </button>
         </div>
 
+        <p className="border-b border-line bg-card px-5 py-2 text-[12px] text-mute">Подбор предварительный и требует проверки инженером. Соответствие нормативным требованиям не подтверждено.</p>
         <div className="flex min-h-0 flex-1">
           {/* -------- рельса шагов -------- */}
           <div className="hidden w-56 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-line bg-card p-3 md:flex">
@@ -684,11 +685,11 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
               {meta.id === "uzp" && (
                 <StepShell on={d.on.uzp} setOn={(v) => setOn("uzp", v)} hint="УЗИП не добавляются">
                   <div className="grid gap-2 md:grid-cols-2">
-                    <ChoiceCard active={d.uzpKind === "t2"} onClick={() => set({ uzpKind: "t2" })} title="УЗИП тип 2 (класс II)" text="Защита от коммутационных перенапряжений. Рекомендуется для большинства объектов с кабельным вводом" />
-                    <ChoiceCard active={d.uzpKind === "t12"} onClick={() => set({ uzpKind: "t12" })} title="УЗИП тип 1+2 (класс I+II)" text="Включая защиту от прямого грозового воздействия — для воздушных вводов и молниезащищённых зданий" />
+                    <ChoiceCard active={d.uzpKind === "t2"} onClick={() => set({ uzpKind: "t2" })} title="УЗИП тип 2 (класс II)" text="Предварительный вариант. Применимость и параметры требуется проверить инженеру" />
+                    <ChoiceCard active={d.uzpKind === "t12"} onClick={() => set({ uzpKind: "t12" })} title="УЗИП тип 1+2 (класс I+II)" text="Предварительный вариант. Применимость и параметры требуется проверить инженеру" />
                   </div>
                   <p className="mt-3 rounded-md bg-steel-soft px-3 py-2 text-[12px] text-steel">
-                    Подбор по СП 256.1325800: при воздушном вводе — тип 1+2 на вводе, при кабельном — достаточно типа 2.
+                    Выбор УЗИП требует проверки инженером с учётом исходных данных объекта, схемы питания и молниезащиты. Тип ввода сам по себе не подтверждает достаточность защиты.
                   </p>
 
                   <div className="mt-5 border-t border-line pt-4">
@@ -948,7 +949,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
               {meta.id === "section" && (
                 <StepShell on={d.segOn} setOn={(v) => set({ segOn: v })} hint="Шкаф остаётся без внутреннего разделения (форма 1)">
                   <p className="max-w-2xl text-[12px] leading-relaxed text-mute">
-                    Опросник по ГОСТ IEC 61439-2 — три вопроса дают форму разделения и готовый набор отсеков.
+                    Опросник предлагает предварительную форму разделения и набор отсеков. Результат требует проверки инженером.
                     Точная доводка — после добавления, в панели «Секционирование» шкафа.
                   </p>
                   <div className="mt-3 flex flex-col gap-3">

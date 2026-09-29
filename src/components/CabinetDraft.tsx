@@ -7,7 +7,7 @@ interface CabinetDraftProps {
 }
 
 /**
- * SVG-генератор фронтального вида шкафа по ГОСТ.
+ * SVG-генератор предварительного фронтального вида шкафа.
  * Рисует корпус, двери, цоколь, габаритные размеры.
  */
 export default function CabinetDraft({ cabinet, width = 400, height = 500 }: CabinetDraftProps) {
@@ -21,8 +21,9 @@ export default function CabinetDraft({ cabinet, width = 400, height = 500 }: Cab
   const pedestalHeight = 100 * scale; // Цоколь 100 мм
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow">
-      <h3 className="text-lg font-bold mb-4">Общий вид шкафа (ГОСТ)</h3>
+    <div className="bg-white text-slate-900 p-6 rounded-lg shadow">
+      <h3 className="text-lg font-bold mb-4">Предварительный эскиз шкафа</h3>
+      <p className="mb-4 text-sm text-slate-600">Требует проверки инженером. Размеры и IP берутся из названия; при отсутствии данных используются условные значения 2000 × 800 × 600 мм и IP54. Цоколь показан условно: 100 мм.</p>
       <svg
         viewBox={`0 0 ${svgWidth + 100} ${svgHeight + pedestalHeight + 100}`}
         className="w-full max-w-md mx-auto"
