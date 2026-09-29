@@ -1,5 +1,25 @@
 # Доска PM
 
+## RATE-001 / OPS-001 — объединённый кандидат 2026-09-30
+
+PM опубликовал feature-ветку `codex/pm/ops-rate-integration` с точным SHA
+`7057d867ed10c053d0efb7081e32167da3218ee3`. Она объединяет сохранение ставок
+RATE-001, Docker/Compose OPS-001, актуальный runbook restart/recreate и три
+независимых QA contract-теста. Remote SHA сверен; `main` не изменён.
+
+Независимый QA подтвердил 103/103 backend-теста, Release build без ошибок и
+предупреждений, EF model/snapshot, singleton/defaults, права GET/PUT и один
+полный атомарный UPDATE. Статических дефектов нет. NEED-001 имеет статус
+`partial`: отдельная админ-панель и остальные критерии потребности не закрыты.
+
+Полная приёмка RATE-001/OPS-001 заблокирована внешней средой: на доступном
+хосте нет Docker/Podman и рабочего WSL-дистрибутива. Поэтому не выполнен
+обязательный PostgreSQL 17 gate для двух tenant: migration/defaults, разные
+ставки A/B, API restart, API force-recreate, DB restart, down/up без `-v`,
+изоляция и проверка прежних volumes. Статические проверки этот gate не заменяют.
+До фактического Docker evidence не сливать кандидат в `main`, не создавать тег
+и не объявлять OPS-001/RATE-001 выполненными.
+
 ## DEV-001 принят — 2026-09-29
 
 На main `1edff933` PM и независимый QA подтвердили безопасную проверку User
