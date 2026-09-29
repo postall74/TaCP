@@ -1,8 +1,7 @@
 # OPS-001 — deploy-v1 (кандидат для Docker gate)
 
 API image и повторно используемый Compose для двух tenant по
-[tenant-deploy-v1](../tenant-deploy-v1/CONTRACT.md). HTTP DTO, права и схема БД
-не меняются. Web image, TLS/proxy и production deployment сюда не входят.
+[tenant-deploy-v1](../tenant-deploy-v1/CONTRACT.md). HTTP DTO и права сохранены. RATE-001 добавляет таблицу ставок через versioned EF migration. Web image, TLS/proxy и production deployment сюда не входят.
 Compose выбирает один tenant через отдельный env-файл; API не выбирает БД из запроса.
 
 ## Требования и статус
@@ -13,11 +12,13 @@ bookworm; это выбор локального стенда, не соглас
 Перед релизом закрепить проверенные API/PG digest в deployment record. Оба
 tenant должны использовать один API digest; повторная сборка для B не нужна.
 
-На хосте автора Docker/Podman/WSL отсутствуют. Образ, запуск двух стеков,
-health/restart и сохранность volumes **не проверены исполнением**. Успешные
-проверки C# и shell-синтаксиса не заменяют этот gate. Кроме того, `rates` в
-Program.cs остаются в памяти: после рестарта тарифы сбросятся. Это известный
-блокер TEN-001 для полного restart acceptance; требуется отдельное решение PM.
+На хосте автора Docker/Podman отсутствуют. `wsl.exe` присутствует, но рабочее
+Linux-окружение не подтверждено. Образ, запуск двух стеков, health/restart и
+сохранность volumes **не проверены исполнением**. Статические проверки не
+заменяют этот gate. RATE-001 уже сохраняет ставки в PostgreSQL текущего tenant;
+прежний дефект хранения только в памяти устранён. Открыта проверка объединённого
+RATE+OPS image на Docker-хосте, включая миграцию и сохранность ставок.
+NEED-001 остаётся partial; завершение исходной потребности здесь не заявляется.
 
 ## Секреты и первый запуск на чистом стенде
 
@@ -112,36 +113,87 @@ DB healthcheck проверяет TCP PostgreSQL, чтобы не принять
 перезапускает завершившийся процесс; статус unhealthy сам по себе рестарт
 не вызывает. Внешний мониторинг DB/API остаётся релизной задачей.
 
-## Обязательный Docker gate (QA)
+## Обязательный объединённый RATE+OPS Docker gate (QA)
 
-После команд запуска выше сохранить digest и вывод `compose ps` для обоих env.
-Проверить inspect контейнеров, что сети и mounts A/B различны, DB Ports пусты,
-API непривилегирован, без bootstrap admin secret в обычном режиме. Проверить
-роль приложения в каждом DB: `rolsuper`, `rolcreatedb`, `rolcreaterole` false.
+Собирать image из checkout, содержащего и OPS-001, и RATE-001. Исходный
+integration SHA: `2ecf599d2c99d2668c768c3cb7fc804d9a6e8793`; в evidence записать
+фактический проверенный SHA и одинаковый API image ID/digest обоих tenant,
+PostgreSQL image ID/digest, версии Docker/Compose и `compose ps` обоих стеков.
+Команды запуска и bootstrap приведены выше. Gate пока **не выполнен**.
 
-QA создаёт через существующие HTTP DTO отдельные проекты/каталог/цены/пользователей
-в A и B и сохраняет их ID/значения (включая разные цены одинакового SKU).
-Проверяет login и отрицательные cross-tenant JWT/ID сценарии из TEN-001.
-Затем выполняет только для A:
+Проверить inspect: сети и mounts A/B различны, DB Ports пусты, API non-root,
+bootstrap admin secret отключён. У прикладных DB-ролей `rolsuper`, `rolcreatedb`,
+`rolcreaterole` false. В каждой БД проверить applied migration
+`20260929183448_PersistTenantRates` и ровно одну строку `rate_cards` с Id=1.
+На свежих БД GET ставок должен вернуть defaults 1800/1800/2200/1800/1800.
+
+Через авторизованный PUT `/api/rates` записать разные полные DTO `tenantA` и
+`tenantB` из [RATE fixture](../../Contracts/rates-persistence-v1/fixture.json).
+Сохранить ответы GET обеих БД и значения полей для точного сравнения; не заменять
+их значениями по умолчанию между шагами. Также создать через существующие API
+разные проекты, каталог/цены и пользователей, сохранив ID/значения. Проверить
+login и отрицательные cross-tenant JWT/ID сценарии по TEN-001. Токены/пароли в
+evidence не включать.
+
+Выполнить следующие этапы **по одному** для A. После каждого блока дождаться
+health и проверить авторизованные GET ставок и контрольные данные **A и B**:
+ставки равны сохранённым DTO, ID/цены/пользователи не изменились; чужой JWT
+по-прежнему получает 401. У B должны остаться прежние container ID и mounts.
+Одного `/api/health` недостаточно: он не проверяет соединение с БД.
+
+1. Перезапуск только процесса API в его контейнере:
 
 ```sh
-sudo docker compose --env-file tenant-a.example.env -f compose.yaml restart
-sudo docker compose --env-file tenant-a.example.env -f compose.yaml up -d --wait --wait-timeout 180
-# Сверить HTTP-данные A и неизменность B; затем пересоздать контейнеры A:
-sudo docker compose --env-file tenant-a.example.env -f compose.yaml down
-sudo docker compose --env-file tenant-a.example.env -f compose.yaml up -d --wait --wait-timeout 180
+sudo docker compose --env-file tenant-a.example.env -f compose.yaml restart api
+sudo docker compose --env-file tenant-a.example.env -f compose.yaml up -d --no-build --wait --wait-timeout 180
 ```
 
-Повторно сверить ID, цены, пользователей и записи A/B, а также прежний volume ID A.
+2. Пересоздание API из того же image (container ID API должен измениться,
+   DB container и volume должны остаться прежними):
+
+```sh
+sudo docker compose --env-file tenant-a.example.env -f compose.yaml up -d --no-build --no-deps --force-recreate --wait --wait-timeout 180 api
+```
+
+3. Перезапуск PostgreSQL с тем же PGDATA volume, без рестарта API:
+
+```sh
+sudo docker compose --env-file tenant-a.example.env -f compose.yaml restart db
+sudo docker compose --env-file tenant-a.example.env -f compose.yaml up -d --no-build --wait --wait-timeout 180 db
+```
+
+Дождаться успешного GET ставок A после восстановления DB; при ошибке сохранить
+код/логи и отметить gate failed, не маскировать её дополнительным рестартом API.
+
+4. Удаление контейнеров и сетей A с последующим запуском на прежнем named volume:
+
+```sh
+sudo docker compose --env-file tenant-a.example.env -f compose.yaml down
+sudo docker compose --env-file tenant-a.example.env -f compose.yaml up -d --no-build --wait --wait-timeout 180
+```
+
+Сверить имя/CreatedAt/параметры прежнего DB volume и mounts новых контейнеров;
+данные A должны сохраниться, B не должен пересоздаваться или изменяться.
+Затем повторить этапы 1–4 **для B**, заменив `tenant-a.example.env` на
+`tenant-b.example.env`; на каждом этапе неизменным контролем служит A.
+Сохранять результаты каждого этапа отдельно, не только итоговый GET.
+
 Не использовать `down -v`, `volume rm` или `system prune --volumes`.
-Отдельно выполнить backup/restore A в новое пространство по runbook и сверить B.
-**Тарифы rates не включать в заявление «все данные сохраняются»: gate остаётся
-непройденным до устранения persistence gap.** Не переносить исходную реальную БД
-для проверки Docker на чистом хосте.
+Отдельный backup/restore gate TEN-002: восстановить A в новое пространство по
+runbook, проверить ставки и остальные данные, подтвердить неизменность B.
+Не переносить исходную реальную БД для проверки Docker на чистом хосте.
+Принятие требует фактических результатов QA на проверенном image digest;
+наличие команд и успешная статическая проверка не означают прохождение gate.
 
 ## Миграции и rollback
 
-Новых EF migrations нет. Запуск API автоматически применяет имеющиеся миграции,
+RATE-001 добавляет `20260929183448_PersistTenantRates`: таблица `rate_cards`
+и начальный набор ставок. Старые in-memory ставки необходимо экспортировать
+до остановки прежнего API и восстановить авторизованным PUT после миграции.
+Порядок upgrade, legacy preflight и rollback ставок —
+[RATE contract](../../Contracts/rates-persistence-v1/CONTRACT.md).
+Down этой миграции удаляет ставки; без backup/export его не выполнять.
+Запуск API автоматически применяет имеющиеся миграции,
 EnsureExtraTables, purge и seed; восстановленный API не является read-only.
 Перенос исходной БД целиком только в A, preflight migration history и откат —
 [MIGRATION_RUNBOOK.md](../tenant-deploy-v1/MIGRATION_RUNBOOK.md).
