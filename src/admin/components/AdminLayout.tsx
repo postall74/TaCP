@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import { Users, BookOpen, BarChart3, Clock, ArrowLeft } from "lucide-react";
 import { cx } from "../../components/ui";
+import { useStore } from "../../store";
 import { IcGear } from "../../components/icons";
 
 type AdminTab = "users" | "catalog" | "statistics" | "time";
@@ -8,11 +9,15 @@ type AdminTab = "users" | "catalog" | "statistics" | "time";
 interface AdminLayoutProps {
   children: ReactNode;
   onBack: () => void;
-  tab: AdminTab;
+  tab: string;
   setTab: (tab: AdminTab) => void;
 }
 
 export default function AdminLayout({ children, onBack, tab, setTab }: AdminLayoutProps) {
+  const theme = useStore((s) => s.settings.theme);
+  const updateSettings = useStore((s) => s.updateSettings);
+  const logout = useStore((s) => s.logout);
+  const user = useStore((s) => s.user);
   const links = [
     { id: "users" as const, label: "Пользователи", hint: "роли и доступ", icon: Users },
     { id: "catalog" as const, label: "Справочник", hint: "оборудование", icon: BookOpen },
@@ -21,7 +26,7 @@ export default function AdminLayout({ children, onBack, tab, setTab }: AdminLayo
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-paper text-ink">
+    <div className="flex h-screen overflow-hidden bg-paper text-ink">
       {/* Сайдбар в стиле основного приложения */}
       <aside className="flex w-[220px] shrink-0 flex-col border-r border-darkline bg-dark">
         <div className="flex items-center gap-2.5 px-5 pt-6 pb-5">
@@ -77,6 +82,13 @@ export default function AdminLayout({ children, onBack, tab, setTab }: AdminLayo
           <ArrowLeft size={15} />
           <span>Вернуться в ТКП</span>
         </button>
+        <div className="mt-auto space-y-3 border-t border-darkline p-4 text-sm text-darkmute">
+          <p className="break-words">{user?.fullName}</p>
+          <button className="block hover:text-white" onClick={() => updateSettings({ theme: theme === "dark" ? "light" : "dark" })}>
+            {theme === "dark" ? "Светлая тема" : "Тёмная тема"}
+          </button>
+          <button className="block hover:text-white" onClick={logout}>Выйти</button>
+        </div>
       </aside>
 
       {/* Контент */}
