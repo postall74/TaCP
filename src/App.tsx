@@ -7,7 +7,7 @@ import Editor from "./components/Editor";
 import LoginGate from "./components/LoginGate";
 import AdminRouter from "./admin/AdminRouter";
 import RatesPage from "./components/RatesPage";
-import UsersPage from "./components/UsersPage";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import CabinetDraftsPage from "./components/CabinetDraftsPage";
 import { Field, Input, Modal, Textarea, ToastHost, cx } from "./components/ui";
 import {
@@ -21,7 +21,7 @@ import { can, currentRole, ROLE_LABEL } from "./utils/roles";
    к C#-бэкенду, JWT-вход. Тосты — глобальные.
    ============================================================ */
 
-type Route = "board" | "editor" | "catalog" | "rates" | "users" | "admin" | "drafts";
+type Route = "board" | "editor" | "catalog" | "rates" | "drafts";
 
 const NAV: { key: Route; label: string; hint: string; icon: (p: { size?: number }) => ReactNode; adminOnly?: boolean }[] = [
   { key: "board", label: "Дашборд", hint: "проекты и статусы", icon: IcFolder },
@@ -29,11 +29,11 @@ const NAV: { key: Route; label: string; hint: string; icon: (p: { size?: number 
   { key: "catalog", label: "Справочник", hint: "оборудование", icon: IcBox },
   { key: "drafts", label: "Чертежи", hint: "эскизы шкафов", icon: IcBox },
   { key: "rates", label: "Тарифы", hint: "нормо-часы", icon: IcClock },
-  { key: "users", label: "Пользователи", hint: "роли и доступ", icon: IcUser, adminOnly: true },
-  { key: "admin", label: "Админ-панель", hint: "управление системой", icon: IcGear, adminOnly: true },
 ];
 
 export default function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const projects = useStore((s) => s.projects);
   const settings = useStore((s) => s.settings);
   const user = useStore((s) => s.user);
@@ -69,8 +69,6 @@ export default function App() {
   /* пользователи — только админ; редактор — только при открытом проекте */
   const activeRoute: Route =
     route === "editor" ? (editorProject ? "editor" : "board")
-    : route === "users" ? (can(user, "users.manage") ? "users" : "board")
-    : route === "admin" ? (currentRole(user) === "admin" ? "admin" : "board")
     : route;
 
   /* тема: класс на <html> переключает все CSS-переменные токенов */
@@ -120,6 +118,10 @@ export default function App() {
     );
   }
 
+  if (location.pathname === "/admin" || location.pathname.startsWith("/admin/")) {
+    return <><AdminRouter onBack={() => navigate("/")} /><ToastHost /></>;
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-paper">
       {/* ---------------- сайдбар ---------------- */}
@@ -163,7 +165,12 @@ export default function App() {
               </button>
             );
           })}
-</nav>
+          {currentRole(user) === "admin" && (
+            <Link to="/admin/users" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-bold text-darkmute hover:bg-dark2 hover:text-white">
+              <IcGear size={17} /> Админ-панель
+            </Link>
+          )}
+        </nav>
 
         {/* профиль (если авторизован) */}
         {user && (
@@ -272,9 +279,7 @@ export default function App() {
             )}
             {activeRoute === "catalog" && <CatalogPage />}
             {activeRoute === "rates" && <RatesPage />}
-            {activeRoute === "users" && <UsersPage />}
             {activeRoute === "drafts" && <CabinetDraftsPage />}
-            {activeRoute === "admin" && <AdminRouter onBack={() => setRoute("board")} />}
           </div>
         </div>
       </main>
