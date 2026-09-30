@@ -1,0 +1,23 @@
+{
+  "contract": "catalog-recycle-v1",
+  "method": "POST",
+  "path": "/api/catalog/{id}/restore",
+  "policy": "AdminOnly",
+  "requestBody": null,
+  "snapshot": {
+    "id": "restore-example", "sku": "Restore-SKU-001", "name": "Snapshot equipment",
+    "brand": "Example", "category": "Example category", "direction": "nku",
+    "unit": "piece", "purchase": 123.45, "ratedCurrent": 16.75,
+    "attrs": "{\"poles\":3}"
+  },
+  "expected": {
+    "restore": 204, "repeatActiveWithoutTombstone": 204,
+    "unknownInBothTables": 404, "activeIdAndTombstone": 409,
+    "activeSkuWithDifferentId": 409, "anonymous": 401,
+    "manager": 403, "engineer": 403,
+    "successBody": "empty",
+    "conflictSideEffects": "none in either table",
+    "concurrentSameId": "204 for each; one active row; no tombstone",
+    "concurrentSameSkuDifferentIds": "one 204, one 409; losing snapshot retained"
+  }
+}
