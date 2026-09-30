@@ -1,5 +1,9 @@
 # QA: журнал проверок и передача PM
 
+ADMIN-001: [независимый QA admin-shell-v1](ADMIN-001.md), frontend
+`e39e3e8e`: typecheck, 94 frontend tests и build прошли; роли, прямые admin URL,
+reload и read-only реальный API проверены. NEED-001 остаётся partial.
+
 SEC-001: [независимый QA auth-v2](SEC-001.md), production `b1bb51eb`:
 96 .NET tests и 21 адресная HTTP/DB проверка прошли. Новых дефектов защиты
 registration не найдено. Git-операции оставлены PM.
