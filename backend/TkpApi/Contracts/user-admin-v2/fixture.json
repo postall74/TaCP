@@ -1,0 +1,22 @@
+{
+  "contract": "user-admin-v2",
+  "roleChange": {
+    "method": "PUT", "path": "/api/auth/users/{id}/role", "policy": "AdminOnly",
+    "request": { "role": "engineer" }, "successStatus": 200,
+    "responseFields": ["id", "email", "fullName", "position", "phone", "roles"],
+    "lastAdminStatus": 409, "conflictFields": ["errors"], "unknownStatus": 404
+  },
+  "delete": {
+    "method": "DELETE", "path": "/api/auth/users/{id}", "policy": "AdminOnly",
+    "successStatus": 204, "selfStatus": 409, "lastAdminStatus": 409, "unknownStatus": 404
+  },
+  "concurrentCases": [
+    { "start": "admin A and B", "first": "PUT A engineer", "second": "PUT B engineer", "statusesInLockOrder": [200, 409], "adminsAfter": 1 },
+    { "start": "admin A and B", "first": "PUT A engineer", "second": "DELETE B", "statusesInLockOrder": [200, 409], "adminsAfter": 1 },
+    { "start": "admin A and B", "first": "DELETE B", "second": "PUT A engineer", "statusesInLockOrder": [204, 409], "adminsAfter": 1 }
+  ],
+  "unauthorizedStatus": 401,
+  "managerEngineerStatus": 403,
+  "rollback": "assignment or commit failure restores complete users and role memberships",
+  "unchanged": ["schema", "successful DTOs", "role normalization", "JWT lifetime/revocation behavior", "project ownership"]
+}

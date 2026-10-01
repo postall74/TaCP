@@ -11,11 +11,7 @@ public static class UserDeleteService
         var actorId = actor.FindFirstValue(ClaimTypes.NameIdentifier);
         if (actorId is null) return Results.Unauthorized();
 
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        // Keep the administrator membership check and deletion in one serialized
-        // critical section, including concurrent requests from other API processes.
-        await db.Database.ExecuteSqlRawAsync(
-            "LOCK TABLE \"AspNetUsers\", \"AspNetRoles\", \"AspNetUserRoles\" IN SHARE ROW EXCLUSIVE MODE", ct);
+        await using var transaction = await AdminInvariantTransaction.BeginAsync(db, ct);
 
         var user = await db.Users.SingleOrDefaultAsync(x => x.Id == id, ct);
         if (user is null) return Results.NotFound();

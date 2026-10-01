@@ -155,15 +155,16 @@ public static class AuthExtensions
         // Важно: роль в уже выданном JWT обновится при следующем входе пользователя.
         // Защита: последнего администратора разжаловать нельзя (иначе система
         // останется без управления — именно так теряли доступ к admin@tkp.local).
-        app.MapPut("/api/auth/users/{id}/role", async (string id, ChangeRoleDto dto, UserManager<AppUser> users) =>
+        app.MapPut("/api/auth/users/{id}/role", async (string id, ChangeRoleDto dto, UserManager<AppUser> users, TkpDbContext db, CancellationToken ct) =>
         {
+            await using var transaction = await TkpApi.Services.AdminInvariantTransaction.BeginAsync(db, ct);
             var user = await users.FindByIdAsync(id);
             if (user is null) return Results.NotFound();
             var old = await users.GetRolesAsync(user);
 
             var adminCount = (await users.GetUsersInRoleAsync(Roles.Admin)).Count;
             var (ok, reason) = Rights.CanChangeRole(old, NormalizeRole(dto.Role), adminCount);
-            if (!ok) return Results.BadRequest(new { errors = new[] { reason } });
+            if (!ok) return Results.Conflict(new { errors = new[] { reason } });
 
             var remove = await users.RemoveFromRolesAsync(user, old);
             if (!remove.Succeeded)
@@ -171,7 +172,9 @@ public static class AuthExtensions
             var add = await users.AddToRoleAsync(user, NormalizeRole(dto.Role));
             if (!add.Succeeded)
                 return Results.BadRequest(new { errors = add.Errors.Select(e => e.Description) });
-            return Results.Ok(ToDto(user, await users.GetRolesAsync(user)));
+            var result = ToDto(user, await users.GetRolesAsync(user));
+            await transaction.CommitAsync(ct);
+            return Results.Ok(result);
         }).RequireAuthorization("AdminOnly");
 
         app.MapDelete("/api/auth/users/{id}", TkpApi.Services.UserDeleteService.DeleteAsync)
