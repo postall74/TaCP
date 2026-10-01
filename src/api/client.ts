@@ -133,6 +133,7 @@ export const restApi = (base: string) => ({
 
   /* пользователи (только админ) */
   users: () => req<AuthUser[]>(base, "/api/auth/users"),
+  deleteUser: (id: string) => req<void>(base, `/api/auth/users/${encodeURIComponent(id)}`, { method: "DELETE" }),
   setUserRole: (id: string, role: string) =>
     req<AuthUser>(base, `/api/auth/users/${id}/role`, {
       method: "PUT",
