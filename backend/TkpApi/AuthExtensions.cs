@@ -174,6 +174,9 @@ public static class AuthExtensions
             return Results.Ok(ToDto(user, await users.GetRolesAsync(user)));
         }).RequireAuthorization("AdminOnly");
 
+        app.MapDelete("/api/auth/users/{id}", TkpApi.Services.UserDeleteService.DeleteAsync)
+            .RequireAuthorization("AdminOnly");
+
         // Свой профиль (любой сотрудник): ФИО, должность, телефон — сам сервис
         // «у инженера сменился мобильный» закрывается без участия администратора.
         app.MapPut("/api/auth/me", async (UpdateProfileDto dto, ClaimsPrincipal cp, UserManager<AppUser> users) =>
