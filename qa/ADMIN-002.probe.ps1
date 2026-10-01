@@ -128,4 +128,3 @@ try{
  Assert ((Restore 'probe-fault' $ta).StatusCode -eq 204) 'restore succeeds after probe failure removed'
  Write-Output "ADMIN-002 PASS: $checks checks. DB $db; evidence $probe"
 }finally{foreach($name in @($processes.Keys)){StopApi $name};Write-Output "Evidence $probe; disposable DB $db"}
-
