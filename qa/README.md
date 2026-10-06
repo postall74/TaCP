@@ -1,5 +1,9 @@
 # QA: журнал проверок и передача PM
 
+ADMIN-001/002/003/004: [интеграционный QA](ADMIN-INTEGRATION.md), target
+`467450df`: 97 frontend и 100 backend tests, обе сборки, 56 catalog и 51
+user-invariant HTTP/DB checks, local/remote browser UI прошли. NEED-001 partial.
+
 ADMIN-002: [независимый QA catalog-recycle-v1](ADMIN-002.md), backend snapshot
 от base `1edff933`: 100 .NET tests, clean Release build и 56 PostgreSQL/HTTP
 assertions прошли. Новых дефектов нет; NEED-001 остаётся partial.
