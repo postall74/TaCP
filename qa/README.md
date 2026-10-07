@@ -178,3 +178,12 @@ Target `51481855bcab93937ee2f7b92b4d316d836a5a75` относительно paren
 manager/admin/local сохраняют edit/save/reset. Матрица 1024/1440 light/dark
 прошла. Подробности: `qa/SETTINGS-UI-001.md`; QA-регрессия:
 `src/store.settings.test.ts`.
+
+### ADMIN-005
+
+Frontend target `6c60705b831d4557eb479c78d94c24e10850c5ce` проверен
+независимо: исторические `item.brand`/`item.purchase`, нулевая цена, 22
+производителя при отдельном TOP-20, пустые данные и CSV покрыты компонентными
+сценариями. Адресно 3/3, полный frontend gate 88/88, typecheck и build прошли;
+обе темы проверены в браузере. NEED-001 остаётся partial. Подробности:
+`qa/ADMIN-005.md`.
