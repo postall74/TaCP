@@ -140,6 +140,15 @@ Frontend: расчёты, CSV, форматирование, роли, сост�
 Отчёт передавать PM, который назначает исправление Frontend/Backend.
 ROADMAP, архитектуру и продуктовые решения редактирует PM.
 
+### NORM-QA-001
+
+Integration target `1edff933afe9f488f11137ffa9251bae6744c720` проверен с
+negative fixtures missing-input/wrong-scope: 88 frontend tests, typecheck и
+production build прошли. Backend slice `a38a4688` не повторялся после уже
+подтверждённых 7 targeted tests и Release build. Нормативный green-state и
+прежние UI-заявления отсутствуют; NEED-005 и связанные NEED остаются partial.
+Подробности: `qa/NORM-QA-001.md`.
+
 ### SEC-003
 
 `db1036c5ddcb2779e7d205bcdbbb60eb7bd56134` проверен независимо: 80 frontend
