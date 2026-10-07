@@ -24,15 +24,14 @@ export default function StatisticsPage() {
   }, [projects]);
 
   // === РАСЧЁТ СТАТИСТИКИ ПО ПРОИЗВОДИТЕЛЯМ ===
-  const brandStats = useMemo(() => {
+  const allBrandStats = useMemo(() => {
     const stats: Record<string, { count: number; totalPurchase: number }> = {};
     
     projects.forEach((project) => {
       project.cabinets?.forEach((cab) => {
         cab.items?.forEach((item) => {
-          const eq = catalog.find((e) => e.id === item.eqId);
-          const brand = eq?.brand || item.brand || "Неизвестно";
-          const purchase = eq?.purchase || item.purchase || 0;
+          const brand = item.brand || "Неизвестно";
+          const purchase = item.purchase ?? 0;
           
           if (!stats[brand]) {
             stats[brand] = { count: 0, totalPurchase: 0 };
@@ -49,9 +48,9 @@ export default function StatisticsPage() {
         count: data.count,
         totalPurchase: data.totalPurchase,
       }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 20);
-  }, [projects, catalog]);
+      .sort((a, b) => b.count - a.count);
+  }, [projects]);
+  const brandStats = allBrandStats.slice(0, 20);
 
   // === СТАТИСТИКА ПО КАТЕГОРИЯМ ОБОРУДОВАНИЯ ===
   const categoryStats = useMemo(() => {
@@ -105,7 +104,7 @@ export default function StatisticsPage() {
           <div className="flex items-center gap-2 text-muted text-sm mb-1">
             <Factory size={16} /> Производителей
           </div>
-          <div className="text-3xl font-bold text-ink">{brandStats.length}</div>
+          <div className="text-3xl font-bold text-ink">{allBrandStats.length}</div>
         </div>
         <div className="bg-card p-4 rounded-lg shadow border border-line">
           <div className="flex items-center gap-2 text-muted text-sm mb-1">
