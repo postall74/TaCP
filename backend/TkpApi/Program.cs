@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 using TkpApi;
 using TkpApi.Services;
@@ -156,10 +157,15 @@ app.MapGet("/api/health", () =>
 /* AsSplitQuery: два дочерних набора (шкафы+позиции и версии) читаются
    отдельными SQL-запросами — без декартова произведения и предупреждения EF. */
 app.MapGet("/api/projects", async (TkpDbContext db) =>
-    await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
+{
+    var projects = await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
                      .Include(p => p.Versions)
                      .AsSplitQuery()
-                     .OrderByDescending(p => p.UpdatedAt).ToListAsync())
+                     .OrderByDescending(p => p.UpdatedAt).ToListAsync();
+    foreach (var project in projects)
+        project.Versions = ProjectVersionSnapshots.ForResponse(project.Versions);
+    return projects;
+})
    .RequireAuthorization("Staff");
 
 app.MapPost("/api/projects", async (Project p, TkpDbContext db) =>
@@ -171,11 +177,14 @@ app.MapPost("/api/projects", async (Project p, TkpDbContext db) =>
 }).RequireAuthorization("Staff");
 
 app.MapGet("/api/projects/{id}", async (string id, TkpDbContext db) =>
-    await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
+{
+    var p = await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
                      .Include(p => p.Versions)
-                     .FirstOrDefaultAsync(p => p.Id == id) is { } p
-        ? Results.Ok(p)
-        : Results.NotFound())
+                     .FirstOrDefaultAsync(p => p.Id == id);
+    if (p is null) return Results.NotFound();
+    p.Versions = ProjectVersionSnapshots.ForResponse(p.Versions);
+    return Results.Ok(p);
+})
    .RequireAuthorization("Staff");
 
 /* Полная синхронизация: скаляры проекта + замена состава шкафов одним пакетом.
@@ -259,7 +268,8 @@ app.MapPost("/api/cabinets/{id}/items", async (string id, string equipmentId, de
 
 /* ---------------- Версии ---------------- */
 
-app.MapPost("/api/projects/{id}/versions", async (string id, string? label, TkpDbContext db) =>
+app.MapPost("/api/projects/{id}/versions", async (string id, string? label, TkpDbContext db,
+    IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions> jsonOptions) =>
 {
     var p = await db.Projects.Include(x => x.Cabinets).ThenInclude(c => c.Items)
                              .Include(x => x.Versions).FirstOrDefaultAsync(x => x.Id == id);
@@ -270,10 +280,10 @@ app.MapPost("/api/projects/{id}/versions", async (string id, string? label, TkpD
     {
         cabinets = p.Cabinets,
         calc = new { eqBase, total = eqBase * (1 + p.Markup / 100m) } // ориентир; полный расчёт — на клиенте
-    });
+    }, jsonOptions.Value.SerializerOptions);
     p.Versions.Insert(0, new ProjectVersion { Label = label ?? $"Версия {p.Versions.Count + 1}", Snapshot = snapshot });
     await db.SaveChangesAsync();
-    return Results.Ok(p.Versions);
+    return Results.Ok(ProjectVersionSnapshots.ForResponse(p.Versions));
 }).RequireAuthorization("Staff");
 
 /* ---------------- Каталог ---------------- */
