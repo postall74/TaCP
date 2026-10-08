@@ -163,3 +163,9 @@ PM опубликовал auth-v2 в своём checkout `.worktrees/pm-core-004
 изолированный PostgreSQL harness. До исполняемых integration tests получить fixture,
 схему ошибки и согласовать с backend запуск изолированной PostgreSQL. Не заменять HTTP-тест
 проверкой текста RequireAuthorization: это не проверит реальное middleware.
+
+### AUTH-TYPES-001
+
+`28d5683323f530f4fbbc18189c87947c82136c17` проверен: добавлены contract-тесты
+login→me и register→users для wire shapes и Bearer; 87/87, typecheck и build прошли.
+Подробности: `qa/AUTH-TYPES-001.md`.
