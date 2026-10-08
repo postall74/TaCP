@@ -243,6 +243,15 @@ cabinet/item/segment IDs и повторный PUT дают 200; изменен�
 не регрессирует; проверены 401, Staff-роли и действующие status 403. Проходят
 backend tests и Release build; QA повторяет PostgreSQL HTTP-регрессию.
 
+### CATALOG-002 — унифицировать конфликт SKU при обновлении каталога
+
+Исполнитель: Backend. Статус: ready. Приоритет: P1. Контракт: catalog-write-v2; NEED-001: partial.
+
+Подтверждённый trigger поверх CATALOG-001 bda9f59b: изменение существующей позиции на точный SKU другой позиции возвращает 500/Npgsql 23505, а регистровый вариант занятого SKU проходит с 200 и создаёт логический дубль. Создание unknown id уже возвращает 409. После точного конфликта обе строки остаются прежними.
+
+Объём: PUT /api/catalog/{id} в backend/TkpApi/Program.cs и backend-owned tests. Для existing и unknown id чужой SKU, включая вариант регистра, возвращает единый 409 без изменения каталога и корзины. Собственный прежний SKU, уникальное переименование и уникальный upsert возвращают 200. Сохранить CATALOG-001 tracking fix, DTO, Staff policy и tombstone semantics. Для гонки точного SKU допускается только узкая обработка PostgreSQL 23505 индекса IX_equipment_catalog_Sku; остальные DB exceptions не маскировать. Schema, Models, frontend, whitespace и name+brand rules не менять.
+
+Приёмка: exact/case-variant conflicts для A/B дают 409 и сохраняют обе строки; own SKU unchanged, unique rename, unknown unique и repeat PUT дают 200; unknown duplicate даёт 409; проверены Staff-роли и 401, backend tests, Release build и независимый PostgreSQL QA. Полная конкурентная case-insensitive уникальность не входит в срез и требует отдельного DB/locking решения. Задача повышает стабильность каталога, но не закрывает NEED-001 целиком.
 ### VERSION-001 — нормализовать снимки версий проекта
 
 Исполнитель: Backend. Статус: `ready`. Приоритет: P1. Контракт:
