@@ -312,12 +312,13 @@ app.MapPost("/api/catalog", async (Equipment e, TkpDbContext db) =>
 app.MapPut("/api/catalog/{id}", async (string id, Equipment e, TkpDbContext db) =>
 {
     e.Id = id;
+    var sku = e.Sku.Trim().ToLower();
+    var dup = await db.Equipment.AnyAsync(x => x.Id != id && x.Sku.ToLower() == sku);
+    if (dup) return Results.Conflict(new { detail = "Позиция с таким артикулом уже есть в справочнике" });
+
     var ex = await db.Equipment.FindAsync(id);
     if (ex is null)
     {
-        var sku = e.Sku.Trim().ToLower();
-        var dup = await db.Equipment.AnyAsync(x => x.Id != id && x.Sku.ToLower() == sku);
-        if (dup) return Results.Conflict(new { detail = "Позиция с таким артикулом уже есть в справочнике" });
         db.Equipment.Add(e);
     }
     else db.Entry(ex).CurrentValues.SetValues(e);
@@ -325,7 +326,16 @@ app.MapPut("/api/catalog/{id}", async (string id, Equipment e, TkpDbContext db) 
     var tomb = await db.DeletedEquipment.FirstOrDefaultAsync(x => x.Id == id || x.Sku.ToLower() == e.Sku.Trim().ToLower());
     if (tomb is not null) db.DeletedEquipment.Remove(tomb); // «воскрешение»
 
-    await db.SaveChangesAsync();
+    try
+    {
+        await db.SaveChangesAsync();
+    }
+    catch (DbUpdateException error) when (error.InnerException is Npgsql.PostgresException
+        { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_equipment_catalog_Sku" })
+    {
+        // A competing write may claim the SKU after the precheck. SaveChanges rolls back the batch.
+        return Results.Conflict(new { detail = "Позиция с таким артикулом уже есть в справочнике" });
+    }
     return Results.Ok(e);
 }).RequireAuthorization("Staff");
 
