@@ -195,6 +195,25 @@ frontend-изменения и миграции не входят.
 регрессирует. Проходят backend tests и Release build. QA независимо повторяет
 HTTP-сценарии на изолированной БД. Исправление не закрывает RATE/OPS gate.
 
+### AUTH-TYPES-001 — синхронизировать TypeScript-типы с auth-v2
+
+Владелец: Frontend. Статус: `ready` после WIZ-UI-001. Приоритет: P2.
+Контракт `auth-v2` и HTTP wire format не меняются; backend и миграции не входят.
+
+Подтверждённый аудитом разрыв: login возвращает `expiresAt` как Unix milliseconds
+`number`, а `src/api/client.ts` объявляет `string`; register возвращает краткий
+объект `{id,email,fullName,role}`, но клиент объявляет полный `AuthUser`.
+`backend/TkpApi/auth-v2.fixture.json` уже точно отражает фактические ответы.
+Текущие вызовы не читают `expiresAt`, а после register перезагружают список
+пользователей, поэтому пользовательский runtime-дефект не заявляется.
+
+Область: типы ответа login/register в `src/api/client.ts`; QA-owned контрактный
+тест отдельно. Ввести отдельный тип ответа регистрации, сохранить `AuthUser` для
+`login.user`, `/auth/me` и `/auth/users`, не синтезировать отсутствующие поля.
+Приёмка: типы совпадают с fixture и фактическим JSON; login→me и admin
+register→users работают; проходят frontend typecheck/tests/build и независимая
+QA-проверка fixture/runtime shape. Изменение обратно совместимо на HTTP.
+
 ### SEC-003 — очистка устаревшей ошибки подключения (QA-005)
 
 Владелец: Frontend. Статус: `done`. Приоритет: P3. Зависимость: SEC-002 UI

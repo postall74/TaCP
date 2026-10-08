@@ -12,6 +12,9 @@
 - Required evidence: worktree, base SHA, changed paths, full diff/stat,
   typecheck/tests/build, manual light/dark checks at 1024 and 1440 px, stopped
   servers. Frontend does not commit or push.
+- Queued next task: `AUTH-TYPES-001` after WIZ-UI-001 and its handoff. Align
+  `src/api/client.ts` response types with existing auth-v2 fixture; no wire or
+  backend changes. Do not start it in the WIZ worktree.
 - Completed references: SEC-003 implementation `aff32110`, QA `e93828d8`, in
   main `1edff933`; ADMIN-005 implementation `6c60705b`, QA `676e2f1c`.
 - Next safe step after context loss: read `AGENTS.md`, role docs and
