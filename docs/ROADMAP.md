@@ -214,6 +214,29 @@ HTTP-сценарии на изолированной БД. Исправлени
 register→users работают; проходят frontend typecheck/tests/build и независимая
 QA-проверка fixture/runtime shape. Изменение обратно совместимо на HTTP.
 
+### PROJECT-001 — восстановить чтение и повторное сохранение сегментов шкафа
+
+Владелец: Backend. Статус: `ready`. Приоритет: P1. Контракт:
+`project-segments-v1`; существующее поле `segments` и HTTP DTO сохраняются,
+миграции, роли, статусы и нормативные правила не меняются.
+
+Подтверждённый trigger на `main` `1edff933`: POST проекта с cabinet segment
+возвращает 201 и сохраняет строку `cabinet_segments`, но GET list/detail
+возвращает `segments: null`. Повторный PUT полного проекта возвращает 500 с
+PostgreSQL 23505 duplicate key, потому что текущие GET/PUT загрузки включают
+items, но не segments. Контрольный проект без segments обновляется с 200.
+
+Область: загрузка и полная синхронизация `Cabinet.Segments` в обработчиках
+projects внутри `backend/TkpApi/Program.cs`; backend-owned тесты при необходимости.
+Сохранить существующую full-replacement семантику проекта и не расширять scope
+на отдельные наблюдения о статусах или version snapshot.
+
+Приёмка: POST→GET list/detail возвращает все поля segment и form; PUT с теми же
+cabinet/item/segment IDs и повторный PUT дают 200; изменение, добавление и
+удаление segments сохраняются без orphan/duplicate rows; контроль без segments
+не регрессирует; проверены 401, Staff-роли и действующие status 403. Проходят
+backend tests и Release build; QA повторяет PostgreSQL HTTP-регрессию.
+
 ### SEC-003 — очистка устаревшей ошибки подключения (QA-005)
 
 Владелец: Frontend. Статус: `done`. Приоритет: P3. Зависимость: SEC-002 UI
