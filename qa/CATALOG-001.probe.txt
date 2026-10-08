@@ -1,0 +1,91 @@
+PASS: API started
+PASS: login admin@catalog.qa.test
+PASS: register manager
+PASS: register engineer
+PASS: login manager@catalog.qa.test
+PASS: login engineer@catalog.qa.test
+PASS: anonymous PUT 401
+PASS: anonymous GET 401
+PASS: GET catalog for cat-anonymous
+PASS: anonymous PUT creates no row
+PASS: create existing fixture
+PASS: engineer existing PUT 200
+PASS: GET catalog for cat-existing
+PASS: engineer GET persistence exists
+PASS: engineer GET persistence URL id persisted
+PASS: engineer GET persistence field sku
+PASS: engineer GET persistence field name
+PASS: engineer GET persistence field brand
+PASS: engineer GET persistence field category
+PASS: engineer GET persistence field direction
+PASS: engineer GET persistence field unit
+PASS: engineer GET persistence field purchase
+PASS: engineer GET persistence field ratedCurrent
+PASS: engineer GET persistence field attrs
+PASS: manager existing PUT 200
+PASS: GET catalog for cat-existing
+PASS: manager GET persistence exists
+PASS: manager GET persistence URL id persisted
+PASS: manager GET persistence field sku
+PASS: manager GET persistence field name
+PASS: manager GET persistence field brand
+PASS: manager GET persistence field category
+PASS: manager GET persistence field direction
+PASS: manager GET persistence field unit
+PASS: manager GET persistence field purchase
+PASS: manager GET persistence field ratedCurrent
+PASS: manager GET persistence field attrs
+PASS: admin existing PUT 200
+PASS: GET catalog for cat-existing
+PASS: admin GET persistence exists
+PASS: admin GET persistence URL id persisted
+PASS: admin GET persistence field sku
+PASS: admin GET persistence field name
+PASS: admin GET persistence field brand
+PASS: admin GET persistence field category
+PASS: admin GET persistence field direction
+PASS: admin GET persistence field unit
+PASS: admin GET persistence field purchase
+PASS: admin GET persistence field ratedCurrent
+PASS: admin GET persistence field attrs
+PASS: repeat existing PUT 200
+PASS: second repeat existing PUT 200
+PASS: repeat PUT keeps one row
+PASS: unknown-id engineer upsert 200
+PASS: GET catalog for cat-upsert
+PASS: unknown-id GET persistence exists
+PASS: unknown-id GET persistence URL id persisted
+PASS: unknown-id GET persistence field sku
+PASS: unknown-id GET persistence field name
+PASS: unknown-id GET persistence field brand
+PASS: unknown-id GET persistence field category
+PASS: unknown-id GET persistence field direction
+PASS: unknown-id GET persistence field unit
+PASS: unknown-id GET persistence field purchase
+PASS: unknown-id GET persistence field ratedCurrent
+PASS: unknown-id GET persistence field attrs
+PASS: create tomb fixture
+PASS: manager delete creates tombstone
+PASS: tombstone visible before resurrection
+PASS: engineer PUT resurrects tombstone
+PASS: GET catalog for cat-tomb
+PASS: resurrected GET persistence exists
+PASS: resurrected GET persistence URL id persisted
+PASS: resurrected GET persistence field sku
+PASS: resurrected GET persistence field name
+PASS: resurrected GET persistence field brand
+PASS: resurrected GET persistence field category
+PASS: resurrected GET persistence field direction
+PASS: resurrected GET persistence field unit
+PASS: resurrected GET persistence field purchase
+PASS: resurrected GET persistence field ratedCurrent
+PASS: resurrected GET persistence field attrs
+PASS: resurrection removes tombstone
+PASS: create duplicate source
+PASS: case-insensitive duplicate SKU returns 409
+PASS: GET catalog for cat-dup-new
+PASS: duplicate conflict creates no new row
+PASS: engineer Staff GET 200
+PASS: manager Staff GET 200
+PASS: admin Staff GET 200
+CATALOG-001 PASS: 90 checks; isolated database qa_catalog_e471d0f4a3
