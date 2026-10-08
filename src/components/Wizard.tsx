@@ -999,7 +999,13 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                 return (
                   <div className="max-w-2xl">
                     {/* строки нормо-часов с живым расчётом стоимости */}
-                    <div className="rounded-lg border border-line bg-card px-4">
+                    <div className="grid grid-cols-[minmax(0,1fr)_90px_100px_110px] gap-x-3 rounded-lg border border-line bg-card px-4">
+                      <div className="col-span-4 grid grid-cols-subgrid items-center border-b border-line py-2 text-[10.5px] font-semibold text-mute">
+                        <span>Вид работ</span>
+                        <span className="text-right">Часы</span>
+                        <span className="text-right">Ставка, ₽/ч</span>
+                        <span className="text-right">Стоимость, ₽</span>
+                      </div>
                       <WorkRow
                         label="Сборка (производство)"
                         hint="Монтаж оборудования, ошиновка, маркировка — ставка «Производство»"
@@ -1452,20 +1458,17 @@ function WorkRow({ label, hint, hours, rate, onChange }: {
 }) {
   const cost = Math.round(hours * rate);
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-line/50 py-2">
+    <div className="col-span-4 grid grid-cols-subgrid items-center border-b border-line/50 py-3 last:border-b-0">
       <div className="min-w-0">
         <div className="text-[12.5px] font-semibold text-ink">{label}</div>
         <div className="text-[10.5px] leading-snug text-mute">{hint}</div>
       </div>
-      <div className="flex shrink-0 items-center gap-3">
-        <div className="w-[90px]">
-          <NumInput value={hours} step={1} onChange={onChange} />
-        </div>
-        <div className="w-[110px] text-right">
-          <div className="font-mono text-[12.5px] font-bold tabular-nums text-ink">{fmtMoney(cost)}</div>
-          <div className="text-[9.5px] text-mute">× {fmtMoney(rate)}/ч</div>
-        </div>
-      </div>
+      <label className="min-w-0">
+        <span className="sr-only">{label}, часы</span>
+        <NumInput value={hours} step={1} onChange={onChange} />
+      </label>
+      <div className="text-right font-mono text-[11px] tabular-nums text-mute">{fmtMoney(rate)}</div>
+      <div className="text-right font-mono text-[12.5px] font-bold tabular-nums text-ink">{fmtMoney(cost)}</div>
     </div>
   );
 }
