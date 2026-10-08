@@ -320,7 +320,7 @@ app.MapPut("/api/catalog/{id}", async (string id, Equipment e, TkpDbContext db) 
         if (dup) return Results.Conflict(new { detail = "Позиция с таким артикулом уже есть в справочнике" });
         db.Equipment.Add(e);
     }
-    else db.Equipment.Update(e);
+    else db.Entry(ex).CurrentValues.SetValues(e);
 
     var tomb = await db.DeletedEquipment.FirstOrDefaultAsync(x => x.Id == id || x.Sku.ToLower() == e.Sku.Trim().ToLower());
     if (tomb is not null) db.DeletedEquipment.Remove(tomb); // «воскрешение»
