@@ -252,6 +252,15 @@ cabinet/item/segment IDs и повторный PUT дают 200; изменен�
 не регрессирует; проверены 401, Staff-роли и действующие status 403. Проходят
 backend tests и Release build; QA повторяет PostgreSQL HTTP-регрессию.
 
+### CSV-001 — исправить распознавание заголовка импорта каталога
+
+Исполнитель: Backend. Статус: ready. Приоритет: P1. Контракт: catalog-csv-v1; NEED-001: partial.
+
+Подтверждённый trigger на main 1edff933: валидная строка с артикулом SKU-001 молча пропускается, поскольку CatalogCsv.IsHeader ищет подстроку sku в первой ячейке. Импорт трёх строк возвращает added:1 вместо 2; повтор updated:1 вместо 2, skipped:0. Клиент разбирает обе строки, поэтому после серверной гидратации позиция исчезает.
+
+Правило: заголовок распознаётся только когда первая ячейка после Trim равна sku или артикул без учёта регистра. Точный артикул SKU считается заголовком. SKU-001, ABC-SKU-42 и кириллические артикулы с подстрокой импортируются. Объём: CatalogCsv.cs и backend-owned tests. Не менять delimiter, quotes, whitespace, numeric/direction rules, DTO, schema, roles и frontend.
+
+Приёмка: fixture даёт added:2 и повтор updated:2; обе позиции и цены доступны через GET; рус/англ заголовки пропускаются; malformed строки считаются skipped; update-by-SKU и права manager/admin, engineer 403, anonymous 401 не меняются. Обязательны backend tests, Release build и независимый QA. Срез не закрывает NEED-001 целиком.
 ### CATALOG-002 — унифицировать конфликт SKU при обновлении каталога
 
 Исполнитель: Backend. Статус: ready. Приоритет: P1. Контракт: catalog-write-v2; NEED-001: partial.
