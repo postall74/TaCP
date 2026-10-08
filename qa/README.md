@@ -163,3 +163,10 @@ PM опубликовал auth-v2 в своём checkout `.worktrees/pm-core-004
 изолированный PostgreSQL harness. До исполняемых integration tests получить fixture,
 схему ошибки и согласовать с backend запуск изолированной PostgreSQL. Не заменять HTTP-тест
 проверкой текста RequireAuthorization: это не проверит реальное middleware.
+
+### WIZ-UI-001
+
+`55364a556880fbb2b22eeec89ca579f05238a7ff` проверен независимо: browser matrix
+для светлой 1440×900 и тёмной 1024×900 прошла без переполнения; расчёт, ориентир,
+переходы и перенос 4,5/2/3 ч в шкаф подтверждены. Typecheck, 85 frontend-тестов
+и build прошли. Подробности: `qa/WIZ-UI-001.md`.
