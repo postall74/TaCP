@@ -153,10 +153,11 @@ _ = new Timer(_ =>
 app.MapGet("/api/health", () =>
     Results.Ok(new { status = "ok", service = "tkp-api", time = DateTime.UtcNow }));
 
-/* AsSplitQuery: два дочерних набора (шкафы+позиции и версии) читаются
+/* AsSplitQuery: дочерние наборы (шкафы, позиции, отсеки и версии) читаются
    отдельными SQL-запросами — без декартова произведения и предупреждения EF. */
 app.MapGet("/api/projects", async (TkpDbContext db) =>
     await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
+                     .Include(p => p.Cabinets).ThenInclude(c => c.Segments)
                      .Include(p => p.Versions)
                      .AsSplitQuery()
                      .OrderByDescending(p => p.UpdatedAt).ToListAsync())
@@ -172,6 +173,7 @@ app.MapPost("/api/projects", async (Project p, TkpDbContext db) =>
 
 app.MapGet("/api/projects/{id}", async (string id, TkpDbContext db) =>
     await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
+                     .Include(p => p.Cabinets).ThenInclude(c => c.Segments)
                      .Include(p => p.Versions)
                      .FirstOrDefaultAsync(p => p.Id == id) is { } p
         ? Results.Ok(p)
@@ -185,6 +187,7 @@ app.MapGet("/api/projects/{id}", async (string id, TkpDbContext db) =>
 app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext db, ClaimsPrincipal user) =>
 {
     var p = await db.Projects.Include(x => x.Cabinets).ThenInclude(c => c.Items)
+                             .Include(x => x.Cabinets).ThenInclude(c => c.Segments)
                              .FirstOrDefaultAsync(x => x.Id == id);
     if (p is null) return Results.NotFound();
 
