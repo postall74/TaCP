@@ -2,10 +2,11 @@
 
 - Thread: `01a0ca37-66ff-7f62-9c84-d47738886e31`.
 - Reference main: `1edff933afe9f488f11137ffa9251bae6744c720`.
-- Completed feature awaiting QA: `CATALOG-001` target
+- Completed feature and independent QA: `CATALOG-001` target
   `bda9f59b605184b39afea888395688411dd01557`, branch
   `codex/backend/catalog-001-existing-put`; one-line `Program.cs` fix, 100 tests,
-  Release build and 42 HTTP assertions passed. QA is running independently.
+  Release build and 42 author HTTP assertions passed. Independent QA PASS:
+  `c6d6ceba98a0436631137d1b244cba83bf9e6c6f`, 90 HTTP assertions.
 - Completed read-only auth audit: frontend type mismatch confirmed without a
   current runtime failure; queued as Frontend `AUTH-TYPES-001`. Evidence:
   `C:/Users/Администратор/AppData/Local/Temp/tkp-auth-contract-audit/`.

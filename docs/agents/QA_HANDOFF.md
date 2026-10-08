@@ -1,9 +1,10 @@
 # QA continuity
 
 - Thread: `01a0ca39-0d43-7082-8714-a198f97acc92`.
-- Current state: independently validating `CATALOG-001` target
-  `bda9f59b605184b39afea888395688411dd01557` in a separate QA worktree. The
-  next queued handoff is `WIZ-UI-001` after Frontend provides its exact SHA.
+- Current state: CATALOG-001 independent QA PASS is published as
+  `c6d6ceba98a0436631137d1b244cba83bf9e6c6f`; the harness incident was resolved
+  and all processes/temporary credentials were removed. The next queued handoff
+  is `WIZ-UI-001` after Frontend provides its exact SHA.
 - Next expected handoffs: `WIZ-UI-001` from Frontend and `CATALOG-001` from
   Backend. For CATALOG-001 verify existing/repeat/unknown-id PUT, GET persistence,
   401/Staff authorization and tombstone regression on an isolated database.
