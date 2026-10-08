@@ -241,6 +241,35 @@ cabinet/item/segment IDs и повторный PUT дают 200; изменен�
 не регрессирует; проверены 401, Staff-роли и действующие status 403. Проходят
 backend tests и Release build; QA повторяет PostgreSQL HTTP-регрессию.
 
+### VERSION-001 — нормализовать снимки версий проекта
+
+Исполнитель: Backend. Статус: `ready`. Приоритет: P1. Контракт:
+`project-version-v1`; существующие Project/Cabinet/LineItem DTO, права и
+формулы не меняются. NEED-*: частичное повышение стабильности core-v1, без
+самостоятельного закрытия пользовательской потребности.
+
+Подтверждённый trigger на `main` `1edff933`: POST версии проекта сохраняет
+вложенные `Cabinet`/`LineItem` в PascalCase, тогда как текущий HTTP DTO и
+frontend ожидают camelCase. После GET и `restoreVersion` поля `id` и
+`items` отсутствуют; выражение `c.items.length` вызывает `TypeError`.
+Причина — сериализация anonymous snapshot без API `JsonSerializerOptions`.
+
+Объём: создание и выдача project version snapshots в
+`backend/TkpApi/Program.cs`; при необходимости отдельный backend-owned
+serializer. Новые снимки должны иметь camelCase. Уже сохранённые PascalCase
+снимки нормализуются при чтении известных полей без изменения stored JSON,
+миграции БД и преобразования произвольных пользовательских ключей. Не менять
+Models, права, расчёты, историю цен и frontend.
+
+Приёмка: новый snapshot содержит camelCase `cabinets/items`; legacy PascalCase
+и camelCase fixtures восстанавливаются в одинаковый DTO без потери
+полей/чисел/null; GET list/detail и POST versions согласованы; фактические
+`normalizeVersion` + `restoreVersion` сохраняют `id/name/items/qty/purchase`
+и не дают runtime exception; расчёт не выполняется заново; Staff/401/404
+не меняются. Обязательны backend tests, Release build и независимый QA restore
+сценария. Evidence аудита:
+`C:/Users/Администратор/AppData/Local/Temp/tkp-projects-audit/result.json` и
+`C:/Users/Администратор/AppData/Local/Temp/tkp-version-audit/`.
 ### SEC-003 — очистка устаревшей ошибки подключения (QA-005)
 
 Владелец: Frontend. Статус: `done`. Приоритет: P3. Зависимость: SEC-002 UI

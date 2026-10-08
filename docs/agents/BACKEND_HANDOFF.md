@@ -2,31 +2,26 @@
 
 - Thread: `01a0ca37-66ff-7f62-9c84-d47738886e31`.
 - Reference main: `1edff933afe9f488f11137ffa9251bae6744c720`.
-- Completed feature and independent QA: `CATALOG-001` target
-  `bda9f59b605184b39afea888395688411dd01557`, branch
-  `codex/backend/catalog-001-existing-put`; one-line `Program.cs` fix, 100 tests,
-  Release build and 42 author HTTP assertions passed. Independent QA PASS:
-  `c6d6ceba98a0436631137d1b244cba83bf9e6c6f`, 90 HTTP assertions.
-- Completed read-only auth audit: frontend type mismatch confirmed without a
-  current runtime failure; queued as Frontend `AUTH-TYPES-001`. Evidence:
-  `C:/Users/Администратор/AppData/Local/Temp/tkp-auth-contract-audit/`.
-- Current assignment: implement accepted `PROJECT-001 / project-segments-v1`
-  from main `1edff933`, limited to project handlers in `Program.cs` and
-  backend-owned tests. Preserve DTO/schema/roles/status behavior and full project
-  replacement semantics.
-- Confirmed PROJECT-001 evidence:
-  `C:/Users/Администратор/AppData/Local/Temp/tkp-projects-audit/`; persisted
-  segment is missing from GET and repeat PUT fails with PostgreSQL 23505, while
-  the no-segments control passes.
-- Confirmed trigger on main `1edff933`: valid existing-item PUT returns 500 with
-  duplicate EF tracking and leaves old values; unknown-id PUT succeeds. Evidence
-  is under `C:/Users/Администратор/AppData/Local/Temp/tkp-catalog001-confirm/`.
+- Published PROJECT-001 target: `0ba8cc487d72a4bf45c50abad288e8c754b80696`,
+  branch `codex/backend/project-001-segments`; independent QA is queued.
+- Completed CATALOG-001 target `bda9f59b605184b39afea888395688411dd01557`;
+  independent QA PASS `c6d6ceba98a0436631137d1b244cba83bf9e6c6f`.
+- Current assignment: `VERSION-001 / project-version-v1`, accepted after
+  read-only audit. New snapshots use camelCase; legacy PascalCase snapshots
+  must normalize on read without rewriting stored JSON or arbitrary keys.
+- Confirmed VERSION-001 trigger: actual backend snapshot contains PascalCase
+  nested cabinets/items; current frontend restore receives missing `id/items`
+  and `c.items.length` throws. Evidence:
+  `C:/Users/Администратор/AppData/Local/Temp/tkp-projects-audit/result.json`
+  and `C:/Users/Администратор/AppData/Local/Temp/tkp-version-audit/`.
+- Scope: backend project-version handlers and, if needed, a backend-owned
+  serializer. Do not change Models, permissions, calculations, price history,
+  frontend, migrations, or arbitrary user JSON.
+- Required handoff: worktree/branch/base SHA, paths, full diff/stat, compatibility
+  notes, backend tests, Release build, isolated PostgreSQL HTTP checks for new
+  camelCase and legacy PascalCase restore, authorization/status regression.
+  Backend does not commit or push.
 - Runtime blocker: RATE-001/OPS-001 still needs Docker Engine + Compose with
-  PostgreSQL 17 for restart/recreate, named-volume persistence and two-tenant
-  isolation. Local PostgreSQL 18 is insufficient and must not be repurposed.
-- Required PROJECT-001 handoff: worktree/base SHA, paths, full diff/stat,
-  backend tests, Release build, isolated PostgreSQL HTTP segment lifecycle,
-  authorization/status regression, compatibility and rollback. Backend does
-  not commit or push.
-- Next safe step after context loss: read accepted `PROJECT-001`, inspect its
-  worktree and continue only unmet criteria; stop services before handoff.
+  PostgreSQL 17. Local PostgreSQL 18 is insufficient.
+- Next step after context loss: read VERSION-001 in ROADMAP, inspect the assigned
+  worktree, and continue only unmet acceptance criteria.
