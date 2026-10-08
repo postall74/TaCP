@@ -31,6 +31,14 @@ export interface AuthUser {
   roles: string[];
 }
 
+/** Краткий ответ POST /api/auth/register по контракту auth-v2. */
+export interface RegisterResponse {
+  id: string;
+  email: string;
+  fullName: string;
+  role: string;
+}
+
 /** Правка профиля (своего — PUT /api/auth/me, чужого — PUT /api/auth/users/{id}). */
 export interface ProfilePatch {
   fullName?: string;
@@ -114,12 +122,12 @@ export const restApi = (base: string) => ({
 
   /* аутентификация (JWT) */
   login: (email: string, password: string) =>
-    req<{ token: string; expiresAt: string; user: AuthUser }>(base, "/api/auth/login", {
+    req<{ token: string; expiresAt: number; user: AuthUser }>(base, "/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
   register: (email: string, password: string, fullName: string, role: string) =>
-    req<AuthUser>(base, "/api/auth/register", {
+    req<RegisterResponse>(base, "/api/auth/register", {
       method: "POST",
       body: JSON.stringify({ email, password, fullName, position: "", role }),
     }),
