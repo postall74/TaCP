@@ -398,7 +398,10 @@ export const useStore = create<StoreState>()(
                 await a.deleteProject(op.id);
               } else if (op.kind === "equipment.upsert") {
                 const eq = get().catalog.find((x) => x.id === op.eqId);
-                if (eq) await a.putEquipment(eq);
+                // Без локального payload отправлять нечего: сохраняем операцию,
+                // чтобы не отмечать потерянную позицию как синхронизированную.
+                if (!eq) return;
+                await a.putEquipment(eq);
               } else {
                 await a.deleteEquipment(op.eqId);
               }
@@ -431,6 +434,13 @@ export const useStore = create<StoreState>()(
               );
               const pendingProjects = s.projects.filter((project) => pendingIds.has(project.id));
               const preservedIds = new Set(pendingProjects.map((project) => project.id));
+              const pendingEquipmentIds = new Set(
+                s.outbox
+                  .filter((op): op is Extract<OutboxOp, { kind: "equipment.upsert" }> => op.kind === "equipment.upsert")
+                  .map((op) => op.eqId),
+              );
+              const pendingEquipment = s.catalog.filter((equipment) => pendingEquipmentIds.has(equipment.id));
+              const preservedEquipmentIds = new Set(pendingEquipment.map((equipment) => equipment.id));
               return {
                 // Сервер ещё может не знать о локальных изменениях. Пока upsert
                 // находится в outbox, его payload остаётся источником для flush.
@@ -438,7 +448,10 @@ export const useStore = create<StoreState>()(
                   ...pendingProjects,
                   ...remoteProjects.filter((project) => !preservedIds.has(project.id)),
                 ],
-                catalog,
+                catalog: [
+                  ...pendingEquipment,
+                  ...catalog.filter((equipment) => !preservedEquipmentIds.has(equipment.id)),
+                ],
                 deletedCatalog,
                 remoteLoading: false,
                 settings: { ...s.settings, ...company, rates, apiOnline: true },
