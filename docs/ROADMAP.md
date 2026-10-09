@@ -479,3 +479,11 @@ QA: test cases против fixture ──────────────�
 На main 1edff933 сбой AddToRole после успешного CreateAsync возвращает500, но оставляет пользователя с паролем без роли; он может войти, а retry блокируется duplicate. Объём: register endpoint в AuthExtensions.cs и backend tests. CreateAsync и AddToRoleAsync выполняются в одной DB transaction; commit только после обоих успехов; AddToRole result проверяется. Role-store failure даёт стабильный500 без Identity internals и полный rollback. DTO, NormalizeRole, policies, login/JWT/schema/frontend не менять; старые roleless users не очищать.
 
 Приёмка: normal admin register/role/login/Staff success; anonymous401, manager/engineer403 no rows; duplicate/invalid400 no rows; forced missing-role/failed role assignment500 with no user/link, login401 and users list absent; CreateAsync failures preserve400; tests, Release и независимый PG/HTTP QA.
+
+### SYNC-001 — синхронизировать дубликат проекта после сетевого сбоя
+
+Исполнитель: Frontend. Статус: ready. Приоритет: P1. Контракт: core-v1; NEED-001: partial.
+
+В серверном режиме `duplicateProject` создаёт локальную копию и вызывает API без постановки `project.upsert` в outbox. При сетевой ошибке без HTTP-ответа копия остаётся только локально, не отправляется после восстановления связи и может быть потеряна при `hydrateFromApi`. Объём: `src/store.ts` и frontend tests. Перед запросом ставить существующий `project.upsert` в очередь; снимать после успеха или HTTP-ошибки; сохранять при сетевой ошибке. Использовать текущую `flushOutbox`; DTO, HTTP, backend, права, `src/types.ts` и `src/api/client.ts` не менять.
+
+Приёмка: сетевая ошибка оставляет дубликат в outbox; восстановление связи создаёт его на сервере и очищает очередь; последующая гидратация не теряет копию; успешное дублирование не оставляет очередь; HTTP 4xx/5xx не повторяются бесконечно; frontend typecheck, tests, build и независимая адресная QA.
