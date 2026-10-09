@@ -270,6 +270,13 @@ backend tests и Release build; QA повторяет PostgreSQL HTTP-регре
 Объём: PUT /api/catalog/{id} в backend/TkpApi/Program.cs и backend-owned tests. Для existing и unknown id чужой SKU, включая вариант регистра, возвращает единый 409 без изменения каталога и корзины. Собственный прежний SKU, уникальное переименование и уникальный upsert возвращают 200. Сохранить CATALOG-001 tracking fix, DTO, Staff policy и tombstone semantics. Для гонки точного SKU допускается только узкая обработка PostgreSQL 23505 индекса IX_equipment_catalog_Sku; остальные DB exceptions не маскировать. Schema, Models, frontend, whitespace и name+brand rules не менять.
 
 Приёмка: exact/case-variant conflicts для A/B дают 409 и сохраняют обе строки; own SKU unchanged, unique rename, unknown unique и repeat PUT дают 200; unknown duplicate даёт 409; проверены Staff-роли и 401, backend tests, Release build и независимый PostgreSQL QA. Полная конкурентная case-insensitive уникальность не входит в срез и требует отдельного DB/locking решения. Задача повышает стабильность каталога, но не закрывает NEED-001 целиком.
+### PROJECT-002 — вернуть 409 при конфликте номера проекта
+
+Исполнитель: Backend. Статус: ready. Приоритет: P1. Контракт: project-number-v1; core-v1 stability, без полного закрытия NEED-*.
+
+На main 1edff933 точный дубликат Number даёт 500/Npgsql 23505 IX_projects_Number при POST и PUT; PUT откатывается. Регистровый вариант разрешён текущим индексом и сохраняется. Объём: POST/PUT projects в Program.cs и backend tests. Точный конфликт должен давать единый 409 без изменения проектов; case-sensitive semantics, DTO, schema, права, status, OwnerId, cabinets и versions не менять. Нужны precheck и узкий catch только 23505/IX_projects_Number; прочие DB errors не маскировать.
+
+Приёмка: duplicate POST/PUT 409 и полный rollback; own number, unique rename и case-variant сохраняют текущие 200/201; concurrency exact даёт один success и один 409; 401/Staff и unrelated DB failures прежние; backend tests, Release и независимый HTTP/SQL QA.
 ### VERSION-001 — нормализовать снимки версий проекта
 
 Исполнитель: Backend. Статус: `ready`. Приоритет: P1. Контракт:
