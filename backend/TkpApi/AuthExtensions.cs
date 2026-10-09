@@ -36,6 +36,8 @@ public static class AuthExtensions
 {
     /// <summary>Секция конфигурации: Jwt:Key, Jwt:Issuer, Jwt:Audience, Jwt:ExpireMinutes.</summary>
     public const string Section = "Jwt";
+    public const string RoleAssignmentFailureDetail =
+        "Не удалось назначить роль пользователю. Повторите попытку позже";
 
     /* ---------------- ① регистрация сервисов ---------------- */
 
@@ -102,8 +104,11 @@ public static class AuthExtensions
         // auth-v2: создание пользователей только администратором во всех окружениях.
         // Ошибки Identity переводим на русский — фронтенд показывает их как есть
         // (раньше клиент видел безликий «HTTP 400 Bad Request»).
-        g.MapPost("/register", async (RegisterDto dto, UserManager<AppUser> users) =>
+        g.MapPost("/register", async (RegisterDto dto, UserManager<AppUser> users,
+                                      TkpDbContext db, ILoggerFactory loggerFactory) =>
         {
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            var logger = loggerFactory.CreateLogger("AuthRegistration");
             var user = new AppUser
             {
                 UserName = dto.Email, Email = dto.Email,
@@ -114,7 +119,28 @@ public static class AuthExtensions
             if (!res.Succeeded)
                 return Results.BadRequest(new { errors = res.Errors.Select(e => RuError(e.Code)) });
 
-            await users.AddToRoleAsync(user, NormalizeRole(dto.Role));
+            try
+            {
+                var roleResult = await users.AddToRoleAsync(user, NormalizeRole(dto.Role));
+                if (!roleResult.Succeeded)
+                {
+                    logger.LogError("User role assignment failed: {Codes}",
+                        string.Join(",", roleResult.Errors.Select(error => error.Code)));
+                    return RoleAssignmentFailure();
+                }
+
+                await transaction.CommitAsync();
+            }
+            catch (InvalidOperationException error)
+            {
+                logger.LogError(error, "User role assignment failed");
+                return RoleAssignmentFailure();
+            }
+            catch (DbUpdateException error)
+            {
+                logger.LogError(error, "User role assignment failed");
+                return RoleAssignmentFailure();
+            }
             return Results.Ok(new { user.Id, user.Email, user.FullName, role = NormalizeRole(dto.Role) });
         }).RequireAuthorization("AdminOnly");
 
@@ -249,6 +275,11 @@ public static class AuthExtensions
     private static string GetKey(IConfiguration config) =>
         config[$"{Section}:Key"] ?? throw new InvalidOperationException(
             "Добавьте в appsettings.json секцию Jwt:Key (секрет ≥ 32 символов).");
+
+    private static IResult RoleAssignmentFailure() => Results.Problem(
+        statusCode: StatusCodes.Status500InternalServerError,
+        title: "User role assignment failed",
+        detail: RoleAssignmentFailureDetail);
 
     private static string NormalizeRole(string? role) => (role ?? Roles.Engineer).ToLowerInvariant() switch
     {
