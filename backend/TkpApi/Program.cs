@@ -235,6 +235,11 @@ app.MapPost("/api/projects/{id}/cabinets", async (string id, List<Cabinet> cabs,
         (itemIds.Count > 0 && await db.Items.AnyAsync(item => itemIds.Contains(item.Id))))
         return CabinetItemBatchConflict.Result();
 
+    var segmentIds = cabs.SelectMany(c => c.Segments ?? []).Select(segment => segment.Id).ToList();
+    if (CabinetSegmentBatchConflict.HasDuplicateIds(segmentIds) ||
+        (segmentIds.Count > 0 && await db.Segments.AnyAsync(segment => segmentIds.Contains(segment.Id))))
+        return CabinetSegmentBatchConflict.Result();
+
     p.Cabinets.AddRange(cabs);
     p.UpdatedAt = DateTime.UtcNow;
     try
@@ -250,6 +255,11 @@ app.MapPost("/api/projects/{id}/cabinets", async (string id, List<Cabinet> cabs,
     {
         // A concurrent batch may claim a nested item ID after the precheck.
         return CabinetItemBatchConflict.Result();
+    }
+    catch (DbUpdateException error) when (CabinetSegmentBatchConflict.Is(error))
+    {
+        // A concurrent batch may claim a nested segment ID after the precheck.
+        return CabinetSegmentBatchConflict.Result();
     }
     return Results.Ok(p.Cabinets);
 }).RequireAuthorization("Staff");
@@ -629,6 +639,23 @@ public static class CabinetItemBatchConflict
         {
             SqlState: Npgsql.PostgresErrorCodes.UniqueViolation,
             ConstraintName: "PK_project_items",
+        };
+
+    public static IResult Result() => Results.Conflict(new { detail = Detail });
+}
+
+public static class CabinetSegmentBatchConflict
+{
+    public const string Detail = "Сегмент шкафа с таким идентификатором уже существует";
+
+    public static bool HasDuplicateIds(IEnumerable<string> ids) =>
+        ids.GroupBy(id => id, StringComparer.Ordinal).Any(group => group.Count() > 1);
+
+    public static bool Is(DbUpdateException error) =>
+        error.InnerException is Npgsql.PostgresException
+        {
+            SqlState: Npgsql.PostgresErrorCodes.UniqueViolation,
+            ConstraintName: "PK_cabinet_segments",
         };
 
     public static IResult Result() => Results.Conflict(new { detail = Detail });
