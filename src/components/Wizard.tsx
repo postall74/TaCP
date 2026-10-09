@@ -745,7 +745,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
               )}
               {meta.id === "meters" && (
                 <StepShell on={d.on.meters} setOn={(v) => setOn("meters", v)} hint="Измерительные приборы не добавляются">
-                  <div className="max-w-2xl">
+                  <div className="max-w-2xl [&>div:has(select)>div:last-child]:w-[280px]">
                     {/* ---- вводные средства измерения ---- */}
                     <div className="mb-1.5 text-[11px] font-bold tracking-wide text-mute uppercase">Вводные средства измерения</div>
                     <SelectRow
