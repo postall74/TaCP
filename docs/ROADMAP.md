@@ -487,3 +487,11 @@ QA: test cases против fixture ──────────────�
 В серверном режиме `duplicateProject` создаёт локальную копию и вызывает API без постановки `project.upsert` в outbox. При сетевой ошибке без HTTP-ответа копия остаётся только локально, не отправляется после восстановления связи и может быть потеряна при `hydrateFromApi`. Объём: `src/store.ts` и frontend tests. Перед запросом ставить существующий `project.upsert` в очередь; снимать после успеха или HTTP-ошибки; сохранять при сетевой ошибке. Использовать текущую `flushOutbox`; DTO, HTTP, backend, права, `src/types.ts` и `src/api/client.ts` не менять.
 
 Приёмка: сетевая ошибка оставляет дубликат в outbox; восстановление связи создаёт его на сервере и очищает очередь; последующая гидратация не теряет копию; успешное дублирование не оставляет очередь; HTTP 4xx/5xx не повторяются бесконечно; frontend typecheck, tests, build и независимая адресная QA.
+
+### PROJECT-006 — вернуть 409 для конфликтов ID вложенных позиций в пакетном добавлении шкафов
+
+Исполнитель: Backend. Статус: ready. Приоритет: P1. Контракт: cabinet-batch-item-id-v1; зависит от PROJECT-005; core-v1 stability, без полного закрытия NEED-*.
+
+На main 1edff933 два разных шкафа с одинаковым вложенным `LineItem.Id` вызывают необработанный EF tracking error и 500. После project lookup и проверок Cabinet.Id собрать входящие Items; exact duplicate `LineItem.Id` внутри запроса или уже существующий `db.Items` отклонять общим 409 до tracking. Добавить узкий SaveChanges fallback только для PostgreSQL 23505/`PK_project_items`, сохранив PROJECT-005 fallback для `PK_project_cabinets`. DTO/schema/roles/frontend/project PUT/segments/content/case-sensitive IDs не менять; миграции и очистку данных не выполнять.
+
+Приёмка: duplicate item ID внутри одного/разных cabinets409 без новых cabinet/item rows; existing item ID409 без изменений; valid nested items200; empty items200; case variant200; admin/manager/engineer200, anonymous401; missing project404; concurrent distinct-cabinet batches с одним exact item ID дают один200+один409 с rollback losing cabinet; `PK_project_cabinets` остаётся409, `PK_segment` и unrelated DB остаются500; backend tests, Release и независимый PG/HTTP/SQL QA.
