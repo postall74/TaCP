@@ -17,7 +17,10 @@ public class CabinetBatchConflictTests
 
     [Theory]
     [InlineData(PostgresErrorCodes.UniqueViolation, "PK_project_cabinets", true)]
+    [InlineData(PostgresErrorCodes.UniqueViolation, "PK_projects", false)]
+    [InlineData(PostgresErrorCodes.UniqueViolation, "IX_projects_Number", false)]
     [InlineData(PostgresErrorCodes.UniqueViolation, "PK_project_items", false)]
+    [InlineData(PostgresErrorCodes.UniqueViolation, "PK_cabinet_segments", false)]
     [InlineData("23503", "PK_project_cabinets", false)]
     public void Is_OnlyMatchesCabinetPrimaryKey(
         string sqlState, string constraintName, bool expected)
