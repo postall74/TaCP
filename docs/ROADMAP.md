@@ -495,3 +495,19 @@ QA: test cases против fixture ──────────────�
 На main 1edff933 два разных шкафа с одинаковым вложенным `LineItem.Id` вызывают необработанный EF tracking error и 500. После project lookup и проверок Cabinet.Id собрать входящие Items; exact duplicate `LineItem.Id` внутри запроса или уже существующий `db.Items` отклонять общим 409 до tracking. Добавить узкий SaveChanges fallback только для PostgreSQL 23505/`PK_project_items`, сохранив PROJECT-005 fallback для `PK_project_cabinets`. DTO/schema/roles/frontend/project PUT/segments/content/case-sensitive IDs не менять; миграции и очистку данных не выполнять.
 
 Приёмка: duplicate item ID внутри одного/разных cabinets409 без новых cabinet/item rows; existing item ID409 без изменений; valid nested items200; empty items200; case variant200; admin/manager/engineer200, anonymous401; missing project404; concurrent distinct-cabinet batches с одним exact item ID дают один200+один409 с rollback losing cabinet; `PK_project_cabinets` остаётся409, `PK_segment` и unrelated DB остаются500; backend tests, Release и независимый PG/HTTP/SQL QA.
+
+### SYNC-002 — сохранять pending-позиции справочника при гидратации
+
+Исполнитель: Frontend. Статус: ready. Приоритет: P1. Контракт: core-v1; NEED-001: partial; зависит от SYNC-001.
+
+В серверном режиме `equipment.upsert` остаётся в outbox после сетевой ошибки, но `hydrateFromApi` заменяет локальный каталог серверным. Потерянный payload не отправляется, а операция ошибочно удаляется из очереди. Объём: `src/store.ts` и frontend tests. При гидратации сохранять локальные позиции с pending `equipment.upsert`; при отсутствующем payload не выполнять PUT, не удалять операцию и не вызывать `syncOk`. DTO, HTTP, backend, права, `src/types.ts` и `src/api/client.ts` не менять.
+
+Приёмка: сетевая ошибка оставляет `equipment.upsert` и локальную позицию; гидратация без позиции на сервере сохраняет payload и очередь; reconnect/flush выполняет PUT и очищает операцию; последующая гидратация сохраняет серверную позицию; missing payload даёт 0 PUT и сохраняет очередь; success и HTTP errors сохраняют текущую семантику без бесконечных повторов; typecheck, полный frontend test suite, build и независимая QA-регрессия.
+
+### PROJECT-007 — вернуть 409 для конфликтов ID сегментов в пакетном добавлении шкафов
+
+Исполнитель: Backend. Статус: ready. Приоритет: P1. Контракт: cabinet-batch-segment-id-v1; зависит от PROJECT-006; core-v1 stability, без полного закрытия NEED-*.
+
+На PROJECT-006 `b9bbdaf5` одинаковый `CabinetSegment.Id` в одном batch вызывает EF tracking error и 500. После project/cabinet/item checks собрать `Segments`; exact ordinal duplicate внутри запроса или уже существующий `db.Segments` отклонять общим 409 до tracking. Добавить узкий SaveChanges fallback только для PostgreSQL 23505/`PK_cabinet_segments`, сохранив отдельные `PK_project_cabinets` и `PK_project_items` 409. DTO/schema/roles/frontend/project PUT/segment content/kind/partitions/case-sensitive IDs не менять; миграций и cleanup нет.
+
+Приёмка: duplicate segment ID в одном/разных cabinets409 без новых rows; existing segment409; valid/empty/null segments200; case variant200; admin/manager/engineer valid200, anonymous401; missing project404; concurrent distinct-cabinet batches с exact segment ID дают один200+один409 и rollback losing cabinet; cabinet/item PK остаются409, unrelated constraint/DB500; backend tests, Release и независимый PG/HTTP/SQL QA.
