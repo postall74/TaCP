@@ -474,6 +474,7 @@ app.MapPost("/api/cabinets/{id}/items", async (string id, string equipmentId, de
     var cab = await db.Cabinets.Include(c => c.Items).FirstOrDefaultAsync(c => c.Id == id);
     var eq = await db.Equipment.FindAsync(equipmentId);
     if (cab is null || eq is null) return Results.NotFound();
+    if (!CabinetItemQuantity.IsValid(qty)) return CabinetItemQuantity.InvalidResult();
 
     var ex = cab.Items.FirstOrDefault(i => i.EqId == equipmentId);
     if (ex is not null) ex.Qty += qty;
@@ -951,4 +952,16 @@ public static class ProjectVersionBatchConflict
         };
 
     public static IResult Result() => Results.Conflict(new { detail = Detail });
+}
+
+public static class CabinetItemQuantity
+{
+    public const string InvalidDetail = "Количество должно быть больше нуля";
+
+    public static bool IsValid(decimal quantity) => quantity > 0;
+
+    public static IResult InvalidResult() => Results.Problem(
+        statusCode: StatusCodes.Status400BadRequest,
+        title: "Invalid quantity",
+        detail: InvalidDetail);
 }
