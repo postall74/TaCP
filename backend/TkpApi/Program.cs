@@ -224,9 +224,23 @@ app.MapPost("/api/projects/{id}/cabinets", async (string id, List<Cabinet> cabs,
     var p = await db.Projects.Include(x => x.Cabinets).ThenInclude(c => c.Items)
                              .FirstOrDefaultAsync(x => x.Id == id);
     if (p is null) return Results.NotFound();
+
+    var cabinetIds = cabs.Select(c => c.Id).ToList();
+    if (CabinetBatchConflict.HasDuplicateIds(cabinetIds) ||
+        (cabinetIds.Count > 0 && await db.Cabinets.AnyAsync(c => cabinetIds.Contains(c.Id))))
+        return CabinetBatchConflict.Result();
+
     p.Cabinets.AddRange(cabs);
     p.UpdatedAt = DateTime.UtcNow;
-    await db.SaveChangesAsync();
+    try
+    {
+        await db.SaveChangesAsync();
+    }
+    catch (DbUpdateException error) when (CabinetBatchConflict.Is(error))
+    {
+        // A concurrent batch may claim a cabinet ID after the precheck.
+        return CabinetBatchConflict.Result();
+    }
     return Results.Ok(p.Cabinets);
 }).RequireAuthorization("Staff");
 
@@ -574,4 +588,21 @@ static bool HasAnyTable(TkpDbContext db)
     {
         return false;
     }
+}
+
+public static class CabinetBatchConflict
+{
+    public const string Detail = "Шкаф с таким идентификатором уже существует";
+
+    public static bool HasDuplicateIds(IEnumerable<string> ids) =>
+        ids.GroupBy(id => id, StringComparer.Ordinal).Any(group => group.Count() > 1);
+
+    public static bool Is(DbUpdateException error) =>
+        error.InnerException is Npgsql.PostgresException
+        {
+            SqlState: Npgsql.PostgresErrorCodes.UniqueViolation,
+            ConstraintName: "PK_project_cabinets",
+        };
+
+    public static IResult Result() => Results.Conflict(new { detail = Detail });
 }
