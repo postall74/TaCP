@@ -471,3 +471,11 @@ QA: test cases против fixture ──────────────�
 На main 1edff933 повтор существующего Cabinet.Id и два одинаковых ID внутри одного batch дают 500 EF tracking error. После project lookup отклонять intra-batch и existing cabinet IDs общим 409 до tracking. Узкий SaveChanges fallback только для PostgreSQL 23505 PK_project_cabinets; nested item PK и прочие DB errors не маскировать. DTO/schema/roles/frontend/project PUT/segments/case-sensitive IDs не менять.
 
 Приёмка: existing и intra-batch duplicate409 без изменений; valid multi-batch200 с items; empty batch прежний; missing project404; Staff valid200, anonymous401; concurrent same ID один200 и один409; nested item PK/unrelated DB остаются500; tests, Release и независимый HTTP/SQL QA.
+
+### SEC-004 — сделать регистрацию пользователя атомарной
+
+Исполнитель: Backend. Статус: ready. Приоритет: P1. Контракт: auth-register-atomic-v1; NEED-001: partial.
+
+На main 1edff933 сбой AddToRole после успешного CreateAsync возвращает500, но оставляет пользователя с паролем без роли; он может войти, а retry блокируется duplicate. Объём: register endpoint в AuthExtensions.cs и backend tests. CreateAsync и AddToRoleAsync выполняются в одной DB transaction; commit только после обоих успехов; AddToRole result проверяется. Role-store failure даёт стабильный500 без Identity internals и полный rollback. DTO, NormalizeRole, policies, login/JWT/schema/frontend не менять; старые roleless users не очищать.
+
+Приёмка: normal admin register/role/login/Staff success; anonymous401, manager/engineer403 no rows; duplicate/invalid400 no rows; forced missing-role/failed role assignment500 with no user/link, login401 and users list absent; CreateAsync failures preserve400; tests, Release и независимый PG/HTTP QA.
