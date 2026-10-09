@@ -270,6 +270,13 @@ backend tests и Release build; QA повторяет PostgreSQL HTTP-регре
 Объём: PUT /api/catalog/{id} в backend/TkpApi/Program.cs и backend-owned tests. Для existing и unknown id чужой SKU, включая вариант регистра, возвращает единый 409 без изменения каталога и корзины. Собственный прежний SKU, уникальное переименование и уникальный upsert возвращают 200. Сохранить CATALOG-001 tracking fix, DTO, Staff policy и tombstone semantics. Для гонки точного SKU допускается только узкая обработка PostgreSQL 23505 индекса IX_equipment_catalog_Sku; остальные DB exceptions не маскировать. Schema, Models, frontend, whitespace и name+brand rules не менять.
 
 Приёмка: exact/case-variant conflicts для A/B дают 409 и сохраняют обе строки; own SKU unchanged, unique rename, unknown unique и repeat PUT дают 200; unknown duplicate даёт 409; проверены Staff-роли и 401, backend tests, Release build и независимый PostgreSQL QA. Полная конкурентная case-insensitive уникальность не входит в срез и требует отдельного DB/locking решения. Задача повышает стабильность каталога, но не закрывает NEED-001 целиком.
+### PROJECT-003 — применить StatusDecide при создании проекта
+
+Исполнитель: Backend. Статус: ready. Приоритет: P1. Контракт: project-create-status-auth-v1; исправление авторизации, не решение графа ADR-001.
+
+На main 1edff933 engineer создаёт проект сразу со status=won с 201, хотя PUT того же статуса возвращает 403. Это обход уже опубликованного права StatusDecide; семантика переходов, reopening и причины проигрыша не меняются.
+
+Объём: POST /api/projects в Program.cs и backend tests. До сохранения применить Rights.PermForStatus и существующий Rights.Forbid. Engineer won/lost →403 и без строк/children; engineer draft/calc/sent и admin/manager текущие статусы →201. DTO/schema/status enum/graph/OwnerId/cabinets/versions/PUT не менять. Обязательны role matrix, 401, malformed/DB regressions, tests, Release и независимый HTTP/SQL QA. Задача не закрывает NEED-* целиком.
 ### PROJECT-002 — вернуть 409 при конфликте номера проекта
 
 Исполнитель: Backend. Статус: ready. Приоритет: P1. Контракт: project-number-v1; core-v1 stability, без полного закрытия NEED-*.
