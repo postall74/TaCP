@@ -35,6 +35,28 @@ public class CatalogCsvTests
         Assert.True(CatalogCsv.IsHeader(header));
     }
 
+    [Theory]
+    [InlineData("sku;name;brand;category;direction;unit;purchase;attrs")]
+    [InlineData(" SKU ;name;brand;category;direction;unit;purchase;attrs")]
+    [InlineData("АрТиКуЛ;наименование;бренд;категория;направление;ед;закупка;характеристики")]
+    public void IsHeader_ExactKnownFirstCell_ReturnsTrue(string line)
+    {
+        Assert.True(CatalogCsv.IsHeader(line));
+        Assert.Null(CatalogCsv.ParseLine(line));
+    }
+
+    [Theory]
+    [InlineData("SKU-001;Поз. 1;B1;К1;нку;шт;10;")]
+    [InlineData("ABC-SKU-42;Поз. 2;B2;К2;асу;шт;20;")]
+    [InlineData("МОЙ-АРТИКУЛ-7;Поз. 3;B3;К3;обогрев;шт;30;")]
+    public void ParseLine_SkuContainingHeaderWord_IsImported(string line)
+    {
+        var equipment = CatalogCsv.ParseLine(line);
+
+        Assert.NotNull(equipment);
+        Assert.False(CatalogCsv.IsHeader(line));
+    }
+
     [Fact]
     public void ParseLine_TooShort_ReturnsNull()
     {

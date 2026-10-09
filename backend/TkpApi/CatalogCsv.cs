@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.RegularExpressions;
 
 namespace TkpApi;
 
@@ -20,8 +19,12 @@ namespace TkpApi;
 public static class CatalogCsv
 {
     /// <summary>Первая ячейка строки — заголовок «артикул…»?</summary>
-    public static bool IsHeader(string line) =>
-        Regex.IsMatch(line.Trim().Split(';').FirstOrDefault() ?? "", "артикул|sku", RegexOptions.IgnoreCase);
+    public static bool IsHeader(string line)
+    {
+        var firstCell = line.Trim().Split(';').FirstOrDefault()?.Trim();
+        return string.Equals(firstCell, "sku", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(firstCell, "артикул", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// Разбор одной строки формата
