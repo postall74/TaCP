@@ -432,7 +432,14 @@ export const useStore = create<StoreState>()(
                   .filter((op): op is Extract<OutboxOp, { kind: "project.upsert" }> => op.kind === "project.upsert")
                   .map((op) => op.id),
               );
-              const pendingProjects = s.projects.filter((project) => pendingIds.has(project.id));
+              const pendingDeletedProjectIds = new Set(
+                s.outbox
+                  .filter((op): op is Extract<OutboxOp, { kind: "project.delete" }> => op.kind === "project.delete")
+                  .map((op) => op.id),
+              );
+              const pendingProjects = s.projects.filter(
+                (project) => pendingIds.has(project.id) && !pendingDeletedProjectIds.has(project.id),
+              );
               const preservedIds = new Set(pendingProjects.map((project) => project.id));
               const pendingEquipmentIds = new Set(
                 s.outbox
@@ -446,7 +453,9 @@ export const useStore = create<StoreState>()(
                 // находится в outbox, его payload остаётся источником для flush.
                 projects: [
                   ...pendingProjects,
-                  ...remoteProjects.filter((project) => !preservedIds.has(project.id)),
+                  ...remoteProjects.filter(
+                    (project) => !preservedIds.has(project.id) && !pendingDeletedProjectIds.has(project.id),
+                  ),
                 ],
                 catalog: [
                   ...pendingEquipment,

@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   deletedEquipment: vi.fn(),
   createProject: vi.fn(),
   putProject: vi.fn(),
+  deleteProject: vi.fn(),
   putEquipment: vi.fn(),
 }));
 
@@ -190,9 +191,9 @@ function prepareEquipment() {
   });
 }
 
-function mockHydration(catalog: typeof initialState.catalog) {
+function mockHydration(catalog: typeof initialState.catalog, projects: typeof initialState.projects = []) {
   const settings = useStore.getState().settings;
-  api.projects.mockResolvedValueOnce([]);
+  api.projects.mockResolvedValueOnce(projects);
   api.catalog.mockResolvedValueOnce(catalog);
   api.deletedEquipment.mockResolvedValueOnce([]);
   api.company.mockResolvedValueOnce({
@@ -296,5 +297,79 @@ describe("SYNC-002: equipment outbox hydration", () => {
     expect(useStore.getState().outbox).toEqual([
       expect.objectContaining({ kind: "equipment.upsert", eqId: equipment.id }),
     ]);
+  });
+});
+
+function prepareProjectDelete() {
+  const id = useStore.getState().createProject(projectInput);
+  const project = useStore.getState().projects.find((item) => item.id === id)!;
+  const settings = useStore.getState().settings;
+  useStore.setState({
+    settings: { ...settings, apiBaseUrl: "https://api.example.test" },
+    outbox: [],
+  });
+  return project;
+}
+
+describe("SYNC-003: pending project deletion hydration", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    memory.clear();
+    useStore.setState(initialState, true);
+  });
+
+  it("keeps a pending deletion hidden through hydration and reconnect flush", async () => {
+    const project = prepareProjectDelete();
+    const otherProject = {
+      ...project,
+      id: "other-server-project",
+      number: "ТКП-OTHER",
+      title: "Other server project",
+    };
+    api.deleteProject
+      .mockRejectedValueOnce(new TypeError("network unavailable"))
+      .mockResolvedValueOnce(undefined);
+
+    expect(useStore.getState().deleteProject(project.id)).toBe(true);
+    await vi.waitFor(() => expect(api.deleteProject).toHaveBeenCalledTimes(1));
+    expect(useStore.getState().projects.some((item) => item.id === project.id)).toBe(false);
+    expect(useStore.getState().outbox).toEqual([
+      expect.objectContaining({ kind: "project.delete", id: project.id }),
+    ]);
+
+    mockHydration(initialState.catalog, [project, otherProject]);
+    await useStore.getState().hydrateFromApi();
+
+    expect(useStore.getState().projects.some((item) => item.id === project.id)).toBe(false);
+    expect(useStore.getState().projects).toContainEqual(otherProject);
+    await vi.waitFor(() => expect(api.deleteProject).toHaveBeenCalledTimes(2));
+    expect(useStore.getState().outbox).toEqual([]);
+    expect(useStore.getState().projects.some((item) => item.id === project.id)).toBe(false);
+
+    mockHydration(initialState.catalog, [otherProject]);
+    await useStore.getState().hydrateFromApi();
+    expect(useStore.getState().projects).toEqual([otherProject]);
+  });
+
+  it("keeps an ordinary successful deletion hidden and clears its queue", async () => {
+    const project = prepareProjectDelete();
+    api.deleteProject.mockResolvedValueOnce(undefined);
+
+    expect(useStore.getState().deleteProject(project.id)).toBe(true);
+    expect(useStore.getState().projects.some((item) => item.id === project.id)).toBe(false);
+    await vi.waitFor(() => expect(useStore.getState().outbox).toEqual([]));
+    expect(api.deleteProject).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([400, 500])("preserves HTTP %s handling without retrying deletion", async (status) => {
+    const project = prepareProjectDelete();
+    api.deleteProject.mockRejectedValueOnce(new MockApiError(status, "server error"));
+
+    expect(useStore.getState().deleteProject(project.id)).toBe(true);
+    await vi.waitFor(() => expect(useStore.getState().outbox).toEqual([]));
+
+    await useStore.getState().flushOutbox();
+    expect(api.deleteProject).toHaveBeenCalledTimes(1);
+    expect(useStore.getState().projects.some((item) => item.id === project.id)).toBe(false);
   });
 });
