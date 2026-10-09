@@ -165,8 +165,19 @@ app.MapGet("/api/projects", async (TkpDbContext db) =>
 app.MapPost("/api/projects", async (Project p, TkpDbContext db) =>
 {
     if (string.IsNullOrEmpty(p.Id)) p.Id = Guid.NewGuid().ToString();
+    else if (await db.Projects.AnyAsync(existing => existing.Id == p.Id))
+        return ProjectIdConflict.Result();
+
     db.Projects.Add(p);
-    await db.SaveChangesAsync();
+    try
+    {
+        await db.SaveChangesAsync();
+    }
+    catch (DbUpdateException error) when (ProjectIdConflict.Is(error))
+    {
+        // A concurrent request may claim the explicit ID after the precheck.
+        return ProjectIdConflict.Result();
+    }
     return Results.Created($"/api/projects/{p.Id}", p);
 }).RequireAuthorization("Staff");
 
@@ -608,6 +619,20 @@ static bool HasAnyTable(TkpDbContext db)
     {
         return false;
     }
+}
+
+public static class ProjectIdConflict
+{
+    public const string Detail = "Проект с таким идентификатором уже существует";
+
+    public static bool Is(DbUpdateException error) =>
+        error.InnerException is Npgsql.PostgresException
+        {
+            SqlState: Npgsql.PostgresErrorCodes.UniqueViolation,
+            ConstraintName: "PK_projects",
+        };
+
+    public static IResult Result() => Results.Conflict(new { detail = Detail });
 }
 
 public static class CabinetBatchConflict
