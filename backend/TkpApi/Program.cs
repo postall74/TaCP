@@ -230,6 +230,11 @@ app.MapPost("/api/projects/{id}/cabinets", async (string id, List<Cabinet> cabs,
         (cabinetIds.Count > 0 && await db.Cabinets.AnyAsync(c => cabinetIds.Contains(c.Id))))
         return CabinetBatchConflict.Result();
 
+    var itemIds = cabs.SelectMany(c => c.Items ?? []).Select(item => item.Id).ToList();
+    if (CabinetItemBatchConflict.HasDuplicateIds(itemIds) ||
+        (itemIds.Count > 0 && await db.Items.AnyAsync(item => itemIds.Contains(item.Id))))
+        return CabinetItemBatchConflict.Result();
+
     p.Cabinets.AddRange(cabs);
     p.UpdatedAt = DateTime.UtcNow;
     try
@@ -240,6 +245,11 @@ app.MapPost("/api/projects/{id}/cabinets", async (string id, List<Cabinet> cabs,
     {
         // A concurrent batch may claim a cabinet ID after the precheck.
         return CabinetBatchConflict.Result();
+    }
+    catch (DbUpdateException error) when (CabinetItemBatchConflict.Is(error))
+    {
+        // A concurrent batch may claim a nested item ID after the precheck.
+        return CabinetItemBatchConflict.Result();
     }
     return Results.Ok(p.Cabinets);
 }).RequireAuthorization("Staff");
@@ -602,6 +612,23 @@ public static class CabinetBatchConflict
         {
             SqlState: Npgsql.PostgresErrorCodes.UniqueViolation,
             ConstraintName: "PK_project_cabinets",
+        };
+
+    public static IResult Result() => Results.Conflict(new { detail = Detail });
+}
+
+public static class CabinetItemBatchConflict
+{
+    public const string Detail = "Позиция шкафа с таким идентификатором уже существует";
+
+    public static bool HasDuplicateIds(IEnumerable<string> ids) =>
+        ids.GroupBy(id => id, StringComparer.Ordinal).Any(group => group.Count() > 1);
+
+    public static bool Is(DbUpdateException error) =>
+        error.InnerException is Npgsql.PostgresException
+        {
+            SqlState: Npgsql.PostgresErrorCodes.UniqueViolation,
+            ConstraintName: "PK_project_items",
         };
 
     public static IResult Result() => Results.Conflict(new { detail = Detail });
