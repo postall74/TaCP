@@ -511,3 +511,19 @@ QA: test cases против fixture ──────────────�
 На PROJECT-006 `b9bbdaf5` одинаковый `CabinetSegment.Id` в одном batch вызывает EF tracking error и 500. После project/cabinet/item checks собрать `Segments`; exact ordinal duplicate внутри запроса или уже существующий `db.Segments` отклонять общим 409 до tracking. Добавить узкий SaveChanges fallback только для PostgreSQL 23505/`PK_cabinet_segments`, сохранив отдельные `PK_project_cabinets` и `PK_project_items` 409. DTO/schema/roles/frontend/project PUT/segment content/kind/partitions/case-sensitive IDs не менять; миграций и cleanup нет.
 
 Приёмка: duplicate segment ID в одном/разных cabinets409 без новых rows; existing segment409; valid/empty/null segments200; case variant200; admin/manager/engineer valid200, anonymous401; missing project404; concurrent distinct-cabinet batches с exact segment ID дают один200+один409 и rollback losing cabinet; cabinet/item PK остаются409, unrelated constraint/DB500; backend tests, Release и независимый PG/HTTP/SQL QA.
+
+### SYNC-003 — не возвращать pending-удалённые проекты при гидратации
+
+Исполнитель: Frontend. Статус: ready. Приоритет: P1. Контракт: core-v1; NEED-001: partial; зависит от SYNC-002.
+
+После сетевой ошибки DELETE операция `project.delete` остаётся в outbox, но `hydrateFromApi` возвращает ещё существующий на сервере проект в локальный список. Автоматический flush затем успешно удаляет серверную запись и очищает очередь, однако проект остаётся «воскресшим» локально. Объём: `src/store.ts` и frontend tests. При гидратации исключать серверные проекты с pending `project.delete`; существующую отправку и очистку delete-операции не менять. DTO, HTTP, backend, права, types и API client не менять.
+
+Приёмка: network failure оставляет `project.delete`, проект локально отсутствует; hydrate со старой серверной записью не восстанавливает проект; reconnect/flush выполняет один DELETE, очищает очередь и проект остаётся скрытым; следующая hydrate без проекта корректна; обычный success и HTTP4xx/5xx сохраняют текущую семантику без повторов; остальные server projects и pending upsert не регрессируют; typecheck, полный frontend test suite, build и независимая QA-регрессия.
+
+### PROJECT-008 — вернуть 409 для конфликта ID при создании проекта
+
+Исполнитель: Backend. Статус: ready. Приоритет: P1. Контракт: project-id-conflict-v1; зависит от PROJECT-007; core-v1 stability, без полного закрытия NEED-*.
+
+На PROJECT-007 `df314d4c` повторный `POST /api/projects` с exact существующим `Project.Id` даёт PostgreSQL 23505/`PK_projects` и HTTP500. В `POST /api/projects` для непустого входного Id выполнять exact existing precheck409 до Add; blank Id продолжает генерироваться. Добавить SaveChanges fallback только PG23505/`PK_projects` для race. Сохранить PROJECT-002 обработку `IX_projects_Number`. DTO/schema/roles/status/OwnerId/cabinets/versions/Number/frontend не менять; вложенные PK и unrelated DB не маскировать.
+
+Приёмка: existing exact ID409 без изменений; blank/generated201; unique explicit201; case variant201; admin/manager/engineer сохраняют role/status matrix, anonymous401; malformed400; concurrent exact ID один201+один409 и одна строка/graph; `IX_projects_Number` остаётся409; дочерние PK и unrelated DB500; backend tests, Release и независимый PG/HTTP/SQL QA.
