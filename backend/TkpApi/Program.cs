@@ -167,6 +167,8 @@ app.MapPost("/api/projects", async (Project p, TkpDbContext db) =>
     if (string.IsNullOrEmpty(p.Id)) p.Id = Guid.NewGuid().ToString();
     else if (await db.Projects.AnyAsync(existing => existing.Id == p.Id))
         return ProjectIdConflict.Result();
+    if (await db.Projects.AnyAsync(x => x.Number == p.Number))
+        return ProjectNumberConflict.Result();
 
     db.Projects.Add(p);
     try
@@ -177,6 +179,11 @@ app.MapPost("/api/projects", async (Project p, TkpDbContext db) =>
     {
         // A concurrent request may claim the explicit ID after the precheck.
         return ProjectIdConflict.Result();
+    }
+    catch (DbUpdateException error) when (ProjectNumberConflict.Is(error))
+    {
+        // A concurrent request may claim the number after the precheck.
+        return ProjectNumberConflict.Result();
     }
     return Results.Created($"/api/projects/{p.Id}", p);
 }).RequireAuthorization("Staff");
@@ -199,6 +206,9 @@ app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext d
                              .FirstOrDefaultAsync(x => x.Id == id);
     if (p is null) return Results.NotFound();
 
+    if (await db.Projects.AnyAsync(x => x.Id != id && x.Number == patch.Number))
+        return ProjectNumberConflict.Result();
+
     if (patch.Status != p.Status)
     {
         var perm = Rights.PermForStatus(patch.Status);
@@ -213,7 +223,15 @@ app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext d
 
     db.Cabinets.RemoveRange(p.Cabinets);          // cascade удалит позиции
     p.Cabinets = patch.Cabinets ?? new List<Cabinet>();
-    await db.SaveChangesAsync();
+    try
+    {
+        await db.SaveChangesAsync();
+    }
+    catch (DbUpdateException error) when (ProjectNumberConflict.Is(error))
+    {
+        // SaveChanges is transactional, so scalar and nested changes are rolled back together.
+        return ProjectNumberConflict.Result();
+    }
     return Results.Ok(p);
 }).RequireAuthorization("Staff");
 
@@ -630,6 +648,20 @@ public static class ProjectIdConflict
         {
             SqlState: Npgsql.PostgresErrorCodes.UniqueViolation,
             ConstraintName: "PK_projects",
+        };
+
+    public static IResult Result() => Results.Conflict(new { detail = Detail });
+}
+
+public static class ProjectNumberConflict
+{
+    public const string Detail = "Проект с таким номером уже существует";
+
+    public static bool Is(DbUpdateException error) =>
+        error.InnerException is Npgsql.PostgresException
+        {
+            SqlState: Npgsql.PostgresErrorCodes.UniqueViolation,
+            ConstraintName: "IX_projects_Number",
         };
 
     public static IResult Result() => Results.Conflict(new { detail = Detail });
