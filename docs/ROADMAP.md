@@ -455,3 +455,11 @@ QA: test cases против fixture ──────────────�
 изменение затрагивает соответствующий артефакт.
 5. PR описывает поведение, границы и способ проверки; PM подтверждает, что
 задача не дублирует незавершённую работу другого агента.
+
+### PROJECT-004 — запретить нулевое и отрицательное количество позиции шкафа
+
+Исполнитель: Backend. Статус: ready. Приоритет: P1. Контракт: cabinet-item-qty-v1; core-v1 stability, без полного закрытия NEED-*.
+
+На main 1edff933 endpoint POST cabinet items принимает qty не больше нуля и создаёт отрицательную позицию либо уменьшает существующую ниже нуля. После lookup шкафа и оборудования отклонять такие значения кодом 400 до мутации; missing IDs сохраняют 404. Positive decimal/new/increment, snapshot, DTO/schema/roles/frontend/full-project PUT не менять; старые плохие строки не очищать.
+
+Приёмка: new/existing zero или negative дают 400 и данные неизменны; positive fractional и increment дают 200 с точной суммой; missing cabinet/equipment дают 404 при invalid qty; Staff positive 200, anonymous 401; malformed binding 400, unrelated DB 500. Обязательны backend tests, Release build и независимый HTTP/SQL QA.
