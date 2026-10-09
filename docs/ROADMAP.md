@@ -527,3 +527,11 @@ QA: test cases против fixture ──────────────�
 На PROJECT-007 `df314d4c` повторный `POST /api/projects` с exact существующим `Project.Id` даёт PostgreSQL 23505/`PK_projects` и HTTP500. В `POST /api/projects` для непустого входного Id выполнять exact existing precheck409 до Add; blank Id продолжает генерироваться. Добавить SaveChanges fallback только PG23505/`PK_projects` для race. Сохранить PROJECT-002 обработку `IX_projects_Number`. DTO/schema/roles/status/OwnerId/cabinets/versions/Number/frontend не менять; вложенные PK и unrelated DB не маскировать.
 
 Приёмка: existing exact ID409 без изменений; blank/generated201; unique explicit201; case variant201; admin/manager/engineer сохраняют role/status matrix, anonymous401; malformed400; concurrent exact ID один201+один409 и одна строка/graph; `IX_projects_Number` остаётся409; дочерние PK и unrelated DB500; backend tests, Release и независимый PG/HTTP/SQL QA.
+
+### PROJECT-009 — вернуть 409 для конфликтов ID вложенных шкафов при создании проекта
+
+Исполнитель: Backend. Статус: ready. Приоритет: P1. Контракт: project-create-cabinet-id-v1; зависит от PROJECT-008; core-v1 stability, без полного закрытия NEED-*.
+
+В полном `POST /api/projects` два вложенных Cabinet с exact одинаковым Id вызывают EF tracking error и500 до SaveChanges. До `db.Projects.Add` собрать `p.Cabinets` IDs; exact ordinal duplicate или existing `db.Cabinets` отклонять общим409. SaveChanges fallback только PG23505/`PK_project_cabinets` для race; сохранить ProjectIdConflict и ProjectNumberConflict precheck/catches. DTO/schema/roles/status/OwnerId/items/segments/versions/frontend/PUT не менять; item/segment conflicts и unrelated DB пока500.
+
+Приёмка: duplicate cabinet ID внутри create graph409 без rows; existing cabinet ID409; valid/empty cabinets201; case variant201; admin/manager/engineer status matrix неизменна, anonymous401, malformed400; concurrent unique root projects с exact nested cabinet ID дают один201+один409 и rollback losing graph; `PK_projects` и `IX_projects_Number` остаются409; item/segment PK и unrelated DB500; backend tests, Release и независимый PG/HTTP/SQL QA.
