@@ -390,7 +390,10 @@ export const useStore = create<StoreState>()(
             try {
               if (op.kind === "project.upsert") {
                 const p = get().projects.find((x) => x.id === op.id);
-                if (p) await sendProject(a, p);
+                // Без локального payload отправлять нечего: сохраняем операцию,
+                // чтобы не отмечать потерянный проект как синхронизированный.
+                if (!p) return;
+                await sendProject(a, p);
               } else if (op.kind === "project.delete") {
                 await a.deleteProject(op.id);
               } else if (op.kind === "equipment.upsert") {
@@ -419,13 +422,28 @@ export const useStore = create<StoreState>()(
               a.projects(), a.catalog(), a.company(), a.rates(),
               a.deletedEquipment().catch(() => [] as DeletedEquipment[]),
             ]);
-            set((s) => ({
-              projects: projects.map(normalizeProject),
-              catalog,
-              deletedCatalog,
-              remoteLoading: false,
-              settings: { ...s.settings, ...company, rates, apiOnline: true },
-            }));
+            const remoteProjects = projects.map(normalizeProject);
+            set((s) => {
+              const pendingIds = new Set(
+                s.outbox
+                  .filter((op): op is Extract<OutboxOp, { kind: "project.upsert" }> => op.kind === "project.upsert")
+                  .map((op) => op.id),
+              );
+              const pendingProjects = s.projects.filter((project) => pendingIds.has(project.id));
+              const preservedIds = new Set(pendingProjects.map((project) => project.id));
+              return {
+                // Сервер ещё может не знать о локальных изменениях. Пока upsert
+                // находится в outbox, его payload остаётся источником для flush.
+                projects: [
+                  ...pendingProjects,
+                  ...remoteProjects.filter((project) => !preservedIds.has(project.id)),
+                ],
+                catalog,
+                deletedCatalog,
+                remoteLoading: false,
+                settings: { ...s.settings, ...company, rates, apiOnline: true },
+              };
+            });
             get().toast("Данные загружены с сервера C#", "info");
             if (get().outbox.length > 0) void get().flushOutbox();
           } catch {

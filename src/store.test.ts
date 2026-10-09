@@ -63,8 +63,9 @@ describe("SYNC-001: duplicate project outbox", () => {
     useStore.setState(initialState, true);
   });
 
-  it("keeps a failed duplicate queued, flushes it, and retains it after hydration", async () => {
+  it("keeps a failed duplicate through hydration and flushes it after reconnect", async () => {
     const sourceId = prepareDuplicate();
+    const source = useStore.getState().projects.find((project) => project.id === sourceId);
     api.createProject.mockRejectedValueOnce(new TypeError("network unavailable"));
 
     const duplicateId = useStore.getState().duplicateProject(sourceId);
@@ -79,16 +80,39 @@ describe("SYNC-001: duplicate project outbox", () => {
       expect.objectContaining({ kind: "project.upsert", id: duplicateId }),
     ]);
 
+    const settings = useStore.getState().settings;
+    api.projects.mockResolvedValueOnce([source]);
+    api.catalog.mockResolvedValueOnce([]);
+    api.deletedEquipment.mockResolvedValueOnce([]);
+    api.company.mockResolvedValueOnce({
+      companyName: settings.companyName,
+      tagline: settings.tagline,
+      address: settings.address,
+      phone: settings.phone,
+      email: settings.email,
+      requisites: settings.requisites,
+      manager: settings.manager,
+      executor: settings.executor,
+    });
+    api.rates.mockResolvedValueOnce(settings.rates);
+    api.putProject.mockRejectedValueOnce(new TypeError("network still unavailable"));
+    await useStore.getState().hydrateFromApi();
+
+    expect(useStore.getState().projects.some((project) => project.id === duplicateId)).toBe(true);
+    await vi.waitFor(() => expect(api.putProject).toHaveBeenCalledWith(copy));
+    expect(useStore.getState().outbox).toEqual([
+      expect.objectContaining({ kind: "project.upsert", id: duplicateId }),
+    ]);
+
     api.createProject.mockClear();
     api.putProject.mockRejectedValueOnce(new MockApiError(404, "not found"));
     api.createProject.mockResolvedValueOnce(copy);
     await useStore.getState().flushOutbox();
 
-    expect(api.putProject).toHaveBeenCalledWith(copy);
+    expect(api.putProject).toHaveBeenLastCalledWith(copy);
     expect(api.createProject).toHaveBeenCalledWith(copy);
     expect(useStore.getState().outbox).toEqual([]);
 
-    const settings = useStore.getState().settings;
     api.projects.mockResolvedValueOnce([copy]);
     api.catalog.mockResolvedValueOnce([]);
     api.deletedEquipment.mockResolvedValueOnce([]);
@@ -130,5 +154,22 @@ describe("SYNC-001: duplicate project outbox", () => {
     await useStore.getState().flushOutbox();
     expect(api.createProject).toHaveBeenCalledTimes(1);
     expect(api.putProject).not.toHaveBeenCalled();
+  });
+
+  it("retains a project upsert when its local payload is missing", async () => {
+    const settings = useStore.getState().settings;
+    useStore.setState({
+      projects: [],
+      settings: { ...settings, apiBaseUrl: "https://api.example.test" },
+      outbox: [{ kind: "project.upsert", id: "missing-project", ts: Date.now() }],
+    });
+
+    await useStore.getState().flushOutbox();
+
+    expect(api.putProject).not.toHaveBeenCalled();
+    expect(api.createProject).not.toHaveBeenCalled();
+    expect(useStore.getState().outbox).toEqual([
+      expect.objectContaining({ kind: "project.upsert", id: "missing-project" }),
+    ]);
   });
 });
