@@ -90,6 +90,26 @@ public class RightsTests
         Assert.True(Rights.Can(mgr, Rights.ProjectDelete));
     }
 
+    [Theory]
+    [InlineData(Roles.Admin, ProjectStatus.Draft, true)]
+    [InlineData(Roles.Admin, ProjectStatus.Calc, true)]
+    [InlineData(Roles.Admin, ProjectStatus.Sent, true)]
+    [InlineData(Roles.Admin, ProjectStatus.Won, true)]
+    [InlineData(Roles.Admin, ProjectStatus.Lost, true)]
+    [InlineData(Roles.Manager, ProjectStatus.Draft, true)]
+    [InlineData(Roles.Manager, ProjectStatus.Calc, true)]
+    [InlineData(Roles.Manager, ProjectStatus.Sent, true)]
+    [InlineData(Roles.Manager, ProjectStatus.Won, true)]
+    [InlineData(Roles.Manager, ProjectStatus.Lost, true)]
+    [InlineData(Roles.Engineer, ProjectStatus.Draft, true)]
+    [InlineData(Roles.Engineer, ProjectStatus.Calc, true)]
+    [InlineData(Roles.Engineer, ProjectStatus.Sent, true)]
+    [InlineData(Roles.Engineer, ProjectStatus.Won, false)]
+    [InlineData(Roles.Engineer, ProjectStatus.Lost, false)]
+    public void InitialStatus_UsesExistingPermissionMatrix(
+        string role, ProjectStatus status, bool expected) =>
+        Assert.Equal(expected, Rights.Can(role, Rights.PermForStatus(status)));
+
     /* ---------------- объяснение отказа ---------------- */
 
     [Fact]
