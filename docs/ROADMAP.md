@@ -463,3 +463,11 @@ QA: test cases против fixture ──────────────�
 На main 1edff933 endpoint POST cabinet items принимает qty не больше нуля и создаёт отрицательную позицию либо уменьшает существующую ниже нуля. После lookup шкафа и оборудования отклонять такие значения кодом 400 до мутации; missing IDs сохраняют 404. Positive decimal/new/increment, snapshot, DTO/schema/roles/frontend/full-project PUT не менять; старые плохие строки не очищать.
 
 Приёмка: new/existing zero или negative дают 400 и данные неизменны; positive fractional и increment дают 200 с точной суммой; missing cabinet/equipment дают 404 при invalid qty; Staff positive 200, anonymous 401; malformed binding 400, unrelated DB 500. Обязательны backend tests, Release build и независимый HTTP/SQL QA.
+
+### PROJECT-005 — вернуть 409 для конфликтов ID пакетного добавления шкафов
+
+Исполнитель: Backend. Статус: ready. Приоритет: P1. Контракт: cabinet-batch-id-v1; core-v1 stability, без полного закрытия NEED-*.
+
+На main 1edff933 повтор существующего Cabinet.Id и два одинаковых ID внутри одного batch дают 500 EF tracking error. После project lookup отклонять intra-batch и existing cabinet IDs общим 409 до tracking. Узкий SaveChanges fallback только для PostgreSQL 23505 PK_project_cabinets; nested item PK и прочие DB errors не маскировать. DTO/schema/roles/frontend/project PUT/segments/case-sensitive IDs не менять.
+
+Приёмка: existing и intra-batch duplicate409 без изменений; valid multi-batch200 с items; empty batch прежний; missing project404; Staff valid200, anonymous401; concurrent same ID один200 и один409; nested item PK/unrelated DB остаются500; tests, Release и независимый HTTP/SQL QA.
