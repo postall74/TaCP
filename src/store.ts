@@ -600,7 +600,14 @@ export const useStore = create<StoreState>()(
             versions: [],
           };
           set((s) => ({ projects: [copy, ...s.projects] }));
-          api()?.createProject(copy).then(syncOk).catch(syncFail);
+          const a = api();
+          if (a) {
+            const op: OutboxOp = { kind: "project.upsert", id: nid, ts: Date.now() };
+            enqueue(op);
+            a.createProject(copy)
+              .then(() => { dequeue(op); syncOk(); })
+              .catch((e) => { if (e instanceof ApiError) { dequeue(op); syncFail(e); } else syncFail(e); });
+          }
           return nid;
         },
 
