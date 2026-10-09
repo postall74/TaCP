@@ -535,3 +535,11 @@ QA: test cases против fixture ──────────────�
 В полном `POST /api/projects` два вложенных Cabinet с exact одинаковым Id вызывают EF tracking error и500 до SaveChanges. До `db.Projects.Add` собрать `p.Cabinets` IDs; exact ordinal duplicate или existing `db.Cabinets` отклонять общим409. SaveChanges fallback только PG23505/`PK_project_cabinets` для race; сохранить ProjectIdConflict и ProjectNumberConflict precheck/catches. DTO/schema/roles/status/OwnerId/items/segments/versions/frontend/PUT не менять; item/segment conflicts и unrelated DB пока500.
 
 Приёмка: duplicate cabinet ID внутри create graph409 без rows; existing cabinet ID409; valid/empty cabinets201; case variant201; admin/manager/engineer status matrix неизменна, anonymous401, malformed400; concurrent unique root projects с exact nested cabinet ID дают один201+один409 и rollback losing graph; `PK_projects` и `IX_projects_Number` остаются409; item/segment PK и unrelated DB500; backend tests, Release и независимый PG/HTTP/SQL QA.
+
+### SYNC-004 — сохранять pending-удаление позиции справочника при гидратации
+
+Исполнитель: Frontend. Статус: ready. Приоритет: P1. Контракт: core-v1; NEED-001: partial; зависит от SYNC-003.
+
+После сетевой ошибки `equipment.delete` остаётся в outbox, но `hydrateFromApi` возвращает позицию в активный каталог и удаляет локальный tombstone из корзины. Автоматический flush затем успешно удаляет серверную запись и очищает очередь, однако локальные списки остаются неверными. Объём: `src/store.ts` и frontend tests. При гидратации исключать pending-deleted позиции из активного серверного каталога и сохранять локальные tombstone в `deletedCatalog` до серверного снимка; `equipment.delete` имеет приоритет над pending `equipment.upsert` того же ID. DTO, HTTP, backend, права, types и API client не менять; восстановление позиции не входит в slice.
+
+Приёмка: network failure оставляет `equipment.delete`, позиция отсутствует в active и есть в local trash; hydrate со старой active server row не возвращает её и не удаляет tombstone; reconnect/flush выполняет один DELETE, очищает очередь и сохраняет списки; следующая hydrate использует server tombstone без дублей; success и HTTP4xx/5xx сохраняют текущую семантику без повторов; другие active/deleted items и pending upsert не регрессируют; typecheck, полный frontend test suite, build и независимая QA-регрессия.
