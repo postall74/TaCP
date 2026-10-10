@@ -481,3 +481,58 @@ describe("SYNC-004: pending equipment deletion hydration", () => {
     expect(useStore.getState().deletedCatalog.some((item) => item.id === deletableEquipment.id)).toBe(true);
   });
 });
+
+describe("SYNC-005: project deletion supersedes pending upsert", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    memory.clear();
+    useStore.setState(initialState, true);
+    vi.stubGlobal("window", {
+      clearTimeout: globalThis.clearTimeout,
+      setTimeout: globalThis.setTimeout,
+    });
+  });
+
+  it("replaces a failed update with one delete and flushes without PUT or POST", async () => {
+    const project = prepareProjectDelete();
+    const otherProject = {
+      ...project,
+      id: "sync-005-other-project",
+      number: "ТКП-SYNC-005",
+      title: "Other server project",
+    };
+    api.putProject.mockRejectedValueOnce(new TypeError("network unavailable"));
+
+    useStore.getState().updateProject(project.id, { title: "Unsynced update" });
+    await vi.waitFor(() => expect(api.putProject).toHaveBeenCalledTimes(1), { timeout: 1_500 });
+    expect(useStore.getState().outbox).toEqual([
+      expect.objectContaining({ kind: "project.upsert", id: project.id }),
+    ]);
+
+    api.deleteProject.mockRejectedValueOnce(new TypeError("network unavailable"));
+    expect(useStore.getState().deleteProject(project.id)).toBe(true);
+    await vi.waitFor(() => expect(api.deleteProject).toHaveBeenCalledTimes(1));
+    expect(useStore.getState().projects.some((item) => item.id === project.id)).toBe(false);
+    expect(useStore.getState().outbox).toEqual([
+      expect.objectContaining({ kind: "project.delete", id: project.id }),
+    ]);
+
+    api.putProject.mockClear();
+    api.createProject.mockClear();
+    api.deleteProject.mockClear();
+    api.deleteProject.mockResolvedValueOnce(undefined);
+    mockHydration(initialState.catalog, [project, otherProject]);
+    await useStore.getState().hydrateFromApi();
+
+    expect(useStore.getState().projects.some((item) => item.id === project.id)).toBe(false);
+    expect(useStore.getState().projects).toContainEqual(otherProject);
+    await vi.waitFor(() => expect(api.deleteProject).toHaveBeenCalledTimes(1));
+    expect(api.putProject).not.toHaveBeenCalled();
+    expect(api.createProject).not.toHaveBeenCalled();
+    expect(useStore.getState().outbox).toEqual([]);
+
+    mockHydration(initialState.catalog, [otherProject]);
+    await useStore.getState().hydrateFromApi();
+    expect(useStore.getState().projects).toEqual([otherProject]);
+  });
+});

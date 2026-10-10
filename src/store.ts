@@ -252,7 +252,9 @@ export const useStore = create<StoreState>()(
       const enqueue = (op: OutboxOp) =>
         set((s) => {
           let rest = s.outbox.filter((x) => opKey(x) !== opKey(op));
-          if (op.kind === "equipment.delete") {
+          if (op.kind === "project.delete") {
+            rest = rest.filter((x) => !(x.kind === "project.upsert" && x.id === op.id));
+          } else if (op.kind === "equipment.delete") {
             rest = rest.filter((x) => !(x.kind === "equipment.upsert" && x.eqId === op.eqId));
           }
           return { outbox: [...rest, op] };
