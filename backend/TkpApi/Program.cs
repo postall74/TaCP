@@ -178,6 +178,11 @@ app.MapPost("/api/projects", async (Project p, TkpDbContext db, ClaimsPrincipal 
         (cabinetIds.Count > 0 && await db.Cabinets.AnyAsync(cabinet => cabinetIds.Contains(cabinet.Id))))
         return CabinetBatchConflict.Result();
 
+    var itemIds = (p.Cabinets ?? []).SelectMany(cabinet => cabinet.Items ?? []).Select(item => item.Id).ToList();
+    if (CabinetItemBatchConflict.HasDuplicateIds(itemIds) ||
+        (itemIds.Count > 0 && await db.Items.AnyAsync(item => itemIds.Contains(item.Id))))
+        return CabinetItemBatchConflict.Result();
+
     db.Projects.Add(p);
     try
     {
@@ -197,6 +202,11 @@ app.MapPost("/api/projects", async (Project p, TkpDbContext db, ClaimsPrincipal 
     {
         // A concurrent project may claim a nested cabinet ID after the precheck.
         return CabinetBatchConflict.Result();
+    }
+    catch (DbUpdateException error) when (CabinetItemBatchConflict.Is(error))
+    {
+        // A concurrent project may claim a nested item ID after the precheck.
+        return CabinetItemBatchConflict.Result();
     }
     return Results.Created($"/api/projects/{p.Id}", p);
 }).RequireAuthorization("Staff");
