@@ -551,3 +551,11 @@ QA: test cases против fixture ──────────────�
 В полном `POST /api/projects` одинаковый вложенный `LineItem.Id` внутри запроса вызывает EF tracking error500, а уже существующий item ID — PostgreSQL23505/`PK_project_items` и500. После project/number/cabinet checks собрать все `p.Cabinets.Items`; exact ordinal duplicate или existing `db.Items` отклонять общим409 до `db.Projects.Add`. Переиспользовать `CabinetItemBatchConflict`; добавить узкий SaveChanges catch только `PK_project_items` для race. DTO/schema/roles/status/OwnerId/cabinet/segment/version/frontend не менять; segment и unrelated DB errors не маскировать.
 
 Приёмка: duplicate item ID в одном/разных cabinets409 без rows; existing item409 без losing graph; valid nested/empty/null/case variant201; Staff status matrix неизменна, anonymous401, malformed400; concurrent unique roots с exact nested item дают один201+один409 и rollback losing graph; `PK_projects`, `IX_projects_Number`, `PK_project_cabinets` остаются409, segment/unrelated остаются500; backend tests, Release и независимый PG/HTTP/SQL QA.
+
+### SYNC-005 — удаление проекта вытесняет pending upsert того же ID
+
+Исполнитель: Frontend. Статус: ready. Приоритет: P1. Контракт: core-v1; NEED-001: partial; зависит от SYNC-004.
+
+После сетевой ошибки обновления остаётся `project.upsert`; последующее удаление того же проекта добавляет `project.delete`, но не вытесняет upsert. `flushOutbox` встречает отсутствующий локальный payload, прекращает обработку и DELETE никогда не отправляется. Объём: `src/store.ts` и frontend tests. При enqueue `project.delete` удалять pending `project.upsert` того же ID; существующие hydrate-фильтры и отправку DELETE не менять. DTO, HTTP, backend, права, types и API client не менять.
+
+Приёмка: network failure update оставляет `project.upsert`; delete заменяет его единственным `project.delete`; reconnect/flush выполняет ровно один DELETE, ноль PUT/POST и очищает очередь; hydrate до flush скрывает проект, после удаления он остаётся скрытым; обычный pending upsert и другие проекты не регрессируют; success и HTTP4xx/5xx сохраняют текущую семантику без повторов; typecheck, полный frontend test suite, build и независимая QA-регрессия.
