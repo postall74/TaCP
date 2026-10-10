@@ -251,7 +251,10 @@ export const useStore = create<StoreState>()(
           : `${o.kind}:${o.eqId}`;
       const enqueue = (op: OutboxOp) =>
         set((s) => {
-          const rest = s.outbox.filter((x) => opKey(x) !== opKey(op));
+          let rest = s.outbox.filter((x) => opKey(x) !== opKey(op));
+          if (op.kind === "equipment.delete") {
+            rest = rest.filter((x) => !(x.kind === "equipment.upsert" && x.eqId === op.eqId));
+          }
           return { outbox: [...rest, op] };
         });
       const dequeue = (op: OutboxOp) =>
@@ -446,8 +449,19 @@ export const useStore = create<StoreState>()(
                   .filter((op): op is Extract<OutboxOp, { kind: "equipment.upsert" }> => op.kind === "equipment.upsert")
                   .map((op) => op.eqId),
               );
-              const pendingEquipment = s.catalog.filter((equipment) => pendingEquipmentIds.has(equipment.id));
+              const pendingDeletedEquipmentIds = new Set(
+                s.outbox
+                  .filter((op): op is Extract<OutboxOp, { kind: "equipment.delete" }> => op.kind === "equipment.delete")
+                  .map((op) => op.eqId),
+              );
+              const pendingEquipment = s.catalog.filter(
+                (equipment) => pendingEquipmentIds.has(equipment.id) && !pendingDeletedEquipmentIds.has(equipment.id),
+              );
               const preservedEquipmentIds = new Set(pendingEquipment.map((equipment) => equipment.id));
+              const pendingDeletedEquipment = s.deletedCatalog.filter((equipment) =>
+                pendingDeletedEquipmentIds.has(equipment.id),
+              );
+              const preservedDeletedEquipmentIds = new Set(pendingDeletedEquipment.map((equipment) => equipment.id));
               return {
                 // Сервер ещё может не знать о локальных изменениях. Пока upsert
                 // находится в outbox, его payload остаётся источником для flush.
@@ -459,9 +473,15 @@ export const useStore = create<StoreState>()(
                 ],
                 catalog: [
                   ...pendingEquipment,
-                  ...catalog.filter((equipment) => !preservedEquipmentIds.has(equipment.id)),
+                  ...catalog.filter(
+                    (equipment) =>
+                      !preservedEquipmentIds.has(equipment.id) && !pendingDeletedEquipmentIds.has(equipment.id),
+                  ),
                 ],
-                deletedCatalog,
+                deletedCatalog: [
+                  ...pendingDeletedEquipment,
+                  ...deletedCatalog.filter((equipment) => !preservedDeletedEquipmentIds.has(equipment.id)),
+                ],
                 remoteLoading: false,
                 settings: { ...s.settings, ...company, rates, apiOnline: true },
               };

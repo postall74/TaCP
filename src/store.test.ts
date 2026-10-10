@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   putProject: vi.fn(),
   deleteProject: vi.fn(),
   putEquipment: vi.fn(),
+  deleteEquipment: vi.fn(),
 }));
 
 const MockApiError = vi.hoisted(() => class ApiError extends Error {
@@ -191,11 +192,15 @@ function prepareEquipment() {
   });
 }
 
-function mockHydration(catalog: typeof initialState.catalog, projects: typeof initialState.projects = []) {
+function mockHydration(
+  catalog: typeof initialState.catalog,
+  projects: typeof initialState.projects = [],
+  deletedCatalog: typeof initialState.deletedCatalog = [],
+) {
   const settings = useStore.getState().settings;
   api.projects.mockResolvedValueOnce(projects);
   api.catalog.mockResolvedValueOnce(catalog);
-  api.deletedEquipment.mockResolvedValueOnce([]);
+  api.deletedEquipment.mockResolvedValueOnce(deletedCatalog);
   api.company.mockResolvedValueOnce({
     companyName: settings.companyName,
     tagline: settings.tagline,
@@ -371,5 +376,108 @@ describe("SYNC-003: pending project deletion hydration", () => {
     await useStore.getState().flushOutbox();
     expect(api.deleteProject).toHaveBeenCalledTimes(1);
     expect(useStore.getState().projects.some((item) => item.id === project.id)).toBe(false);
+  });
+});
+
+const deletableEquipment = initialState.catalog[0]!;
+const otherActiveEquipment = initialState.catalog[1]!;
+const otherDeletedEquipment = {
+  ...initialState.catalog[2]!,
+  deletedAt: Date.now() - 60_000,
+  deletedBy: "server@example.test",
+};
+
+function prepareEquipmentDelete() {
+  const settings = useStore.getState().settings;
+  useStore.setState({
+    settings: { ...settings, apiBaseUrl: "https://api.example.test" },
+    outbox: [],
+  });
+}
+
+describe("SYNC-004: pending equipment deletion hydration", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    memory.clear();
+    useStore.setState(initialState, true);
+  });
+
+  it("keeps a pending deletion out of active catalog and preserves its tombstone", async () => {
+    prepareEquipmentDelete();
+    api.deleteEquipment
+      .mockRejectedValueOnce(new TypeError("network unavailable"))
+      .mockResolvedValueOnce(undefined);
+
+    useStore.getState().deleteEquipment(deletableEquipment.id);
+    await vi.waitFor(() => expect(api.deleteEquipment).toHaveBeenCalledTimes(1));
+    const localTombstone = useStore.getState().deletedCatalog.find((item) => item.id === deletableEquipment.id)!;
+    expect(useStore.getState().catalog.some((item) => item.id === deletableEquipment.id)).toBe(false);
+    expect(localTombstone).toBeDefined();
+    expect(useStore.getState().outbox).toEqual([
+      expect.objectContaining({ kind: "equipment.delete", eqId: deletableEquipment.id }),
+    ]);
+
+    mockHydration([deletableEquipment, otherActiveEquipment], [], [otherDeletedEquipment]);
+    await useStore.getState().hydrateFromApi();
+
+    expect(useStore.getState().catalog.some((item) => item.id === deletableEquipment.id)).toBe(false);
+    expect(useStore.getState().catalog).toContainEqual(otherActiveEquipment);
+    expect(useStore.getState().deletedCatalog).toContainEqual(localTombstone);
+    expect(useStore.getState().deletedCatalog).toContainEqual(otherDeletedEquipment);
+    await vi.waitFor(() => expect(api.deleteEquipment).toHaveBeenCalledTimes(2));
+    expect(useStore.getState().outbox).toEqual([]);
+
+    const serverTombstone = {
+      ...localTombstone,
+      deletedAt: localTombstone.deletedAt + 1,
+      deletedBy: "server@example.test",
+    };
+    mockHydration([otherActiveEquipment], [], [serverTombstone, otherDeletedEquipment]);
+    await useStore.getState().hydrateFromApi();
+
+    expect(useStore.getState().catalog.some((item) => item.id === deletableEquipment.id)).toBe(false);
+    expect(useStore.getState().deletedCatalog.filter((item) => item.id === deletableEquipment.id)).toEqual([
+      serverTombstone,
+    ]);
+  });
+
+  it("lets a pending delete supersede an upsert for the same equipment", async () => {
+    prepareEquipment();
+    api.putEquipment.mockRejectedValueOnce(new TypeError("network unavailable"));
+    api.deleteEquipment.mockRejectedValueOnce(new TypeError("network unavailable"));
+
+    useStore.getState().upsertEquipment(equipment);
+    await vi.waitFor(() => expect(api.putEquipment).toHaveBeenCalledTimes(1));
+    useStore.getState().deleteEquipment(equipment.id);
+    await vi.waitFor(() => expect(api.deleteEquipment).toHaveBeenCalledTimes(1));
+
+    expect(useStore.getState().outbox).toEqual([
+      expect.objectContaining({ kind: "equipment.delete", eqId: equipment.id }),
+    ]);
+    expect(useStore.getState().catalog.some((item) => item.id === equipment.id)).toBe(false);
+  });
+
+  it("keeps an ordinary successful deletion in trash and clears its queue", async () => {
+    prepareEquipmentDelete();
+    api.deleteEquipment.mockResolvedValueOnce(undefined);
+
+    useStore.getState().deleteEquipment(deletableEquipment.id);
+    expect(useStore.getState().catalog.some((item) => item.id === deletableEquipment.id)).toBe(false);
+    expect(useStore.getState().deletedCatalog.some((item) => item.id === deletableEquipment.id)).toBe(true);
+    await vi.waitFor(() => expect(useStore.getState().outbox).toEqual([]));
+    expect(api.deleteEquipment).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([400, 500])("preserves HTTP %s handling without retrying deletion", async (status) => {
+    prepareEquipmentDelete();
+    api.deleteEquipment.mockRejectedValueOnce(new MockApiError(status, "server error"));
+
+    useStore.getState().deleteEquipment(deletableEquipment.id);
+    await vi.waitFor(() => expect(useStore.getState().outbox).toEqual([]));
+
+    await useStore.getState().flushOutbox();
+    expect(api.deleteEquipment).toHaveBeenCalledTimes(1);
+    expect(useStore.getState().catalog.some((item) => item.id === deletableEquipment.id)).toBe(false);
+    expect(useStore.getState().deletedCatalog.some((item) => item.id === deletableEquipment.id)).toBe(true);
   });
 });
