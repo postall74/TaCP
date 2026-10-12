@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   deleteProject: vi.fn(),
   putEquipment: vi.fn(),
   deleteEquipment: vi.fn(),
+  restoreEquipment: vi.fn(),
 }));
 
 const MockApiError = vi.hoisted(() => class ApiError extends Error {
@@ -534,5 +535,80 @@ describe("SYNC-005: project deletion supersedes pending upsert", () => {
     mockHydration(initialState.catalog, [otherProject]);
     await useStore.getState().hydrateFromApi();
     expect(useStore.getState().projects).toEqual([otherProject]);
+  });
+});
+
+const restoreTarget = {
+  ...initialState.catalog[0]!,
+  deletedAt: Date.now() - 30_000,
+  deletedBy: "admin@example.test",
+};
+const restoreActiveNeighbor = initialState.catalog[1]!;
+const restoreDeletedNeighbor = {
+  ...initialState.catalog[2]!,
+  deletedAt: Date.now() - 60_000,
+  deletedBy: "server@example.test",
+};
+
+function prepareRestore(remote: boolean) {
+  const settings = useStore.getState().settings;
+  useStore.setState({
+    catalog: [restoreActiveNeighbor],
+    deletedCatalog: [restoreDeletedNeighbor, restoreTarget],
+    settings: { ...settings, apiBaseUrl: remote ? "https://api.example.test" : "" },
+    outbox: [],
+    toasts: [],
+  });
+}
+
+describe("SYNC-006: catalog restore rollback", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    memory.clear();
+    useStore.setState(initialState, true);
+  });
+
+  it.each([
+    ["network", new TypeError("network unavailable")],
+    ["HTTP 409", new MockApiError(409, "conflict")],
+    ["HTTP 500", new MockApiError(500, "server error")],
+  ])("rolls back and rejects on %s failure", async (_label, error) => {
+    prepareRestore(true);
+    api.restoreEquipment.mockRejectedValueOnce(error);
+
+    await expect(useStore.getState().restoreEquipment(restoreTarget.id)).rejects.toBe(error);
+
+    expect(useStore.getState().catalog).toEqual([restoreActiveNeighbor]);
+    expect(useStore.getState().deletedCatalog).toEqual([restoreDeletedNeighbor, restoreTarget]);
+    expect(useStore.getState().toasts.some((toast) => toast.kind === "ok")).toBe(false);
+    expect(api.restoreEquipment).toHaveBeenCalledTimes(1);
+  });
+
+  it("moves the item exactly once after a successful remote restore", async () => {
+    prepareRestore(true);
+    api.restoreEquipment.mockResolvedValueOnce(undefined);
+
+    await useStore.getState().restoreEquipment(restoreTarget.id);
+
+    expect(useStore.getState().catalog).toEqual([
+      restoreActiveNeighbor,
+      { ...restoreTarget, deletedAt: undefined, deletedBy: undefined },
+    ]);
+    expect(useStore.getState().catalog.filter((item) => item.id === restoreTarget.id)).toHaveLength(1);
+    expect(useStore.getState().deletedCatalog).toEqual([restoreDeletedNeighbor]);
+    expect(api.restoreEquipment).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the existing successful local restore behavior", async () => {
+    prepareRestore(false);
+
+    await useStore.getState().restoreEquipment(restoreTarget.id);
+
+    expect(useStore.getState().catalog).toEqual([
+      restoreActiveNeighbor,
+      { ...restoreTarget, deletedAt: undefined, deletedBy: undefined },
+    ]);
+    expect(useStore.getState().deletedCatalog).toEqual([restoreDeletedNeighbor]);
+    expect(api.restoreEquipment).not.toHaveBeenCalled();
   });
 });

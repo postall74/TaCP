@@ -899,19 +899,31 @@ export const useStore = create<StoreState>()(
             get().toast("Позиция не найдена в корзине", "err");
             return;
           }
-          
+          const restoredItem = { ...deletedItem, deletedAt: undefined, deletedBy: undefined } as Equipment;
+          const deletedIndex = get().deletedCatalog.findIndex((e) => e.id === id);
+
           set((s) => ({
-            catalog: [...s.catalog, { ...deletedItem, deletedAt: undefined, deletedBy: undefined } as Equipment],
+            catalog: [...s.catalog, restoredItem],
             deletedCatalog: s.deletedCatalog.filter((e) => e.id !== id),
           }));
-          
+
           const a = api();
           if (a) {
             try {
               await a.restoreEquipment(id);
               get().toast(`"${deletedItem.name}" восстановлен`, "ok");
             } catch (e) {
-              get().toast("Ошибка восстановления на сервере (требуется бэкенд)", "err");
+              set((s) => {
+                const deletedCatalog = [...s.deletedCatalog];
+                if (!deletedCatalog.some((item) => item.id === id)) {
+                  deletedCatalog.splice(Math.min(deletedIndex, deletedCatalog.length), 0, deletedItem);
+                }
+                return {
+                  catalog: s.catalog.filter((item) => item !== restoredItem),
+                  deletedCatalog,
+                };
+              });
+              throw e;
             }
           } else {
             get().toast(`"${deletedItem.name}" восстановлен локально`, "ok");
