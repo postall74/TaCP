@@ -272,8 +272,8 @@ app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext d
         return CabinetBatchConflict.Result();
 
     var created = p.CreatedAt;
+    patch.Id = id;
     db.Entry(p).CurrentValues.SetValues(patch);
-    p.Id = id;
     p.CreatedAt = created;
     p.UpdatedAt = DateTime.UtcNow;
 
