@@ -653,13 +653,28 @@ describe("SYNC-007: confirmed catalog import", () => {
     ["HTTP 500", new MockApiError(500, "server error")],
   ])("rolls back and rejects on %s failure", async (_label, error) => {
     prepareImport(true);
-    api.importCsv.mockRejectedValueOnce(error);
+    let rejectRequest!: (reason?: unknown) => void;
+    api.importCsv.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => {
+      rejectRequest = reject;
+    }));
 
-    await expect(useStore.getState().importEquipment(importItems, importCsv)).rejects.toBe(error);
+    const importPromise = useStore.getState().importEquipment(importItems, importCsv);
+    expect(useStore.getState().catalog).toHaveLength(3);
+    expect(useStore.getState().catalog).toContain(importNeighbor);
+    expect(useStore.getState().catalog.filter((item) => item.sku === "SYNC-007-NEW")).toHaveLength(1);
+    expect(useStore.getState().catalog.find((item) => item.id === importExisting.id)).toEqual(
+      expect.objectContaining({ name: "Updated by import", purchase: importExisting.purchase + 100 }),
+    );
+
+    rejectRequest(error);
+    await expect(importPromise).rejects.toBe(error);
 
     expect(useStore.getState().catalog).toEqual([importExisting, importNeighbor]);
-    expect(useStore.getState().toasts.some((toast) => toast.kind === "ok")).toBe(false);
+    expect(useStore.getState().catalog[0]).toBe(importExisting);
+    expect(useStore.getState().catalog[1]).toBe(importNeighbor);
+    expect(useStore.getState().toasts).toEqual([]);
     expect(api.importCsv).toHaveBeenCalledWith(importCsv);
+    expect(api.importCsv).toHaveBeenCalledTimes(1);
   });
 
   it("applies a successful remote import once and supports a repeat import", async () => {
@@ -674,6 +689,8 @@ describe("SYNC-007: confirmed catalog import", () => {
 
     await expect(useStore.getState().importEquipment(importItems, importCsv)).resolves.toBe(0);
     expect(useStore.getState().catalog.filter((item) => item.sku === "SYNC-007-NEW")).toHaveLength(1);
+    expect(useStore.getState().catalog).toHaveLength(3);
+    expect(useStore.getState().catalog).toContain(importNeighbor);
     expect(api.importCsv).toHaveBeenCalledTimes(2);
   });
 
@@ -683,6 +700,8 @@ describe("SYNC-007: confirmed catalog import", () => {
     await expect(useStore.getState().importEquipment(importItems, importCsv)).resolves.toBe(1);
 
     expect(useStore.getState().catalog.filter((item) => item.sku === "SYNC-007-NEW")).toHaveLength(1);
+    expect(useStore.getState().catalog).toHaveLength(3);
+    expect(useStore.getState().catalog).toContain(importNeighbor);
     expect(useStore.getState().catalog.find((item) => item.id === importExisting.id)).toEqual(
       expect.objectContaining({ name: "Updated by import", purchase: importExisting.purchase + 100 }),
     );
