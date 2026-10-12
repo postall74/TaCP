@@ -271,6 +271,16 @@ app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext d
         await db.Cabinets.AnyAsync(cabinet => foreignCandidateIds.Contains(cabinet.Id)))
         return CabinetBatchConflict.Result();
 
+    var itemIds = (patch.Cabinets ?? []).SelectMany(cabinet => cabinet.Items ?? []).Select(item => item.Id).ToList();
+    if (CabinetItemBatchConflict.HasDuplicateIds(itemIds))
+        return CabinetItemBatchConflict.Result();
+
+    var ownItemIds = p.Cabinets.SelectMany(cabinet => cabinet.Items).Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+    var foreignItemCandidateIds = itemIds.Where(itemId => !ownItemIds.Contains(itemId)).ToList();
+    if (foreignItemCandidateIds.Count > 0 &&
+        await db.Items.AnyAsync(item => foreignItemCandidateIds.Contains(item.Id)))
+        return CabinetItemBatchConflict.Result();
+
     var created = p.CreatedAt;
     db.Entry(p).CurrentValues.SetValues(patch);
     p.Id = id;
@@ -292,6 +302,11 @@ app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext d
     {
         // A concurrent project update may claim a new cabinet ID after the precheck.
         return CabinetBatchConflict.Result();
+    }
+    catch (DbUpdateException error) when (CabinetItemBatchConflict.Is(error))
+    {
+        // A concurrent project update may claim a new nested item ID after the precheck.
+        return CabinetItemBatchConflict.Result();
     }
     return Results.Ok(p);
 }).RequireAuthorization("Staff");
