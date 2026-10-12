@@ -211,7 +211,7 @@ export default function CatalogPage() {
         </div>
       </div>
 
-      <EquipmentModal target={editTarget} onClose={() => setEditTarget(null)} onSave={(e) => {
+      <EquipmentModal target={editTarget} onClose={() => setEditTarget(null)} onSave={async (e) => {
         const isNew = editTarget === "new";
         if (isNew) {
           const dup = findDuplicate(e);
@@ -222,9 +222,17 @@ export default function CatalogPage() {
             return;
           }
         }
-        upsertEquipment(e);
-        toast(isNew ? `Позиция «${e.sku}» добавлена` : "Позиция обновлена");
-        setEditTarget(null);
+        try {
+          const result = await upsertEquipment(e);
+          if (result === "queued") {
+            toast("Нет связи с сервером. Изменение сохранено локально и будет отправлено после восстановления связи", "info");
+            return;
+          }
+          toast(isNew ? `Позиция «${e.sku}» добавлена` : "Позиция обновлена");
+          setEditTarget(null);
+        } catch {
+          // syncFail уже показал сообщение сервера; форма остаётся открытой для исправления.
+        }
       }} />
 
       <ImportModal open={importOpen} onClose={() => setImportOpen(false)} onImport={async (items, csv) => {
@@ -277,7 +285,7 @@ function EquipmentModal({
 }: {
   target: Equipment | "new" | null;
   onClose: () => void;
-  onSave: (e: Equipment) => void;
+  onSave: (e: Equipment) => Promise<void>;
 }) {
   const toast = useStore((s) => s.toast);
   const isNew = target === "new";
@@ -286,12 +294,14 @@ function EquipmentModal({
       ? target
       : { id: genId("eq"), sku: "", name: "", brand: "", category: CATEGORIES[0], direction: "nku", unit: "шт", purchase: 0, attrs: "" };
   const [f, setF] = useState<Equipment>(base);
+  const [saving, setSaving] = useState(false);
 
   // синхронизация при смене target
   const [seen, setSeen] = useState(target);
   if (target !== seen) {
     setSeen(target);
     setF(target && target !== "new" ? target : { ...base, id: genId("eq") });
+    setSaving(false);
   }
 
   if (!target) return null;
@@ -306,18 +316,23 @@ function EquipmentModal({
       w="max-w-2xl"
       footer={
         <>
-          <Btn variant="outline" onClick={onClose}>Отмена</Btn>
+          <Btn variant="outline" disabled={saving} onClick={onClose}>Отмена</Btn>
           <Btn
-            disabled={!valid}
-            onClick={() => {
+            disabled={!valid || saving}
+            onClick={async () => {
               if (!valid) {
                 toast("Заполните артикул, название и закупочную цену", "err");
                 return;
               }
-              onSave({ ...f, attrs: f.attrs?.trim() || undefined });
+              setSaving(true);
+              try {
+                await onSave({ ...f, attrs: f.attrs?.trim() || undefined });
+              } finally {
+                setSaving(false);
+              }
             }}
           >
-            {isNew ? <IcPlus size={14} /> : <IcPencil size={14} />} {isNew ? "Добавить" : "Сохранить"}
+            {isNew ? <IcPlus size={14} /> : <IcPencil size={14} />} {saving ? "Сохранение…" : isNew ? "Добавить" : "Сохранить"}
           </Btn>
         </>
       }

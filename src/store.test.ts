@@ -229,8 +229,8 @@ describe("SYNC-002: equipment outbox hydration", () => {
       .mockRejectedValueOnce(new TypeError("network unavailable"))
       .mockRejectedValueOnce(new TypeError("network still unavailable"));
 
-    useStore.getState().upsertEquipment(equipment);
-    await vi.waitFor(() => expect(api.putEquipment).toHaveBeenCalledTimes(1));
+    await expect(useStore.getState().upsertEquipment(equipment)).resolves.toBe("queued");
+    expect(api.putEquipment).toHaveBeenCalledTimes(1);
     expect(useStore.getState().outbox).toEqual([
       expect.objectContaining({ kind: "equipment.upsert", eqId: equipment.id }),
     ]);
@@ -259,20 +259,21 @@ describe("SYNC-002: equipment outbox hydration", () => {
     prepareEquipment();
     api.putEquipment.mockResolvedValueOnce(equipment);
 
-    useStore.getState().upsertEquipment(equipment);
+    const request = useStore.getState().upsertEquipment(equipment);
     expect(useStore.getState().outbox).toEqual([
       expect.objectContaining({ kind: "equipment.upsert", eqId: equipment.id }),
     ]);
 
-    await vi.waitFor(() => expect(useStore.getState().outbox).toEqual([]));
+    await expect(request).resolves.toBe("synced");
+    expect(useStore.getState().outbox).toEqual([]);
   });
 
   it.each([400, 500])("removes an HTTP %s failure without retrying it", async (status) => {
     prepareEquipment();
     api.putEquipment.mockRejectedValueOnce(new MockApiError(status, "server error"));
 
-    useStore.getState().upsertEquipment(equipment);
-    await vi.waitFor(() => expect(useStore.getState().outbox).toEqual([]));
+    await expect(useStore.getState().upsertEquipment(equipment)).rejects.toBeInstanceOf(MockApiError);
+    expect(useStore.getState().outbox).toEqual([]);
 
     await useStore.getState().flushOutbox();
     expect(api.putEquipment).toHaveBeenCalledTimes(1);
@@ -282,8 +283,8 @@ describe("SYNC-002: equipment outbox hydration", () => {
     prepareEquipment();
     api.putEquipment.mockRejectedValueOnce(new MockApiError(409, "duplicate"));
 
-    useStore.getState().upsertEquipment(equipment);
-    await vi.waitFor(() => expect(useStore.getState().outbox).toEqual([]));
+    await expect(useStore.getState().upsertEquipment(equipment)).rejects.toBeInstanceOf(MockApiError);
+    expect(useStore.getState().outbox).toEqual([]);
 
     expect(useStore.getState().catalog.some((item) => item.id === equipment.id)).toBe(false);
     await useStore.getState().flushOutbox();
@@ -448,8 +449,8 @@ describe("SYNC-004: pending equipment deletion hydration", () => {
     api.putEquipment.mockRejectedValueOnce(new TypeError("network unavailable"));
     api.deleteEquipment.mockRejectedValueOnce(new TypeError("network unavailable"));
 
-    useStore.getState().upsertEquipment(equipment);
-    await vi.waitFor(() => expect(api.putEquipment).toHaveBeenCalledTimes(1));
+    await expect(useStore.getState().upsertEquipment(equipment)).resolves.toBe("queued");
+    expect(api.putEquipment).toHaveBeenCalledTimes(1);
     useStore.getState().deleteEquipment(equipment.id);
     await vi.waitFor(() => expect(api.deleteEquipment).toHaveBeenCalledTimes(1));
 
@@ -687,5 +688,112 @@ describe("SYNC-007: confirmed catalog import", () => {
       expect.objectContaining({ name: "Updated by import", purchase: importExisting.purchase + 100 }),
     );
     expect(api.importCsv).not.toHaveBeenCalled();
+  });
+});
+
+const editOriginal = {
+  ...initialState.catalog[0]!,
+  id: "sync-008-edited",
+  sku: "SYNC-008-A",
+  name: "Original equipment",
+};
+const editNeighbor = {
+  ...initialState.catalog[1]!,
+  id: "sync-008-neighbor",
+  sku: "SYNC-008-B",
+  name: "Neighbor equipment",
+};
+const editRejected = {
+  ...editOriginal,
+  sku: editNeighbor.sku,
+  name: "Rejected edit",
+  purchase: editOriginal.purchase + 500,
+};
+const editCreated = {
+  ...editOriginal,
+  id: "sync-008-created",
+  sku: "SYNC-008-C",
+};
+
+function prepareEdit(remote: boolean) {
+  const settings = useStore.getState().settings;
+  useStore.setState({
+    catalog: [editOriginal, editNeighbor],
+    settings: { ...settings, apiBaseUrl: remote ? "https://api.example.test" : "" },
+    outbox: [],
+    toasts: [],
+  });
+}
+
+describe("SYNC-008: confirmed catalog edit", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    memory.clear();
+    useStore.setState(initialState, true);
+  });
+
+  it.each([400, 409, 500])("restores the full previous item after HTTP %s", async (status) => {
+    prepareEdit(true);
+    const error = new MockApiError(status, "server rejected edit");
+    api.putEquipment.mockRejectedValueOnce(error);
+
+    await expect(useStore.getState().upsertEquipment(editRejected)).rejects.toBe(error);
+
+    expect(useStore.getState().catalog).toEqual([editOriginal, editNeighbor]);
+    expect(useStore.getState().outbox).toEqual([]);
+    expect(useStore.getState().toasts.some((toast) => toast.kind === "ok")).toBe(false);
+  });
+
+  it("removes a rejected new item", async () => {
+    prepareEdit(true);
+    const error = new MockApiError(409, "duplicate SKU");
+    api.putEquipment.mockRejectedValueOnce(error);
+
+    await expect(useStore.getState().upsertEquipment(editCreated)).rejects.toBe(error);
+
+    expect(useStore.getState().catalog).toEqual([editOriginal, editNeighbor]);
+    expect(useStore.getState().outbox).toEqual([]);
+  });
+
+  it("keeps a network edit queued and sends it once after reconnect", async () => {
+    prepareEdit(true);
+    api.putEquipment.mockRejectedValueOnce(new TypeError("network unavailable"));
+
+    await expect(useStore.getState().upsertEquipment(editRejected)).resolves.toBe("queued");
+
+    expect(useStore.getState().catalog).toEqual([editRejected, editNeighbor]);
+    expect(useStore.getState().outbox).toEqual([
+      expect.objectContaining({ kind: "equipment.upsert", eqId: editRejected.id }),
+    ]);
+    expect(useStore.getState().toasts.some((toast) => toast.kind === "ok")).toBe(false);
+
+    api.putEquipment.mockResolvedValueOnce(editRejected);
+    await useStore.getState().flushOutbox();
+
+    expect(api.putEquipment).toHaveBeenCalledTimes(2);
+    expect(api.putEquipment).toHaveBeenLastCalledWith(editRejected);
+    expect(useStore.getState().outbox).toEqual([]);
+  });
+
+  it("applies a successful remote edit once", async () => {
+    prepareEdit(true);
+    api.putEquipment.mockResolvedValueOnce(editRejected);
+
+    await expect(useStore.getState().upsertEquipment(editRejected)).resolves.toBe("synced");
+
+    expect(useStore.getState().catalog).toEqual([editRejected, editNeighbor]);
+    expect(useStore.getState().catalog.filter((item) => item.id === editRejected.id)).toHaveLength(1);
+    expect(api.putEquipment).toHaveBeenCalledTimes(1);
+    expect(useStore.getState().outbox).toEqual([]);
+  });
+
+  it("keeps the existing local edit behavior", async () => {
+    prepareEdit(false);
+
+    await expect(useStore.getState().upsertEquipment(editRejected)).resolves.toBe("synced");
+
+    expect(useStore.getState().catalog).toEqual([editRejected, editNeighbor]);
+    expect(api.putEquipment).not.toHaveBeenCalled();
+    expect(useStore.getState().outbox).toEqual([]);
   });
 });

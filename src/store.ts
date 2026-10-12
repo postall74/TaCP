@@ -176,7 +176,7 @@ interface StoreState {
   restoreVersion: (pid: string, vid: string) => void;
   deleteVersion: (pid: string, vid: string) => void;
 
-  upsertEquipment: (e: Equipment) => void;
+  upsertEquipment: (e: Equipment) => Promise<"synced" | "queued">;
   deleteEquipment: (id: string) => void;
   restoreEquipment: (id: string) => Promise<void>;
   importEquipment: (items: Omit<Equipment, "id">[], csv?: string) => Promise<number>;
@@ -833,28 +833,38 @@ export const useStore = create<StoreState>()(
 
         /* ---------- справочник ---------- */
 
-        upsertEquipment: (e) => {
-          const isNew = !get().catalog.some((x) => x.id === e.id);
+        upsertEquipment: async (e) => {
+          const previous = get().catalog.find((x) => x.id === e.id);
           set((s) => {
             const ex = s.catalog.some((x) => x.id === e.id);
             return { catalog: ex ? s.catalog.map((x) => (x.id === e.id ? e : x)) : [...s.catalog, e] };
           });
           const a = api();
-          if (a) {
-            /* putEquipment на сервере — upsert (создаёт, если нет), поэтому
-               идемпотентен и безопасен для повторной отправки из офлайн-очереди */
-            const op: OutboxOp = { kind: "equipment.upsert", eqId: e.id, ts: Date.now() };
-            enqueue(op);
-            a.putEquipment(e).then(() => { dequeue(op); syncOk(); }).catch((err) => {
-              if (err instanceof ApiError && err.status === 409) {
-                dequeue(op); // сервер доступен — дубль не добавлен, не повторяем
-                if (isNew) set((s) => ({ catalog: s.catalog.filter((x) => x.id !== e.id) }));
-                get().toast("Такая позиция уже есть в общем справочнике — дубль не добавлен", "err");
-                return;
-              }
-              if (err instanceof ApiError) { dequeue(op); syncFail(err); }
-              else syncFail(err); // сетевой сбой — операция осталась в очереди
-            });
+          if (!a) return "synced";
+
+          /* putEquipment на сервере — upsert (создаёт, если нет), поэтому
+             идемпотентен и безопасен для повторной отправки из офлайн-очереди */
+          const op: OutboxOp = { kind: "equipment.upsert", eqId: e.id, ts: Date.now() };
+          enqueue(op);
+          try {
+            await a.putEquipment(e);
+            dequeue(op);
+            syncOk();
+            return "synced";
+          } catch (err) {
+            if (err instanceof ApiError) {
+              dequeue(op);
+              set((s) => ({
+                catalog: previous
+                  ? s.catalog.map((x) => (x.id === e.id ? previous : x))
+                  : s.catalog.filter((x) => x.id !== e.id),
+              }));
+              syncFail(err);
+              throw err;
+            }
+
+            syncFail(err); // сетевой сбой — оптимистичное изменение и операция остаются в очереди
+            return "queued";
           }
         },
 
