@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   putEquipment: vi.fn(),
   deleteEquipment: vi.fn(),
   restoreEquipment: vi.fn(),
+  importCsv: vi.fn(),
 }));
 
 const MockApiError = vi.hoisted(() => class ApiError extends Error {
@@ -610,5 +611,81 @@ describe("SYNC-006: catalog restore rollback", () => {
     ]);
     expect(useStore.getState().deletedCatalog).toEqual([restoreDeletedNeighbor]);
     expect(api.restoreEquipment).not.toHaveBeenCalled();
+  });
+});
+
+const importExisting = initialState.catalog[0]!;
+const importNeighbor = initialState.catalog[1]!;
+const importItems = [
+  {
+    ...importExisting,
+    name: "Updated by import",
+    purchase: importExisting.purchase + 100,
+  },
+  {
+    ...importNeighbor,
+    sku: "SYNC-007-NEW",
+    name: "New imported equipment",
+  },
+].map(({ id: _id, ...item }) => item);
+const importCsv = "sku;name\nSYNC-007-NEW;New imported equipment";
+
+function prepareImport(remote: boolean) {
+  const settings = useStore.getState().settings;
+  useStore.setState({
+    catalog: [importExisting, importNeighbor],
+    settings: { ...settings, apiBaseUrl: remote ? "https://api.example.test" : "" },
+    outbox: [],
+    toasts: [],
+  });
+}
+
+describe("SYNC-007: confirmed catalog import", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    memory.clear();
+    useStore.setState(initialState, true);
+  });
+
+  it.each([
+    ["network", new TypeError("network unavailable")],
+    ["HTTP 400", new MockApiError(400, "invalid CSV")],
+    ["HTTP 500", new MockApiError(500, "server error")],
+  ])("rolls back and rejects on %s failure", async (_label, error) => {
+    prepareImport(true);
+    api.importCsv.mockRejectedValueOnce(error);
+
+    await expect(useStore.getState().importEquipment(importItems, importCsv)).rejects.toBe(error);
+
+    expect(useStore.getState().catalog).toEqual([importExisting, importNeighbor]);
+    expect(useStore.getState().toasts.some((toast) => toast.kind === "ok")).toBe(false);
+    expect(api.importCsv).toHaveBeenCalledWith(importCsv);
+  });
+
+  it("applies a successful remote import once and supports a repeat import", async () => {
+    prepareImport(true);
+    api.importCsv.mockResolvedValue({ added: 1, updated: 1, skipped: 0 });
+
+    await expect(useStore.getState().importEquipment(importItems, importCsv)).resolves.toBe(1);
+    expect(useStore.getState().catalog.filter((item) => item.sku === "SYNC-007-NEW")).toHaveLength(1);
+    expect(useStore.getState().catalog.find((item) => item.id === importExisting.id)).toEqual(
+      expect.objectContaining({ name: "Updated by import", purchase: importExisting.purchase + 100 }),
+    );
+
+    await expect(useStore.getState().importEquipment(importItems, importCsv)).resolves.toBe(0);
+    expect(useStore.getState().catalog.filter((item) => item.sku === "SYNC-007-NEW")).toHaveLength(1);
+    expect(api.importCsv).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the existing local import behavior and count", async () => {
+    prepareImport(false);
+
+    await expect(useStore.getState().importEquipment(importItems, importCsv)).resolves.toBe(1);
+
+    expect(useStore.getState().catalog.filter((item) => item.sku === "SYNC-007-NEW")).toHaveLength(1);
+    expect(useStore.getState().catalog.find((item) => item.id === importExisting.id)).toEqual(
+      expect.objectContaining({ name: "Updated by import", purchase: importExisting.purchase + 100 }),
+    );
+    expect(api.importCsv).not.toHaveBeenCalled();
   });
 });
