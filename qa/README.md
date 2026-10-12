@@ -140,6 +140,16 @@ Frontend: расчёты, CSV, форматирование, роли, сост�
 Отчёт передавать PM, который назначает исправление Frontend/Backend.
 ROADMAP, архитектуру и продуктовые решения редактирует PM.
 
+### PROJECT-011
+
+`db84d556004b9e733a945acd622382ad0835ca23` независимо проверен относительно
+`ef5559f8bb8995b3609dd45127285e5fa971585f`: PASS. Изолированный PostgreSQL
+real HTTP/SQL probe прошёл 82/82, backend suite 142/142, Release build — 0
+warnings/errors. Проверены segment conflicts внутри/между шкафами, existing и
+concurrent 201/409, атомарность графа, valid/empty/null/case, роли/статусы/auth,
+malformed JSON, предыдущие root/number/cabinet/item конфликты и unrelated DB500.
+Подробности: `qa/PROJECT-011.md`.
+
 ### SEC-003
 
 `db1036c5ddcb2779e7d205bcdbbb60eb7bd56134` проверен независимо: 80 frontend
