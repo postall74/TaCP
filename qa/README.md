@@ -140,6 +140,16 @@ Frontend: расчёты, CSV, форматирование, роли, сост�
 Отчёт передавать PM, который назначает исправление Frontend/Backend.
 ROADMAP, архитектуру и продуктовые решения редактирует PM.
 
+### PROJECT-013
+
+Initial `13e41636e2f0d0f95031dc3d4c20f48191ffb4a9` выявил P1 QA-013-001.
+Exact fix `d84ad3a7e37b049fdacdf65ff31ebfc74c11bcda` независимо перепроверен:
+**PASS**, PostgreSQL real HTTP/SQL 149/149, backend 142/142, Release build без
+ошибок. Первый own-ID PUT с отличающимся body.id, повторный PUT, response JSON и
+SQL atomicity прошли вместе с duplicate/foreign/concurrent409, PROJECT-001,
+roles/auth/malformed/missing, number409, nested item/segment500 и unrelated500.
+Подробности: `qa/PROJECT-013.md`.
+
 ### SEC-003
 
 `db1036c5ddcb2779e7d205bcdbbb60eb7bd56134` проверен независимо: 80 frontend
