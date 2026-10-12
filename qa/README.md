@@ -140,6 +140,14 @@ Frontend: расчёты, CSV, форматирование, роли, сост�
 Отчёт передавать PM, который назначает исправление Frontend/Backend.
 ROADMAP, архитектуру и продуктовые решения редактирует PM.
 
+### SYNC-008
+
+`2b17eca62fad8f67cc2f7b35fb18235b55e52e60` независимо проверен относительно
+`9733602cf142bc70fdd40385dd572cd4d6ac533e`: PASS. Targeted store 40/40,
+frontend 125/125, typecheck/build прошли. Проверены HTTP400/409/500 rollback для
+existing/new, rejection/no success/form remains, remote success once, network
+queued + reconnect и local mode. Подробности: `qa/SYNC-008.md`.
+
 ### SEC-003
 
 `db1036c5ddcb2779e7d205bcdbbb60eb7bd56134` проверен независимо: 80 frontend

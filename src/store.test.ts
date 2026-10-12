@@ -735,24 +735,51 @@ describe("SYNC-008: confirmed catalog edit", () => {
   it.each([400, 409, 500])("restores the full previous item after HTTP %s", async (status) => {
     prepareEdit(true);
     const error = new MockApiError(status, "server rejected edit");
-    api.putEquipment.mockRejectedValueOnce(error);
+    let rejectRequest!: (reason?: unknown) => void;
+    api.putEquipment.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => {
+      rejectRequest = reject;
+    }));
 
-    await expect(useStore.getState().upsertEquipment(editRejected)).rejects.toBe(error);
+    const updatePromise = useStore.getState().upsertEquipment(editRejected);
+    expect(useStore.getState().catalog).toEqual([editRejected, editNeighbor]);
+    expect(useStore.getState().outbox).toEqual([
+      expect.objectContaining({ kind: "equipment.upsert", eqId: editRejected.id }),
+    ]);
+
+    rejectRequest(error);
+    await expect(updatePromise).rejects.toBe(error);
 
     expect(useStore.getState().catalog).toEqual([editOriginal, editNeighbor]);
+    expect(useStore.getState().catalog[0]).toBe(editOriginal);
+    expect(useStore.getState().catalog[1]).toBe(editNeighbor);
     expect(useStore.getState().outbox).toEqual([]);
     expect(useStore.getState().toasts.some((toast) => toast.kind === "ok")).toBe(false);
+    expect(api.putEquipment).toHaveBeenCalledTimes(1);
   });
 
-  it("removes a rejected new item", async () => {
+  it.each([400, 409, 500])("removes a new item rejected with HTTP %s", async (status) => {
     prepareEdit(true);
-    const error = new MockApiError(409, "duplicate SKU");
-    api.putEquipment.mockRejectedValueOnce(error);
+    const error = new MockApiError(status, "server rejected new item");
+    let rejectRequest!: (reason?: unknown) => void;
+    api.putEquipment.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => {
+      rejectRequest = reject;
+    }));
 
-    await expect(useStore.getState().upsertEquipment(editCreated)).rejects.toBe(error);
+    const createPromise = useStore.getState().upsertEquipment(editCreated);
+    expect(useStore.getState().catalog).toEqual([editOriginal, editNeighbor, editCreated]);
+    expect(useStore.getState().outbox).toEqual([
+      expect.objectContaining({ kind: "equipment.upsert", eqId: editCreated.id }),
+    ]);
+
+    rejectRequest(error);
+    await expect(createPromise).rejects.toBe(error);
 
     expect(useStore.getState().catalog).toEqual([editOriginal, editNeighbor]);
+    expect(useStore.getState().catalog[0]).toBe(editOriginal);
+    expect(useStore.getState().catalog[1]).toBe(editNeighbor);
     expect(useStore.getState().outbox).toEqual([]);
+    expect(useStore.getState().toasts.some((toast) => toast.kind === "ok")).toBe(false);
+    expect(api.putEquipment).toHaveBeenCalledTimes(1);
   });
 
   it("keeps a network edit queued and sends it once after reconnect", async () => {
