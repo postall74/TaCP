@@ -261,6 +261,16 @@ app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext d
         if (!Rights.Can(user, perm)) return Rights.Forbid(user, perm);
     }
 
+    var cabinetIds = (patch.Cabinets ?? []).Select(cabinet => cabinet.Id).ToList();
+    if (CabinetBatchConflict.HasDuplicateIds(cabinetIds))
+        return CabinetBatchConflict.Result();
+
+    var ownCabinetIds = p.Cabinets.Select(cabinet => cabinet.Id).ToHashSet(StringComparer.Ordinal);
+    var foreignCandidateIds = cabinetIds.Where(cabinetId => !ownCabinetIds.Contains(cabinetId)).ToList();
+    if (foreignCandidateIds.Count > 0 &&
+        await db.Cabinets.AnyAsync(cabinet => foreignCandidateIds.Contains(cabinet.Id)))
+        return CabinetBatchConflict.Result();
+
     var created = p.CreatedAt;
     db.Entry(p).CurrentValues.SetValues(patch);
     p.Id = id;
@@ -277,6 +287,11 @@ app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext d
     {
         // SaveChanges is transactional, so scalar and nested changes are rolled back together.
         return ProjectNumberConflict.Result();
+    }
+    catch (DbUpdateException error) when (CabinetBatchConflict.Is(error))
+    {
+        // A concurrent project update may claim a new cabinet ID after the precheck.
+        return CabinetBatchConflict.Result();
     }
     return Results.Ok(p);
 }).RequireAuthorization("Staff");
