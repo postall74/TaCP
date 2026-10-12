@@ -559,3 +559,11 @@ QA: test cases против fixture ──────────────�
 После сетевой ошибки обновления остаётся `project.upsert`; последующее удаление того же проекта добавляет `project.delete`, но не вытесняет upsert. `flushOutbox` встречает отсутствующий локальный payload, прекращает обработку и DELETE никогда не отправляется. Объём: `src/store.ts` и frontend tests. При enqueue `project.delete` удалять pending `project.upsert` того же ID; существующие hydrate-фильтры и отправку DELETE не менять. DTO, HTTP, backend, права, types и API client не менять.
 
 Приёмка: network failure update оставляет `project.upsert`; delete заменяет его единственным `project.delete`; reconnect/flush выполняет ровно один DELETE, ноль PUT/POST и очищает очередь; hydrate до flush скрывает проект, после удаления он остаётся скрытым; обычный pending upsert и другие проекты не регрессируют; success и HTTP4xx/5xx сохраняют текущую семантику без повторов; typecheck, полный frontend test suite, build и независимая QA-регрессия.
+
+### SYNC-006 — откатывать восстановление позиции при ошибке API
+
+Исполнитель: Frontend. Статус: ready. Приоритет: P1. Контракт: catalog-recycle-v1; NEED-001: partial; зависит от SYNC-005.
+
+В серверном режиме `restoreEquipment` оптимистично переносит позицию из корзины в активный каталог до ответа `POST /api/catalog/{id}/restore`. При сетевой или HTTP-ошибке store проглатывает исключение, не откатывает списки, а UI после `await` показывает ложный успех. Объём: `src/store.ts` и frontend tests; при необходимости адресный тест обработчика административного каталога. При любой ошибке API удалить оптимистично добавленную active-позицию, восстановить исходный tombstone со всеми полями и отклонить Promise, чтобы UI выполнил error-ветку без success-toast. Успешный remote/local restore, права и unknown-ID поведение не расширять. DTO, HTTP, backend, права, types, API client и миграции не менять; ADMIN-002 не дублировать.
+
+Приёмка: network failure оставляет active-каталог без позиции и сохраняет tombstone; HTTP409/500 дают тот же rollback; Promise отклоняется, UI показывает ошибку без success-toast; успешный remote restore переносит позицию ровно один раз; локальный режим сохраняет текущее успешное поведение; другие active/deleted позиции не меняются; typecheck, полный frontend test suite, build и независимая QA-регрессия.
