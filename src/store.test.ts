@@ -574,13 +574,25 @@ describe("SYNC-006: catalog restore rollback", () => {
     ["HTTP 500", new MockApiError(500, "server error")],
   ])("rolls back and rejects on %s failure", async (_label, error) => {
     prepareRestore(true);
-    api.restoreEquipment.mockRejectedValueOnce(error);
+    let rejectRequest!: (reason?: unknown) => void;
+    api.restoreEquipment.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => {
+      rejectRequest = reject;
+    }));
 
-    await expect(useStore.getState().restoreEquipment(restoreTarget.id)).rejects.toBe(error);
+    const restorePromise = useStore.getState().restoreEquipment(restoreTarget.id);
+    expect(useStore.getState().catalog).toEqual([
+      restoreActiveNeighbor,
+      { ...restoreTarget, deletedAt: undefined, deletedBy: undefined },
+    ]);
+    expect(useStore.getState().deletedCatalog).toEqual([restoreDeletedNeighbor]);
+
+    rejectRequest(error);
+    await expect(restorePromise).rejects.toBe(error);
 
     expect(useStore.getState().catalog).toEqual([restoreActiveNeighbor]);
     expect(useStore.getState().deletedCatalog).toEqual([restoreDeletedNeighbor, restoreTarget]);
-    expect(useStore.getState().toasts.some((toast) => toast.kind === "ok")).toBe(false);
+    expect(useStore.getState().deletedCatalog[1]).toBe(restoreTarget);
+    expect(useStore.getState().toasts).toEqual([]);
     expect(api.restoreEquipment).toHaveBeenCalledTimes(1);
   });
 
@@ -608,7 +620,21 @@ describe("SYNC-006: catalog restore rollback", () => {
       restoreActiveNeighbor,
       { ...restoreTarget, deletedAt: undefined, deletedBy: undefined },
     ]);
+    expect(useStore.getState().catalog.filter((item) => item.id === restoreTarget.id)).toHaveLength(1);
     expect(useStore.getState().deletedCatalog).toEqual([restoreDeletedNeighbor]);
     expect(api.restoreEquipment).not.toHaveBeenCalled();
+  });
+
+  it("keeps state unchanged and skips the API for an unknown tombstone", async () => {
+    prepareRestore(true);
+
+    await useStore.getState().restoreEquipment("unknown-equipment");
+
+    expect(useStore.getState().catalog).toEqual([restoreActiveNeighbor]);
+    expect(useStore.getState().deletedCatalog).toEqual([restoreDeletedNeighbor, restoreTarget]);
+    expect(api.restoreEquipment).not.toHaveBeenCalled();
+    expect(useStore.getState().toasts).toEqual([
+      expect.objectContaining({ kind: "err", text: "Позиция не найдена в корзине" }),
+    ]);
   });
 });

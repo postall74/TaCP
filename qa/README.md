@@ -140,6 +140,15 @@ Frontend: расчёты, CSV, форматирование, роли, сост�
 Отчёт передавать PM, который назначает исправление Frontend/Backend.
 ROADMAP, архитектуру и продуктовые решения редактирует PM.
 
+### SYNC-006
+
+`50be39e18d0ad84fc2954b4c028feb15870f820c` независимо проверен относительно
+`70d7996971742a91cc77f763e9576dbc2c0f522b`: PASS. Целевые тесты 27/27,
+полный frontend suite 112/112, typecheck и build прошли. Проверены rollback при
+network/HTTP 409/500, rejected Promise и отсутствие success-toast, точное
+восстановление tombstone и порядка, соседние позиции, remote/local success,
+unknown ID и полный регрессионный suite. Подробности: `qa/SYNC-006.md`.
+
 ### SEC-003
 
 `db1036c5ddcb2779e7d205bcdbbb60eb7bd56134` проверен независимо: 80 frontend
