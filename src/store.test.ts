@@ -366,7 +366,7 @@ describe("SYNC-003: pending project deletion hydration", () => {
     expect(api.deleteProject).toHaveBeenCalledTimes(1);
   });
 
-  it.each([400, 500])("preserves HTTP %s handling without retrying deletion", async (status) => {
+  it.each([400, 401, 403, 404, 500])("preserves HTTP %s handling without retrying deletion", async (status) => {
     const project = prepareProjectDelete();
     api.deleteProject.mockRejectedValueOnce(new MockApiError(status, "server error"));
 
@@ -534,5 +534,32 @@ describe("SYNC-005: project deletion supersedes pending upsert", () => {
     mockHydration(initialState.catalog, [otherProject]);
     await useStore.getState().hydrateFromApi();
     expect(useStore.getState().projects).toEqual([otherProject]);
+    expect(api.deleteProject).toHaveBeenCalledTimes(1);
+    expect(api.putProject).not.toHaveBeenCalled();
+    expect(api.createProject).not.toHaveBeenCalled();
+    expect(useStore.getState().outbox).toEqual([]);
+  });
+
+  it("keeps an ordinary failed upsert and clears it after a successful retry", async () => {
+    const project = prepareProjectDelete();
+    const updatedProject = { ...project, title: "Ordinary unsynced update" };
+    api.putProject.mockRejectedValueOnce(new TypeError("network unavailable"));
+
+    useStore.getState().updateProject(project.id, { title: updatedProject.title });
+    await vi.waitFor(() => expect(api.putProject).toHaveBeenCalledTimes(1), { timeout: 1_500 });
+    expect(useStore.getState().outbox).toEqual([
+      expect.objectContaining({ kind: "project.upsert", id: project.id }),
+    ]);
+    expect(api.deleteProject).not.toHaveBeenCalled();
+
+    api.putProject.mockResolvedValueOnce(updatedProject);
+    await useStore.getState().flushOutbox();
+
+    expect(api.putProject).toHaveBeenCalledTimes(2);
+    expect(api.putProject).toHaveBeenLastCalledWith(updatedProject);
+    expect(api.createProject).not.toHaveBeenCalled();
+    expect(api.deleteProject).not.toHaveBeenCalled();
+    expect(useStore.getState().outbox).toEqual([]);
+    expect(useStore.getState().projects).toContainEqual(updatedProject);
   });
 });
