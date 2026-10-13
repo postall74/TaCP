@@ -163,3 +163,13 @@ PM опубликовал auth-v2 в своём checkout `.worktrees/pm-core-004
 изолированный PostgreSQL harness. До исполняемых integration tests получить fixture,
 схему ошибки и согласовать с backend запуск изолированной PostgreSQL. Не заменять HTTP-тест
 проверкой текста RequireAuthorization: это не проверит реальное middleware.
+
+### PROJECT-016
+
+Target `99ea0d3a1df89062e35e9360aa15f3c12e9f534f` относительно parent
+`ab69abe8e927ee10c3784f72ff043a0c9db031d9` независимо проверен: backend
+142/142, Release build и одноразовый PostgreSQL HTTP/SQL probe 107/107 прошли.
+Large graph 3/63/12/11→12 прочитан и обновлён без дублей; EF20504 и cartesian
+items/segments JOIN отсутствуют. PROJECT-013/014/015, VERSION-001/002,
+авторизация, malformed/missing, races, conflicts и rollback прошли. Подробности:
+`qa/PROJECT-016.md`; исполняемый сценарий: `qa/PROJECT-016.probe.ps1`.
