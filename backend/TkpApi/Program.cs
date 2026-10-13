@@ -416,7 +416,10 @@ app.MapPost("/api/cabinets/{id}/items", async (string id, string equipmentId, de
 app.MapPost("/api/projects/{id}/versions", async (string id, string? label, TkpDbContext db) =>
 {
     var p = await db.Projects.Include(x => x.Cabinets).ThenInclude(c => c.Items)
-                             .Include(x => x.Versions).FirstOrDefaultAsync(x => x.Id == id);
+                             .Include(x => x.Cabinets).ThenInclude(c => c.Segments)
+                             .Include(x => x.Versions)
+                             .AsSplitQuery()
+                             .FirstOrDefaultAsync(x => x.Id == id);
     if (p is null) return Results.NotFound();
 
     var eqBase = p.Cabinets.Sum(c => c.Items.Sum(i => i.Purchase * i.Qty)); // база = закупочная
