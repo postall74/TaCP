@@ -140,6 +140,15 @@ Frontend: расчёты, CSV, форматирование, роли, сост�
 Отчёт передавать PM, который назначает исправление Frontend/Backend.
 ROADMAP, архитектуру и продуктовые решения редактирует PM.
 
+### PROJECT-014
+
+Integrated SHA `4f487a14ea3dd745c56b9e111cec8288ea186f74` независимо проверен:
+PASS. PostgreSQL real HTTP/SQL 163/163, backend 142/142, Release build без
+ошибок. Проверены body.id != route, own cabinet/item first/repeated PUT200,
+response JSON/SQL, duplicate/foreign/concurrent item409 и atomicity,
+PROJECT-001, valid/null/empty/case, roles/auth/malformed/missing, number/cabinet409,
+segment/unrelated500 и регрессия QA-013-001. Подробности: `qa/PROJECT-014.md`.
+
 ### SEC-003
 
 `db1036c5ddcb2779e7d205bcdbbb60eb7bd56134` проверен независимо: 80 frontend
