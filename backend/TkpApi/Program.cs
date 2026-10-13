@@ -468,7 +468,16 @@ app.MapPost("/api/catalog", async (Equipment e, TkpDbContext db) =>
 
     if (string.IsNullOrEmpty(e.Id)) e.Id = Guid.NewGuid().ToString();
     db.Equipment.Add(e);
-    await db.SaveChangesAsync();
+    try
+    {
+        await db.SaveChangesAsync();
+    }
+    catch (DbUpdateException error) when (error.InnerException is Npgsql.PostgresException
+        { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_equipment_catalog_Sku" })
+    {
+        // A competing create may claim the SKU after the duplicate precheck.
+        return Results.Conflict(new { detail = "Такая позиция уже есть в справочнике" });
+    }
     return Results.Created("/api/catalog", e);
 }).RequireAuthorization("Staff");
 
