@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { DEFAULT_SETTINGS, useStore } from "./store";
+import { DEFAULT_COMPANY_SETTINGS, useStore } from "./store";
 import type { Settings } from "./types";
 import CatalogPage from "./components/CatalogPage";
 import Dashboard from "./components/Dashboard";
@@ -13,7 +13,7 @@ import { Field, Input, Modal, Textarea, ToastHost, cx } from "./components/ui";
 import {
   IcBolt, IcBox, IcClock, IcFolder, IcGear, IcMoon, IcPanel, IcRefresh, IcSun, IcUser, IcWand, IcX,
 } from "./components/icons";
-import { can, currentRole, ROLE_LABEL } from "./utils/roles";
+import { can, currentRole, denyReason, ROLE_LABEL } from "./utils/roles";
 
 /* ============================================================
    ОБОЛОЧКА: тёмный сайдбар с навигацией, переключатель темы,
@@ -43,6 +43,7 @@ export default function App() {
   const hydrateFromApi = useStore((s) => s.hydrateFromApi);
   const createProject = useStore((s) => s.createProject);
   const updateSettings = useStore((s) => s.updateSettings);
+  const saveCompanySettings = useStore((s) => s.saveCompanySettings);
   const checkApi = useStore((s) => s.checkApi);
   const outboxCount = useStore((s) => s.outbox.length);
   const toast = useStore((s) => s.toast);
@@ -283,14 +284,26 @@ export default function App() {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         initial={settings}
-        onSave={(s) => {
-          updateSettings(s);
-          toast("Реквизиты сохранены — шапка документов обновлена");
-          setSettingsOpen(false);
+        canEdit={can(user, "settings.edit")}
+        readOnlyReason={denyReason(user, "settings.edit")}
+        onSave={async (s) => {
+          try {
+            await saveCompanySettings(s);
+            toast("Реквизиты сохранены — шапка документов обновлена");
+            setSettingsOpen(false);
+            return true;
+          } catch {
+            return false;
+          }
         }}
-        onReset={() => {
-          updateSettings(DEFAULT_SETTINGS);
-          toast("Реквизиты сброшены к значениям по умолчанию", "info");
+        onReset={async () => {
+          try {
+            await saveCompanySettings({ ...DEFAULT_COMPANY_SETTINGS, apiBaseUrl: settings.apiBaseUrl });
+            toast("Реквизиты сброшены к значениям по умолчанию", "info");
+            return true;
+          } catch {
+            return false;
+          }
         }}
       />
       <ToastHost />
@@ -301,34 +314,61 @@ export default function App() {
 /* ---------------- реквизиты компании + подключение к API ---------------- */
 
 function SettingsModal({
-  open, onClose, initial, onSave, onReset,
+  open, onClose, initial, canEdit, readOnlyReason, onSave, onReset,
 }: {
   open: boolean;
   onClose: () => void;
   initial: Settings;
-  onSave: (s: Settings) => void;
-  onReset: () => void;
+  canEdit: boolean;
+  readOnlyReason: string;
+  onSave: (s: Settings) => Promise<boolean>;
+  onReset: () => Promise<boolean>;
 }) {
   const [f, setF] = useState<Settings>(initial);
-  useEffect(() => setF(initial), [open, initial]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (open) {
+      setF(initial);
+      setBusy(false);
+    }
+  }, [open]);
   const set = (patch: Partial<Settings>) => setF((s) => ({ ...s, ...patch }));
 
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={busy ? () => undefined : onClose}
       title="Реквизиты компании"
       w="max-w-2xl"
       footer={
         <>
-          <button onClick={onReset} className="mr-auto flex cursor-pointer items-center gap-1.5 text-[12px] font-semibold text-mute transition-colors hover:text-ink">
+          <button
+            disabled={!canEdit || busy}
+            title={!canEdit ? readOnlyReason : undefined}
+            onClick={async () => {
+              setBusy(true);
+              const saved = await onReset();
+              if (saved) setF((current) => ({ ...current, ...DEFAULT_COMPANY_SETTINGS }));
+              setBusy(false);
+            }}
+            className="mr-auto flex cursor-pointer items-center gap-1.5 text-[12px] font-semibold text-mute transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+          >
             <IcRefresh size={13} /> Сбросить
           </button>
-          <button onClick={onClose} className="cursor-pointer rounded-md border border-line px-3.5 py-2 text-[13px] font-bold text-ink2 transition-colors hover:bg-paper">
+          <button disabled={busy} onClick={onClose} className="cursor-pointer rounded-md border border-line px-3.5 py-2 text-[13px] font-bold text-ink2 transition-colors hover:bg-paper disabled:cursor-not-allowed disabled:opacity-50">
             Отмена
           </button>
-          <button onClick={() => onSave(f)} className="cursor-pointer rounded-md bg-accent px-4 py-2 text-[13px] font-bold text-white transition-all hover:bg-accent-deep active:scale-95">
-            Сохранить
+          <button
+            disabled={!canEdit || busy}
+            title={!canEdit ? readOnlyReason : undefined}
+            onClick={async () => {
+              setBusy(true);
+              await onSave(f);
+              setBusy(false);
+            }}
+            className="cursor-pointer rounded-md bg-accent px-4 py-2 text-[13px] font-bold text-white transition-all hover:bg-accent-deep active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? "Сохранение…" : "Сохранить"}
           </button>
         </>
       }
@@ -337,7 +377,12 @@ function SettingsModal({
         Эти данные попадают в шапку и подпись каждого документа ТКП (PDF/Word). Ставки нормо-часов — на странице{" "}
         <b className="text-ink2">«Тарифы»</b>.
       </p>
-      <div className="grid grid-cols-2 gap-3">
+      {!canEdit && (
+        <p className="mb-3 rounded-lg border border-warn/30 bg-warn-soft px-3 py-2 text-[12px] text-ink2">
+          {readOnlyReason}. Данные доступны только для просмотра.
+        </p>
+      )}
+      <fieldset disabled={!canEdit || busy} className="grid grid-cols-2 gap-3 disabled:opacity-70">
         <Field label="Название компании">
           <Input value={f.companyName} onChange={(v) => set({ companyName: v })} />
         </Field>
@@ -362,9 +407,11 @@ function SettingsModal({
         <Field label="Исполнитель (инженер)">
           <Input value={f.executor} onChange={(v) => set({ executor: v })} />
         </Field>
-      </div>
+      </fieldset>
 
-      <ApiBlock f={f} set={set} />
+      <fieldset disabled={busy}>
+        <ApiBlock f={f} set={set} />
+      </fieldset>
     </Modal>
   );
 }

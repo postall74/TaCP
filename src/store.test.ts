@@ -10,6 +10,8 @@ const api = vi.hoisted(() => ({
   putProject: vi.fn(),
   deleteProject: vi.fn(),
   putEquipment: vi.fn(),
+  putRates: vi.fn(),
+  putCompany: vi.fn(),
   deleteEquipment: vi.fn(),
   restoreEquipment: vi.fn(),
   importCsv: vi.fn(),
@@ -28,6 +30,16 @@ vi.mock("./api/client", () => ({
   ApiError: MockApiError,
   getToken: vi.fn(() => null),
   setToken: vi.fn(),
+  toCompany: vi.fn((settings) => ({
+    companyName: settings.companyName,
+    tagline: settings.tagline,
+    address: settings.address,
+    phone: settings.phone,
+    email: settings.email,
+    requisites: settings.requisites,
+    manager: settings.manager,
+    executor: settings.executor,
+  })),
   restApi: vi.fn(() => api),
 }));
 
@@ -38,7 +50,7 @@ vi.stubGlobal("localStorage", {
   removeItem: (key: string) => memory.delete(key),
 });
 
-const { useStore } = await import("./store");
+const { DEFAULT_COMPANY_SETTINGS, useStore } = await import("./store");
 const initialState = useStore.getInitialState();
 
 const projectInput = {
@@ -795,5 +807,163 @@ describe("SYNC-008: confirmed catalog edit", () => {
     expect(useStore.getState().catalog).toEqual([editRejected, editNeighbor]);
     expect(api.putEquipment).not.toHaveBeenCalled();
     expect(useStore.getState().outbox).toEqual([]);
+  });
+});
+
+const companyManager = {
+  id: "sync-009-manager",
+  email: "manager@example.test",
+  fullName: "Catalog manager",
+  position: "Manager",
+  phone: "",
+  roles: ["manager"],
+};
+const confirmedCompany = {
+  companyName: "Confirmed company",
+  tagline: "Confirmed tagline",
+  address: "Confirmed address",
+  phone: "+7 900 000-00-00",
+  email: "confirmed@example.test",
+  requisites: "Confirmed requisites",
+  manager: "Confirmed manager",
+  executor: "Confirmed executor",
+};
+const changedCompany = {
+  companyName: "Changed company",
+  tagline: "Changed tagline",
+  address: "Changed address",
+  phone: "+7 900 111-11-11",
+  email: "changed@example.test",
+  requisites: "Changed requisites",
+  manager: "Changed manager",
+  executor: "Changed executor",
+};
+
+function prepareCompanySettings(remote: boolean, role: "admin" | "manager" | "engineer" = "manager") {
+  const settings = useStore.getState().settings;
+  useStore.setState({
+    user: {
+      ...companyManager,
+      id: `sync-009-${role}`,
+      email: `${role}@example.test`,
+      roles: [role],
+    },
+    settings: {
+      ...settings,
+      ...confirmedCompany,
+      theme: "dark",
+      rates: { ...settings.rates, design: settings.rates.design + 123 },
+      apiBaseUrl: remote ? "https://api.example.test" : "",
+      apiOnline: remote ? true : null,
+    },
+    toasts: [],
+  });
+}
+
+describe("SYNC-009: confirmed company settings", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    memory.clear();
+    useStore.setState(initialState, true);
+  });
+
+  it.each(["manager", "admin"] as const)("sends one confirmed request for %s without writing rates", async (role) => {
+    prepareCompanySettings(true, role);
+    const serverCompany = { ...changedCompany, companyName: "Server-normalized company" };
+    api.putCompany.mockResolvedValueOnce(serverCompany);
+
+    await expect(useStore.getState().saveCompanySettings({
+      ...changedCompany,
+      apiBaseUrl: "https://api.example.test",
+    })).resolves.toBeUndefined();
+
+    expect(api.putCompany).toHaveBeenCalledTimes(1);
+    expect(api.putCompany).toHaveBeenCalledWith(changedCompany);
+    expect(api.putRates).not.toHaveBeenCalled();
+    expect(useStore.getState().settings).toEqual(expect.objectContaining(serverCompany));
+  });
+
+  it.each([
+    ["network", new TypeError("network unavailable")],
+    ["HTTP 400", new MockApiError(400, "invalid company")],
+    ["HTTP 403", new MockApiError(403, "forbidden")],
+    ["HTTP 500", new MockApiError(500, "server error")],
+  ])("keeps confirmed company settings after %s failure", async (_label, error) => {
+    prepareCompanySettings(true);
+    const before = useStore.getState().settings;
+    api.putCompany.mockRejectedValueOnce(error);
+
+    await expect(useStore.getState().saveCompanySettings({
+      ...changedCompany,
+      apiBaseUrl: before.apiBaseUrl,
+    })).rejects.toBe(error);
+
+    expect(useStore.getState().settings).toEqual(before);
+    expect(api.putCompany).toHaveBeenCalledTimes(1);
+    expect(api.putRates).not.toHaveBeenCalled();
+    expect(useStore.getState().toasts.some((toast) => toast.kind === "ok")).toBe(false);
+    expect(useStore.getState().toasts).toHaveLength(1);
+    expect(useStore.getState().toasts[0]).toEqual(expect.objectContaining({
+      kind: "err",
+      text: error instanceof MockApiError
+        ? error.message
+        : "Не удалось сохранить реквизиты: сервер недоступен",
+    }));
+    expect(useStore.getState().toasts[0]?.text).not.toContain("изменения сохранены локально");
+  });
+
+  it("rejects an engineer edit before any request", async () => {
+    prepareCompanySettings(true, "engineer");
+    const before = useStore.getState().settings;
+
+    await expect(useStore.getState().saveCompanySettings({
+      ...changedCompany,
+      apiBaseUrl: before.apiBaseUrl,
+    })).rejects.toThrow("Реквизиты компании заполняют менеджер и администратор");
+
+    expect(useStore.getState().settings).toEqual(before);
+    expect(api.putCompany).not.toHaveBeenCalled();
+    expect(api.putRates).not.toHaveBeenCalled();
+    expect(useStore.getState().toasts).toEqual([
+      expect.objectContaining({ kind: "err", text: expect.stringContaining("Инженер") }),
+    ]);
+  });
+
+  it("resets only company fields and preserves connection, theme, and rates", async () => {
+    prepareCompanySettings(true);
+    const before = useStore.getState().settings;
+    api.putCompany.mockResolvedValueOnce(DEFAULT_COMPANY_SETTINGS);
+
+    await useStore.getState().saveCompanySettings({
+      ...DEFAULT_COMPANY_SETTINGS,
+      apiBaseUrl: before.apiBaseUrl,
+    });
+
+    expect(useStore.getState().settings).toEqual({
+      ...before,
+      ...DEFAULT_COMPANY_SETTINGS,
+      apiOnline: true,
+    });
+    expect(api.putCompany).toHaveBeenCalledWith(DEFAULT_COMPANY_SETTINGS);
+    expect(api.putRates).not.toHaveBeenCalled();
+  });
+
+  it("keeps local company save behavior without an API request", async () => {
+    prepareCompanySettings(false);
+    const before = useStore.getState().settings;
+
+    await expect(useStore.getState().saveCompanySettings({
+      ...changedCompany,
+      apiBaseUrl: "",
+    })).resolves.toBeUndefined();
+
+    expect(useStore.getState().settings).toEqual({
+      ...before,
+      ...changedCompany,
+      apiBaseUrl: "",
+      apiOnline: null,
+    });
+    expect(api.putCompany).not.toHaveBeenCalled();
+    expect(api.putRates).not.toHaveBeenCalled();
   });
 });

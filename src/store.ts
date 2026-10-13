@@ -42,7 +42,13 @@ const seedNumber = () => {
 
 const DEFAULT_RATES: Rates = { design: 1800, production: 1800, software: 2200, smr: 1800, pnr: 1800 };
 
-export const DEFAULT_SETTINGS: Settings = {
+type CompanySettings = Pick<
+  Settings,
+  "companyName" | "tagline" | "address" | "phone" | "email" | "requisites" | "manager" | "executor"
+>;
+type CompanySettingsInput = CompanySettings & Pick<Settings, "apiBaseUrl">;
+
+export const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
   companyName: "ЗАО «Эталон-Прибор»",
   tagline: "КИПиА · сборка НКУ · АСУ ТП · системы электрообогрева",
   requisites:
@@ -56,6 +62,10 @@ export const DEFAULT_SETTINGS: Settings = {
   phone: "+7 (351) 267-47-10",
   email: "s.a.sultanov@etalon-chel.ru",
   address: "г. Челябинск, пр. Победы, 288",
+};
+
+export const DEFAULT_SETTINGS: Settings = {
+  ...DEFAULT_COMPANY_SETTINGS,
   theme: "light",
   rates: DEFAULT_RATES,
   apiBaseUrl: "",
@@ -126,6 +136,7 @@ interface StoreState {
   toast: (text: string, kind?: ToastKind) => void;
   dismissToast: (id: string) => void;
   updateSettings: (patch: Partial<Settings>) => void;
+  saveCompanySettings: (settings: CompanySettingsInput) => Promise<void>;
 
   pingApi: (url?: string) => Promise<boolean>;
   /** Тихая проверка связи (heartbeat и клик по индикатору): обновляет apiOnline. */
@@ -324,6 +335,39 @@ export const useStore = create<StoreState>()(
           const s = get().settings;
           if (["companyName", "tagline", "address", "phone", "email", "requisites", "manager", "executor"].some((k) => k in patch))
             a.putCompany(toCompany(s)).then(syncOk).catch(syncFail);
+        },
+
+        saveCompanySettings: async (next) => {
+          if (!can(get().user, "settings.edit")) {
+            const message = denyReason(get().user, "settings.edit");
+            get().toast(message, "err");
+            throw new Error(message);
+          }
+
+          const base = next.apiBaseUrl.trim();
+          const requestedCompany = toCompany({ ...get().settings, ...next });
+          let confirmedCompany: CompanySettings = requestedCompany;
+          if (base) {
+            try {
+              confirmedCompany = await restApi(base).putCompany(requestedCompany);
+              syncOk();
+            } catch (error) {
+              const message = error instanceof ApiError
+                ? error.message || `Сервер ответил ошибкой ${error.status}`
+                : "Не удалось сохранить реквизиты: сервер недоступен";
+              get().toast(message, "err");
+              throw error;
+            }
+          }
+
+          set((s) => ({
+            settings: {
+              ...s.settings,
+              ...confirmedCompany,
+              apiBaseUrl: base,
+              apiOnline: base ? true : null,
+            },
+          }));
         },
 
         pingApi: async (url) => {
