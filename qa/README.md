@@ -140,6 +140,16 @@ Frontend: расчёты, CSV, форматирование, роли, сост�
 Отчёт передавать PM, который назначает исправление Frontend/Backend.
 ROADMAP, архитектуру и продуктовые решения редактирует PM.
 
+### VERSION-002
+
+Интегрированный SHA `f3461ae280629e3635e2f47ac7f62787a9d637cc` на базе
+`1db369665930fabb16622e3dde901f6b0de760b9` проверен независимо по контракту
+`project-version-segments-v1`: Release чистый, backend `142/142`, изолированная
+PostgreSQL HTTP/SQL матрица `62/62`. Snapshot segments/form, legacy read,
+frontend-compatible restore и scoped warning check прошли. Подтверждённых
+дефектов нет. Подробности: `qa/VERSION-002.md`, сценарий:
+`qa/VERSION-002.probe.ps1`.
+
 ### SEC-003
 
 `db1036c5ddcb2779e7d205bcdbbb60eb7bd56134` проверен независимо: 80 frontend
