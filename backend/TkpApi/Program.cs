@@ -458,6 +458,10 @@ app.MapGet("/api/catalog", async (TkpDbContext db) =>
 app.MapPost("/api/catalog", async (Equipment e, TkpDbContext db) =>
 {
     var sku = e.Sku.Trim();
+    await using var transaction = await db.Database.BeginTransactionAsync();
+    await db.Database.ExecuteSqlInterpolatedAsync(
+        $"SELECT pg_advisory_xact_lock(hashtextextended(lower({sku}), 0))");
+
     var existing = await db.Equipment.FirstOrDefaultAsync(x =>
         x.Sku.ToLower() == sku.ToLower() ||
         (x.Name.ToLower() == e.Name.Trim().ToLower() && x.Brand.ToLower() == e.Brand.Trim().ToLower()));
@@ -490,6 +494,7 @@ app.MapPost("/api/catalog", async (Equipment e, TkpDbContext db) =>
         // A competing create may claim the explicit ID after the duplicate precheck.
         return Results.Conflict(new { detail = "Позиция с таким идентификатором уже есть в справочнике" });
     }
+    await transaction.CommitAsync();
     return Results.Created("/api/catalog", e);
 }).RequireAuthorization("Staff");
 
