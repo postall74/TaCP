@@ -462,11 +462,15 @@ app.MapPost("/api/catalog", async (Equipment e, TkpDbContext db) =>
     if (existing is not null)
         return Results.Conflict(new { detail = "Такая позиция уже есть в справочнике", existing });
 
+    if (string.IsNullOrEmpty(e.Id)) e.Id = Guid.NewGuid().ToString();
+    var existingId = await db.Equipment.FindAsync(e.Id);
+    if (existingId is not null)
+        return Results.Conflict(new { detail = "Позиция с таким идентификатором уже есть в справочнике", existing = existingId });
+
     // повторное добавление артикула возвращает позицию из «корзины»
     var tomb = await db.DeletedEquipment.FirstOrDefaultAsync(x => x.Sku.ToLower() == sku.ToLower());
     if (tomb is not null) db.DeletedEquipment.Remove(tomb);
 
-    if (string.IsNullOrEmpty(e.Id)) e.Id = Guid.NewGuid().ToString();
     db.Equipment.Add(e);
     try
     {
@@ -477,6 +481,12 @@ app.MapPost("/api/catalog", async (Equipment e, TkpDbContext db) =>
     {
         // A competing create may claim the SKU after the duplicate precheck.
         return Results.Conflict(new { detail = "Такая позиция уже есть в справочнике" });
+    }
+    catch (DbUpdateException error) when (error.InnerException is Npgsql.PostgresException
+        { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation, ConstraintName: "PK_equipment_catalog" })
+    {
+        // A competing create may claim the explicit ID after the duplicate precheck.
+        return Results.Conflict(new { detail = "Позиция с таким идентификатором уже есть в справочнике" });
     }
     return Results.Created("/api/catalog", e);
 }).RequireAuthorization("Staff");
