@@ -243,6 +243,7 @@ app.MapGet("/api/projects/{id}", async (string id, TkpDbContext db) =>
     var p = await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
                      .Include(p => p.Cabinets).ThenInclude(c => c.Segments)
                      .Include(p => p.Versions)
+                     .AsSplitQuery()
                      .FirstOrDefaultAsync(p => p.Id == id);
     if (p is null) return Results.NotFound();
     p.Versions = ProjectVersionSnapshots.ForResponse(p.Versions);
@@ -258,6 +259,7 @@ app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext d
 {
     var p = await db.Projects.Include(x => x.Cabinets).ThenInclude(c => c.Items)
                              .Include(x => x.Cabinets).ThenInclude(c => c.Segments)
+                             .AsSplitQuery()
                              .FirstOrDefaultAsync(x => x.Id == id);
     if (p is null) return Results.NotFound();
 
