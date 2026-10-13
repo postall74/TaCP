@@ -135,8 +135,9 @@ interface StoreState {
 
   toast: (text: string, kind?: ToastKind) => void;
   dismissToast: (id: string) => void;
-  updateSettings: (patch: Partial<Settings>) => void;
+  updateSettings: (patch: Partial<Omit<Settings, "rates">>) => void;
   saveCompanySettings: (settings: CompanySettingsInput) => Promise<void>;
+  saveRates: (rates: Rates) => Promise<void>;
 
   pingApi: (url?: string) => Promise<boolean>;
   /** Тихая проверка связи (heartbeat и клик по индикатору): обновляет apiOnline. */
@@ -331,7 +332,6 @@ export const useStore = create<StoreState>()(
           const a = api();
           if (!a) return;
           // зеркалируем на сервер то, что там хранится
-          if (patch.rates) a.putRates(patch.rates).then(syncOk).catch(syncFail);
           const s = get().settings;
           if (["companyName", "tagline", "address", "phone", "email", "requisites", "manager", "executor"].some((k) => k in patch))
             a.putCompany(toCompany(s)).then(syncOk).catch(syncFail);
@@ -368,6 +368,31 @@ export const useStore = create<StoreState>()(
               apiOnline: base ? true : null,
             },
           }));
+        },
+
+        saveRates: async (requestedRates) => {
+          if (!can(get().user, "rates.edit")) {
+            const message = denyReason(get().user, "rates.edit");
+            get().toast(message, "err");
+            throw new Error(message);
+          }
+
+          const base = (get().settings.apiBaseUrl ?? "").trim();
+          let confirmedRates = requestedRates;
+          if (base) {
+            try {
+              confirmedRates = await restApi(base).putRates(requestedRates);
+              syncOk();
+            } catch (error) {
+              const message = error instanceof ApiError
+                ? error.message || `Сервер ответил ошибкой ${error.status}`
+                : "Не удалось сохранить тарифы: сервер недоступен";
+              get().toast(message, "err");
+              throw error;
+            }
+          }
+
+          set((s) => ({ settings: { ...s.settings, rates: confirmedRates } }));
         },
 
         pingApi: async (url) => {

@@ -50,7 +50,7 @@ vi.stubGlobal("localStorage", {
   removeItem: (key: string) => memory.delete(key),
 });
 
-const { DEFAULT_COMPANY_SETTINGS, useStore } = await import("./store");
+const { DEFAULT_COMPANY_SETTINGS, DEFAULT_SETTINGS, useStore } = await import("./store");
 const initialState = useStore.getInitialState();
 
 const projectInput = {
@@ -965,5 +965,114 @@ describe("SYNC-009: confirmed company settings", () => {
     });
     expect(api.putCompany).not.toHaveBeenCalled();
     expect(api.putRates).not.toHaveBeenCalled();
+  });
+});
+
+const ratesUser = (role: "admin" | "manager" | "engineer") => ({
+  id: `sync-010-${role}`,
+  email: `${role}@example.test`,
+  fullName: `Rates ${role}`,
+  position: role,
+  phone: "",
+  roles: [role],
+});
+
+function prepareRates(remote: boolean, role: "admin" | "manager" | "engineer" = "admin") {
+  const settings = useStore.getState().settings;
+  useStore.setState({
+    user: ratesUser(role),
+    settings: {
+      ...settings,
+      companyName: "Rates company",
+      theme: "dark",
+      rates: { design: 1100, production: 1200, software: 1300, smr: 1400, pnr: 1500 },
+      apiBaseUrl: remote ? "https://api.example.test" : "",
+      apiOnline: remote ? true : null,
+    },
+    toasts: [],
+  });
+}
+
+describe("SYNC-010: confirmed rates", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    memory.clear();
+    useStore.setState(initialState, true);
+  });
+
+  it("sends one request and applies only the returned rates", async () => {
+    prepareRates(true);
+    const before = useStore.getState().settings;
+    const requested = { design: 2100, production: 2200, software: 2300, smr: 2400, pnr: 2500 };
+    const confirmed = { ...requested, software: 2350 };
+    api.putRates.mockResolvedValueOnce(confirmed);
+
+    await expect(useStore.getState().saveRates(requested)).resolves.toBeUndefined();
+
+    expect(api.putRates).toHaveBeenCalledTimes(1);
+    expect(api.putRates).toHaveBeenCalledWith(requested);
+    expect(useStore.getState().settings).toEqual({ ...before, rates: confirmed });
+  });
+
+  it.each([
+    ["network", new TypeError("network unavailable")],
+    ["HTTP 400", new MockApiError(400, "invalid rates")],
+    ["HTTP 403", new MockApiError(403, "forbidden")],
+    ["HTTP 500", new MockApiError(500, "server error")],
+  ])("keeps confirmed rates after %s failure", async (_label, error) => {
+    prepareRates(true);
+    const before = useStore.getState().settings;
+    const requested = { ...before.rates, design: before.rates.design + 500 };
+    api.putRates.mockRejectedValueOnce(error);
+
+    await expect(useStore.getState().saveRates(requested)).rejects.toBe(error);
+
+    expect(api.putRates).toHaveBeenCalledTimes(1);
+    expect(useStore.getState().settings).toEqual(before);
+    expect(useStore.getState().toasts).toEqual([
+      expect.objectContaining({
+        kind: "err",
+        text: error instanceof MockApiError
+          ? error.message
+          : "Не удалось сохранить тарифы: сервер недоступен",
+      }),
+    ]);
+    expect(useStore.getState().toasts.some((toast) => toast.kind === "ok")).toBe(false);
+  });
+
+  it.each(["manager", "engineer"] as const)("rejects a %s edit before any request", async (role) => {
+    prepareRates(true, role);
+    const before = useStore.getState().settings;
+
+    await expect(useStore.getState().saveRates({ ...before.rates, design: 9999 }))
+      .rejects.toThrow("Раздел доступен только администратору");
+
+    expect(api.putRates).not.toHaveBeenCalled();
+    expect(useStore.getState().settings).toEqual(before);
+    expect(useStore.getState().toasts).toEqual([
+      expect.objectContaining({ kind: "err", text: expect.stringContaining(role === "manager" ? "Менеджер" : "Инженер") }),
+    ]);
+  });
+
+  it("resets only rates through the confirmed server response", async () => {
+    prepareRates(true);
+    const before = useStore.getState().settings;
+    api.putRates.mockResolvedValueOnce(DEFAULT_SETTINGS.rates);
+
+    await useStore.getState().saveRates(DEFAULT_SETTINGS.rates);
+
+    expect(api.putRates).toHaveBeenCalledWith(DEFAULT_SETTINGS.rates);
+    expect(useStore.getState().settings).toEqual({ ...before, rates: DEFAULT_SETTINGS.rates });
+  });
+
+  it("keeps local rate saving without an API request", async () => {
+    prepareRates(false);
+    const before = useStore.getState().settings;
+    const requested = { ...before.rates, pnr: before.rates.pnr + 600 };
+
+    await expect(useStore.getState().saveRates(requested)).resolves.toBeUndefined();
+
+    expect(api.putRates).not.toHaveBeenCalled();
+    expect(useStore.getState().settings).toEqual({ ...before, rates: requested });
   });
 });
