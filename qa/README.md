@@ -140,6 +140,15 @@ Frontend: расчёты, CSV, форматирование, роли, сост�
 Отчёт передавать PM, который назначает исправление Frontend/Backend.
 ROADMAP, архитектуру и продуктовые решения редактирует PM.
 
+### CATALOG-003
+
+Интегрированный SHA `658279e27387d14586d24458b064b321be8e63a3` на базе
+`231857c2a45271cdbd59d8d9bd69f1a1ac0c2dc5` проверен независимо: Release
+чистый, backend `142/142`, изолированная PostgreSQL HTTP/SQL concurrency-матрица
+`52/52`. Exact-SKU и tombstone races, unique concurrency и регрессии
+CATALOG-001/002 прошли. Подтверждённых дефектов нет. Подробности:
+`qa/CATALOG-003.md`, сценарий `qa/CATALOG-003.probe.ps1`.
+
 ### SEC-003
 
 `db1036c5ddcb2779e7d205bcdbbb60eb7bd56134` проверен независимо: 80 frontend
