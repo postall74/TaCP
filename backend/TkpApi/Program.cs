@@ -542,7 +542,7 @@ app.MapPost("/api/catalog/import", async (HttpRequest req, TkpDbContext db, Clai
 
 /* ---------------- Конфигуратор составных шкафов ---------------- */
 /* Серверное зеркало фронтового src/utils/kit.ts для тонких клиентов. */
-app.MapGet("/api/kits/systems", () => KitEngine.Systems);
+app.MapGet("/api/kits/systems", () => KitEngine.Systems).RequireAuthorization("Staff");
 
 app.MapPost("/api/kits/calculate", (KitInput input) =>
 {
@@ -550,7 +550,7 @@ app.MapPost("/api/kits/calculate", (KitInput input) =>
     var hours = KitEngine.KitAssemblyHours(input);
     var total = lines.Sum(l => l.Qty * l.Purchase);
     return Results.Ok(new { lines, hours, total });
-});
+}).RequireAuthorization("Staff");
 
 var rates = new Rates();
 app.MapGet("/api/rates", () => rates).RequireAuthorization("Staff");
@@ -607,31 +607,31 @@ app.MapPost("/api/cabinets/thermal-calc", (ThermalCalcRequest req) =>
 {
     var heatW = thermalEngine.CalculateHeatDissipation(req.Cabinet, req.Catalog);
     return Results.Ok(new { heatWatts = heatW });
-});
+}).RequireAuthorization("Staff");
 
 app.MapPost("/api/cabinets/configure-empty", (ConfigureEmptyRequest req) =>
 {
     var config = cabinetConfigurator.CreateEmptyCabinet(req.Brand, req.H, req.W, req.D, req.Ip, req.Mount);
     return Results.Ok(config);
-});
+}).RequireAuthorization("Staff");
 
 app.MapPost("/api/cabinets/configure-preassembled", (ConfigurePreassembledRequest req) =>
 {
     var config = cabinetConfigurator.CreatePreassembledCabinet(req.Brand, req.H, req.W, req.D, req.Ip, req.Items);
     return Results.Ok(config);
-});
+}).RequireAuthorization("Staff");
 
 app.MapPost("/api/cabinets/assemble-side", (AssembleRequest req) =>
 {
     var assembly = assemblyService.CreateSideBySideAssembly(req.Name, req.Cabinets);
     return Results.Ok(assembly);
-});
+}).RequireAuthorization("Staff");
 
 app.MapPost("/api/cabinets/assemble-front-back", (AssembleRequest req) =>
 {
     var assembly = assemblyService.CreateFrontToBackAssembly(req.Name, req.Cabinets);
     return Results.Ok(assembly);
-});
+}).RequireAuthorization("Staff");
 
 app.Run();
 
