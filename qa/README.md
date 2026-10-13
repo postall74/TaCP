@@ -187,3 +187,13 @@ Frontend target `6c60705b831d4557eb479c78d94c24e10850c5ce` проверен
 сценариями. Адресно 3/3, полный frontend gate 88/88, typecheck и build прошли;
 обе темы проверены в браузере. NEED-001 остаётся partial. Подробности:
 `qa/ADMIN-005.md`.
+
+### PROJECT-016
+
+Target `99ea0d3a1df89062e35e9360aa15f3c12e9f534f` относительно parent
+`ab69abe8e927ee10c3784f72ff043a0c9db031d9` независимо проверен: backend
+142/142, Release build и одноразовый PostgreSQL HTTP/SQL probe 107/107 прошли.
+Large graph 3/63/12/11→12 прочитан и обновлён без дублей; EF20504 и cartesian
+items/segments JOIN отсутствуют. PROJECT-013/014/015, VERSION-001/002,
+авторизация, malformed/missing, races, conflicts и rollback прошли. Подробности:
+`qa/PROJECT-016.md`; исполняемый сценарий: `qa/PROJECT-016.probe.ps1`.
