@@ -140,6 +140,14 @@ Frontend: расчёты, CSV, форматирование, роли, сост�
 Отчёт передавать PM, который назначает исправление Frontend/Backend.
 ROADMAP, архитектуру и продуктовые решения редактирует PM.
 
+### SYNC-009
+
+Точный SHA `6ea26db7255b5370e5d82b6c6a69e6be190d6d06` на базе
+`2b17eca62fad8f67cc2f7b35fb18235b55e52e60` проверен независимо по контракту
+`company-settings-confirm-v1`: адресные store-тесты `47/47`, полный frontend
+suite `132/132`, typecheck и build прошли. Светлая/тёмная темы, local save/reset
+проверены в Chrome. Подтверждённых дефектов нет. Подробности: `qa/SYNC-009.md`.
+
 ### SEC-003
 
 `db1036c5ddcb2779e7d205bcdbbb60eb7bd56134` проверен независимо: 80 frontend
