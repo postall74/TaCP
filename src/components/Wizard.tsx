@@ -748,7 +748,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                   <div className="max-w-2xl">
                     {/* ---- вводные средства измерения ---- */}
                     <div className="mb-1.5 text-[11px] font-bold tracking-wide text-mute uppercase">Вводные средства измерения</div>
-                    <SelectRow
+                    <InstrumentSelectRow
                       label="Измеритель параметров сети на вводе (Wiren Board WB-MAP), тип"
                       hint="U/I/P/E по фазам, cos φ, гармоника — передача по RS-485 Modbus RTU"
                       value={d.netInKind}
@@ -770,7 +770,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                       value={d.ammOut}
                       onChange={(v) => set({ ammOut: Math.max(0, Math.round(v)) })}
                     />
-                    <SelectRow
+                    <InstrumentSelectRow
                       label="Тип амперметра на канал"
                       value={d.ammOutKind}
                       onChange={(v) => set({ ammOutKind: v as Draft["ammOutKind"] })}
@@ -779,7 +779,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                         { value: "panel", label: "Панельный (Э378 100/5, под ТТ)" },
                       ]}
                     />
-                    <SelectRow
+                    <InstrumentSelectRow
                       label="Трансформатор тока, тип"
                       hint="Первичный ток подбирается под номинал отходящего аппарата"
                       value={d.ctId}
@@ -790,7 +790,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                         { value: "ct-150", label: "Т-0666 150/5 А" },
                       ]}
                     />
-                    <SelectRow
+                    <InstrumentSelectRow
                       label="Фаз на канал (ТТ на канал)"
                       hint="3 — поканально на каждую фазу (трёхфазный), 1 — однофазный"
                       value={String(d.ctPerChannel)}
@@ -1443,6 +1443,27 @@ function SelectRow({ label, value, onChange, options, hint }: {
       <div className="w-[170px] shrink-0">
         <Select value={value} onChange={onChange} options={options} />
       </div>
+    </div>
+  );
+}
+
+/** Локальная строка шага измерительных приборов: широкая колонка сохраняет
+    полное выбранное название в закрытом списке, а на узком экране список
+    переносится под вопрос без горизонтальной прокрутки. */
+function InstrumentSelectRow({ label, value, onChange, options, hint }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  hint?: string;
+}) {
+  return (
+    <div className="grid min-w-0 gap-2 border-b border-line/50 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] sm:items-center sm:gap-4">
+      <div className="min-w-0">
+        <div className="text-[12.5px] font-semibold text-ink">{label}</div>
+        {hint && <div className="text-[10.5px] leading-snug text-mute">{hint}</div>}
+      </div>
+      <Select className="min-w-0 w-full" value={value} onChange={onChange} options={options} />
     </div>
   );
 }
