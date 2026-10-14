@@ -163,3 +163,14 @@ PM опубликовал auth-v2 в своём checkout `.worktrees/pm-core-004
 изолированный PostgreSQL harness. До исполняемых integration tests получить fixture,
 схему ошибки и согласовать с backend запуск изолированной PostgreSQL. Не заменять HTTP-тест
 проверкой текста RequireAuthorization: это не проверит реальное middleware.
+
+### SETTINGS-UI-001
+
+Target `51481855bcab93937ee2f7b92b4d316d836a5a75` относительно parent
+`1ab8cb836a14e14bf087d6b0e021c242b57be634` независимо проверен: typecheck,
+97/97 frontend-тестов и build прошли. Engineer получает восемь read-only
+реквизитных полей без Save/Reset; store guard отклоняет прямые реквизитные
+мутации без изменения данных и с ролевым тостом. Theme/API остаются доступны;
+manager/admin/local сохраняют edit/save/reset. Матрица 1024/1440 light/dark
+прошла. Подробности: `qa/SETTINGS-UI-001.md`; QA-регрессия:
+`src/store.settings.test.ts`.
