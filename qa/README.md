@@ -163,3 +163,12 @@ PM опубликовал auth-v2 в своём checkout `.worktrees/pm-core-004
 изолированный PostgreSQL harness. До исполняемых integration tests получить fixture,
 схему ошибки и согласовать с backend запуск изолированной PostgreSQL. Не заменять HTTP-тест
 проверкой текста RequireAuthorization: это не проверит реальное middleware.
+
+### CATALOG-007
+
+Target `0b369aaa9c9aa1083e84ff71c0f4d22bc557f8cd` относительно parent
+`2348606f5073cb66876af6892fc91a051f4b9e4a` независимо проверен: backend
+142/142, Release build и двухпроцессный PostgreSQL HTTP/SQL probe 137/137 прошли.
+Десять same-id DELETE дали 204+204 и один полный tombstone; repeat/unknown,
+distinct IDs, роли, resurrection, CATALOG-005/006 и unrelated DB500 rollback
+прошли. Подробности: `qa/CATALOG-007.md`; probe: `qa/CATALOG-007.probe.ps1`.
