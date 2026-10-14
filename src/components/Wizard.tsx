@@ -1660,11 +1660,13 @@ function DoorDesigner({ items, doors, positions, labels, labelSide, onMove, onLa
                   </button>
                 ))}
               </div>
-              <p className="mt-3 text-[10.5px] leading-snug text-mute">Позиция и подпись сохраняются автоматически и попадут в общий вид.</p>
+              <p className="mt-3 text-[10.5px] leading-snug text-mute">
+                Предварительный просмотр текущего сеанса: позиция и подпись не сохранятся в проекте.
+              </p>
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-line2 p-3 text-[11.5px] leading-relaxed text-mute">
-              Кликните по элементу на дверце, чтобы переименовать его и выбрать расположение подписи. Перетаскивайте элементы мышью — раскладка сохраняется.
+              Кликните по элементу на дверце, чтобы переименовать его и выбрать расположение подписи. Это предварительный просмотр текущего сеанса: компоновка не сохранится в проекте.
             </div>
           )}
         </div>
