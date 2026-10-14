@@ -505,7 +505,12 @@ app.MapPost("/api/catalog", async (Equipment e, TkpDbContext db) =>
 app.MapPut("/api/catalog/{id}", async (string id, Equipment e, TkpDbContext db) =>
 {
     e.Id = id;
-    var sku = e.Sku.Trim().ToLower();
+    var lockSku = e.Sku.Trim();
+    var sku = lockSku.ToLower();
+    await using var transaction = await db.Database.BeginTransactionAsync();
+    await db.Database.ExecuteSqlInterpolatedAsync(
+        $"SELECT pg_advisory_xact_lock(hashtextextended(lower({lockSku}), 0))");
+
     var dup = await db.Equipment.AnyAsync(x => x.Id != id && x.Sku.ToLower() == sku);
     if (dup) return Results.Conflict(new { detail = "Позиция с таким артикулом уже есть в справочнике" });
 
@@ -529,6 +534,7 @@ app.MapPut("/api/catalog/{id}", async (string id, Equipment e, TkpDbContext db) 
         // A competing write may claim the SKU after the precheck. SaveChanges rolls back the batch.
         return Results.Conflict(new { detail = "Позиция с таким артикулом уже есть в справочнике" });
     }
+    await transaction.CommitAsync();
     return Results.Ok(e);
 }).RequireAuthorization("Staff");
 
