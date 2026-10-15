@@ -6,11 +6,15 @@ namespace TkpApi.Services;
 public static class ProjectVersionSnapshots
 {
     private static readonly IReadOnlyDictionary<string, string> CabinetFields = Fields(
-        "Id", "Kind", "Name", "Hours", "DesignHours", "SoftwareHours", "Note", "Items", "Segments", "Form");
+        "Id", "Kind", "Name", "Hours", "DesignHours", "SoftwareHours", "Note", "Items", "Segments", "Form", "DoorLayout");
     private static readonly IReadOnlyDictionary<string, string> ItemFields = Fields(
         "Id", "EqId", "Sku", "Name", "Brand", "Unit", "Qty", "Purchase");
     private static readonly IReadOnlyDictionary<string, string> SegmentFields = Fields(
         "Id", "Kind", "Name", "Partitions");
+    private static readonly IReadOnlyDictionary<string, string> DoorLayoutFields = Fields(
+        "Schema", "DoorCount", "LabelSide", "Elements");
+    private static readonly IReadOnlyDictionary<string, string> DoorElementFields = Fields(
+        "Id", "Kind", "Tone", "Label", "Door", "X", "Y");
 
     // Return detached copies: normalizing a response must never dirty stored snapshots.
     public static List<ProjectVersion> ForResponse(IEnumerable<ProjectVersion> versions) =>
@@ -73,6 +77,10 @@ public static class ProjectVersionSnapshots
                 WriteArray(writer, property.Value, ItemFields);
             else if (ReferenceEquals(fields, CabinetFields) && name == "segments")
                 WriteArray(writer, property.Value, SegmentFields);
+            else if (ReferenceEquals(fields, CabinetFields) && name == "doorLayout")
+                WriteObject(writer, property.Value, DoorLayoutFields);
+            else if (ReferenceEquals(fields, DoorLayoutFields) && name == "elements")
+                WriteArray(writer, property.Value, DoorElementFields);
             else
                 property.Value.WriteTo(writer);
         }
