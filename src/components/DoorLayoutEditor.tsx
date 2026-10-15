@@ -111,6 +111,8 @@ export function DoorLayoutCanvas({
     updateElement(drag.id, placementAt(pointer.x + drag.dx, pointer.y + drag.dy));
   };
 
+  const endDrag = () => { dragRef.current = null; };
+
   const addElement = (kind: CabinetDoorElementKind) => {
     if (layout.elements.length >= 128) return;
     const placement = defaultDoorPlacement(layout.elements.length, layout.doorCount);
@@ -166,7 +168,8 @@ export function DoorLayoutCanvas({
         <div className="min-w-0 flex-1 rounded-lg bg-dark2/40 p-2">
           <svg ref={svgRef} width="100%" viewBox={`0 0 ${width} ${CANVAS_H}`}
             style={{ display: "block", maxHeight: 470 }} onPointerMove={moveDrag}
-            onPointerUp={() => { dragRef.current = null; }} onPointerLeave={() => { dragRef.current = null; }}
+            onPointerUp={endDrag} onPointerLeave={endDrag}
+            onPointerCancel={endDrag} onLostPointerCapture={endDrag}
             onPointerDown={() => setSelected(null)}>
             <defs>
               <linearGradient id="doorLayoutSteel" x1="0" y1="0" x2="1" y2="0">
