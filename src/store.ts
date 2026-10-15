@@ -4,7 +4,7 @@ import { ApiError, restApi, toCompany, getToken, setToken, type AuthUser, type P
 import { CATALOG } from "./data/catalog";
 import { buildTemplateCabinets } from "./data/templates";
 import type {
-  Cabinet, DeletedEquipment, Direction, Equipment, LineItem, Project, ProjectStatus, ProjectVersion, Rates, Settings,
+  Cabinet, CabinetDoorLayout, DeletedEquipment, Direction, Equipment, LineItem, Project, ProjectStatus, ProjectVersion, Rates, Settings,
 } from "./types";
 import { calcProject, genId } from "./utils";
 import { can, denyReason, type Role } from "./utils/roles";
@@ -169,16 +169,17 @@ interface StoreState {
   setStatus: (id: string, status: ProjectStatus) => boolean;
 
   addCabinet: (pid: string, kind: string, name: string) => string;
-  addCabinetsBulk: (pid: string, cabs: Cabinet[]) => void;
+  addCabinetsBulk: (pid: string, cabs: Cabinet[]) => Promise<boolean>;
   updateCabinet: (pid: string, cid: string, patch: Partial<Cabinet>) => void;
+  saveCabinetDoorLayout: (pid: string, cid: string, layout: CabinetDoorLayout | null) => Promise<boolean>;
   removeCabinet: (pid: string, cid: string) => void;
 
   addEquipment: (pid: string, cid: string, eq: Equipment, qty?: number) => "added" | "incremented";
   updateItem: (pid: string, cid: string, iid: string, patch: Partial<LineItem>) => void;
   removeItem: (pid: string, cid: string, iid: string) => void;
 
-  saveVersion: (pid: string, label: string) => void;
-  restoreVersion: (pid: string, vid: string) => void;
+  saveVersion: (pid: string, label: string) => Promise<boolean>;
+  restoreVersion: (pid: string, vid: string) => Promise<boolean>;
   deleteVersion: (pid: string, vid: string) => void;
 
   upsertEquipment: (e: Equipment) => void;
@@ -275,14 +276,27 @@ export const useStore = create<StoreState>()(
       };
 
       const syncTimers = new Map<string, number>();
-      /** Дебаунс-отправка проекта на сервер после каждой локальной мутации.
-          При сетевом сбое операция остаётся в очереди и уйдёт позже. */
-      const syncProject = (pid: string) => {
+      const syncChains = new Map<string, Promise<void>>();
+
+      const queueProjectOperation = <T>(pid: string, operation: () => Promise<T>): Promise<T> => {
+        const previous = syncChains.get(pid) ?? Promise.resolve();
+        const task = previous.catch(() => undefined).then(operation);
+        const barrier = task.then(() => undefined);
+        syncChains.set(pid, barrier);
+        const cleanup = () => {
+          if (syncChains.get(pid) === barrier) syncChains.delete(pid);
+        };
+        barrier.then(cleanup, cleanup);
+        return task;
+      };
+
+      /** Ставит отправку проекта в последовательную очередь. Это не даёт
+          отложенному PUT обогнать адресное сохранение layout или снимок версии. */
+      const pushLatestProject = (pid: string): Promise<void> => {
         const a = api();
-        if (!a) return;
-        window.clearTimeout(syncTimers.get(pid));
-        syncTimers.set(pid, window.setTimeout(async () => {
-          const p = get().projects.find((x) => x.id === pid);
+        if (!a) return Promise.resolve();
+        return queueProjectOperation(pid, async () => {
+          const p = get().projects.find((project) => project.id === pid);
           if (!p) return;
           const op: OutboxOp = { kind: "project.upsert", id: pid, ts: Date.now() };
           enqueue(op);
@@ -290,10 +304,29 @@ export const useStore = create<StoreState>()(
             await sendProject(a, p);
             dequeue(op);
             syncOk();
-          } catch (e) {
-            if (e instanceof ApiError) { dequeue(op); syncFail(e); } // сервер ответил — не повторяем
-            else syncFail(e);                                         // сеть — операция в очереди
+          } catch (error) {
+            if (error instanceof ApiError) dequeue(op);
+            syncFail(error);
+            throw error;
           }
+        });
+      };
+
+      const flushProjectSync = async (pid: string) => {
+        window.clearTimeout(syncTimers.get(pid));
+        syncTimers.delete(pid);
+        await pushLatestProject(pid);
+      };
+
+      /** Дебаунс-отправка проекта на сервер после каждой локальной мутации.
+          При сетевом сбое операция остаётся в очереди и уйдёт позже. */
+      const syncProject = (pid: string) => {
+        const a = api();
+        if (!a) return;
+        window.clearTimeout(syncTimers.get(pid));
+        syncTimers.set(pid, window.setTimeout(() => {
+          syncTimers.delete(pid);
+          void pushLatestProject(pid).catch(() => undefined);
         }, 700));
       };
 
@@ -638,13 +671,28 @@ export const useStore = create<StoreState>()(
           return cid;
         },
 
-        addCabinetsBulk: (pid, cabs) => {
-          set((s) => ({
-            projects: s.projects.map((p) =>
-              p.id === pid ? { ...p, updatedAt: Date.now(), cabinets: [...p.cabinets, ...cabs] } : p
-            ),
-          }));
-          syncProject(pid);
+        addCabinetsBulk: async (pid, cabs) => {
+          const a = api();
+          if (!a) {
+            set((s) => ({
+              projects: s.projects.map((p) =>
+                p.id === pid ? { ...p, updatedAt: Date.now(), cabinets: [...p.cabinets, ...cabs] } : p
+              ),
+            }));
+            return true;
+          }
+          try {
+            await flushProjectSync(pid);
+            const cabinets = await queueProjectOperation(pid, () => a.addCabinetsBulk(pid, cabs));
+            set((s) => ({
+              projects: s.projects.map((p) => p.id === pid ? { ...p, updatedAt: Date.now(), cabinets } : p),
+            }));
+            syncOk();
+            return true;
+          } catch (error) {
+            syncFail(error);
+            return false;
+          }
         },
 
         updateCabinet: (pid, cid, patch) => {
@@ -656,6 +704,40 @@ export const useStore = create<StoreState>()(
             ),
           }));
           syncProject(pid);
+        },
+
+        saveCabinetDoorLayout: async (pid, cid, layout) => {
+          const applyConfirmed = (confirmed: CabinetDoorLayout | undefined) =>
+            set((s) => ({
+              projects: s.projects.map((p) => p.id === pid ? {
+                ...p,
+                updatedAt: Date.now(),
+                cabinets: p.cabinets.map((cabinet) =>
+                  cabinet.id === cid ? { ...cabinet, doorLayout: confirmed } : cabinet
+                ),
+              } : p),
+            }));
+
+          const a = api();
+          if (!a) {
+            applyConfirmed(layout ?? undefined);
+            return true;
+          }
+          try {
+            await flushProjectSync(pid);
+            if (layout) {
+              const confirmed = await queueProjectOperation(pid, () => a.putCabinetDoorLayout(pid, cid, layout));
+              applyConfirmed(confirmed);
+            } else {
+              await queueProjectOperation(pid, () => a.deleteCabinetDoorLayout(pid, cid));
+              applyConfirmed(undefined);
+            }
+            syncOk();
+            return true;
+          } catch (error) {
+            syncFail(error);
+            return false;
+          }
         },
 
         removeCabinet: (pid, cid) => {
@@ -734,33 +816,82 @@ export const useStore = create<StoreState>()(
 
         /* ---------- версии ---------- */
 
-        saveVersion: (pid, label) => {
-          set((s) => ({
-            projects: s.projects.map((p) => {
-              if (p.id !== pid) return p;
-              const c = calcProject(p, get().settings.rates);
-              const v: ProjectVersion = {
-                id: genId("ver"), ts: Date.now(),
-                label: label || `Версия ${p.versions.length + 1}`,
-                cabinets: JSON.parse(JSON.stringify(p.cabinets)),
-                calc: { eqBase: Math.round(c.eqBase), total: Math.round(c.total) },
-              };
-              return { ...p, versions: [v, ...p.versions] };
-            }),
-          }));
-          syncProject(pid);
-          api()?.saveVersionRemote(pid, label).catch(syncFail);
+        saveVersion: async (pid, label) => {
+          const current = get().projects.find((project) => project.id === pid);
+          if (!current) return false;
+          const a = api();
+          if (!a) {
+            const calculation = calcProject(current, get().settings.rates);
+            const version: ProjectVersion = {
+              id: genId("ver"), ts: Date.now(),
+              label: label || `Версия ${current.versions.length + 1}`,
+              cabinets: JSON.parse(JSON.stringify(current.cabinets)),
+              calc: { eqBase: Math.round(calculation.eqBase), total: Math.round(calculation.total) },
+            };
+            set((s) => ({
+              projects: s.projects.map((project) =>
+                project.id === pid ? { ...project, versions: [version, ...project.versions] } : project
+              ),
+            }));
+            return true;
+          }
+          try {
+            await flushProjectSync(pid);
+            const versions = await queueProjectOperation(pid, () => a.saveVersionRemote(pid, label));
+            set((s) => ({
+              projects: s.projects.map((project) => project.id === pid ? {
+                ...project,
+                versions: versions.map((version) => normalizeVersion(version as RawVersion)),
+              } : project),
+            }));
+            syncOk();
+            return true;
+          } catch (error) {
+            syncFail(error);
+            return false;
+          }
         },
 
-        restoreVersion: (pid, vid) => {
-          set((s) => ({
-            projects: s.projects.map((p) => {
-              if (p.id !== pid) return p;
-              const v = p.versions.find((x) => x.id === vid);
-              return v ? { ...p, cabinets: JSON.parse(JSON.stringify(v.cabinets ?? [])), updatedAt: Date.now() } : p;
-            }),
-          }));
-          syncProject(pid);
+        restoreVersion: async (pid, vid) => {
+          const current = get().projects.find((project) => project.id === pid);
+          const version = current?.versions.find((candidate) => candidate.id === vid);
+          if (!current || !version) return false;
+          const cabinets: Cabinet[] = JSON.parse(JSON.stringify(version.cabinets ?? []));
+          const a = api();
+          if (!a) {
+            set((s) => ({
+              projects: s.projects.map((project) =>
+                project.id === pid ? { ...project, cabinets, updatedAt: Date.now() } : project
+              ),
+            }));
+            return true;
+          }
+          try {
+            await flushProjectSync(pid);
+            const confirmed = await queueProjectOperation(pid, async () => {
+              const restored = await a.putProject({ ...current, cabinets, updatedAt: Date.now() });
+              for (const cabinet of cabinets.filter((candidate) => candidate.doorLayout === undefined))
+                await a.deleteCabinetDoorLayout(pid, cabinet.id);
+              return restored;
+            });
+            set((s) => ({
+              projects: s.projects.map((project) => project.id === pid ? {
+                ...project,
+                ...confirmed,
+                cabinets: confirmed.cabinets.map((cabinet) =>
+                  cabinets.some((candidate) => candidate.id === cabinet.id && candidate.doorLayout === undefined)
+                    ? { ...cabinet, doorLayout: undefined }
+                    : cabinet
+                ),
+                versions: project.versions,
+              } : project),
+            }));
+            syncOk();
+            return true;
+          } catch (error) {
+            syncFail(error);
+            return false;
+          }
         },
 
         deleteVersion: (pid, vid) => {
