@@ -748,7 +748,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                   <div className="max-w-2xl">
                     {/* ---- вводные средства измерения ---- */}
                     <div className="mb-1.5 text-[11px] font-bold tracking-wide text-mute uppercase">Вводные средства измерения</div>
-                    <SelectRow
+                    <InstrumentSelectRow
                       label="Измеритель параметров сети на вводе (Wiren Board WB-MAP), тип"
                       hint="U/I/P/E по фазам, cos φ, гармоника — передача по RS-485 Modbus RTU"
                       value={d.netInKind}
@@ -770,7 +770,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                       value={d.ammOut}
                       onChange={(v) => set({ ammOut: Math.max(0, Math.round(v)) })}
                     />
-                    <SelectRow
+                    <InstrumentSelectRow
                       label="Тип амперметра на канал"
                       value={d.ammOutKind}
                       onChange={(v) => set({ ammOutKind: v as Draft["ammOutKind"] })}
@@ -779,7 +779,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                         { value: "panel", label: "Панельный (Э378 100/5, под ТТ)" },
                       ]}
                     />
-                    <SelectRow
+                    <InstrumentSelectRow
                       label="Трансформатор тока, тип"
                       hint="Первичный ток подбирается под номинал отходящего аппарата"
                       value={d.ctId}
@@ -790,7 +790,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                         { value: "ct-150", label: "Т-0666 150/5 А" },
                       ]}
                     />
-                    <SelectRow
+                    <InstrumentSelectRow
                       label="Фаз на канал (ТТ на канал)"
                       hint="3 — поканально на каждую фазу (трёхфазный), 1 — однофазный"
                       value={String(d.ctPerChannel)}
@@ -999,7 +999,13 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                 return (
                   <div className="max-w-2xl">
                     {/* строки нормо-часов с живым расчётом стоимости */}
-                    <div className="rounded-lg border border-line bg-card px-4">
+                    <div className="grid grid-cols-[minmax(0,1fr)_90px_100px_110px] gap-x-3 rounded-lg border border-line bg-card px-4">
+                      <div className="col-span-4 grid grid-cols-subgrid items-center border-b border-line py-2 text-[10.5px] font-semibold text-mute">
+                        <span>Вид работ</span>
+                        <span className="text-right">Часы</span>
+                        <span className="text-right">Ставка, ₽/ч</span>
+                        <span className="text-right">Стоимость, ₽</span>
+                      </div>
                       <WorkRow
                         label="Сборка (производство)"
                         hint="Монтаж оборудования, ошиновка, маркировка — ставка «Производство»"
@@ -1441,6 +1447,27 @@ function SelectRow({ label, value, onChange, options, hint }: {
   );
 }
 
+/** Локальная строка шага измерительных приборов: широкая колонка сохраняет
+    полное выбранное название в закрытом списке, а на узком экране список
+    переносится под вопрос без горизонтальной прокрутки. */
+function InstrumentSelectRow({ label, value, onChange, options, hint }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  hint?: string;
+}) {
+  return (
+    <div className="grid min-w-0 gap-2 border-b border-line/50 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] sm:items-center sm:gap-4">
+      <div className="min-w-0">
+        <div className="text-[12.5px] font-semibold text-ink">{label}</div>
+        {hint && <div className="text-[10.5px] leading-snug text-mute">{hint}</div>}
+      </div>
+      <Select className="min-w-0 w-full" value={value} onChange={onChange} options={options} />
+    </div>
+  );
+}
+
 /** Строка «нормо-часы» шага «Работы и ППО»: часы + живой расчёт стоимости
     по тарифу (часы × ставка) — единая сетка с остальными шагами опросника. */
 function WorkRow({ label, hint, hours, rate, onChange }: {
@@ -1452,20 +1479,17 @@ function WorkRow({ label, hint, hours, rate, onChange }: {
 }) {
   const cost = Math.round(hours * rate);
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-line/50 py-2">
+    <div className="col-span-4 grid grid-cols-subgrid items-center border-b border-line/50 py-3 last:border-b-0">
       <div className="min-w-0">
         <div className="text-[12.5px] font-semibold text-ink">{label}</div>
         <div className="text-[10.5px] leading-snug text-mute">{hint}</div>
       </div>
-      <div className="flex shrink-0 items-center gap-3">
-        <div className="w-[90px]">
-          <NumInput value={hours} step={1} onChange={onChange} />
-        </div>
-        <div className="w-[110px] text-right">
-          <div className="font-mono text-[12.5px] font-bold tabular-nums text-ink">{fmtMoney(cost)}</div>
-          <div className="text-[9.5px] text-mute">× {fmtMoney(rate)}/ч</div>
-        </div>
-      </div>
+      <label className="min-w-0">
+        <span className="sr-only">{label}, часы</span>
+        <NumInput value={hours} step={1} onChange={onChange} />
+      </label>
+      <div className="text-right font-mono text-[11px] tabular-nums text-mute">{fmtMoney(rate)}</div>
+      <div className="text-right font-mono text-[12.5px] font-bold tabular-nums text-ink">{fmtMoney(cost)}</div>
     </div>
   );
 }
@@ -1636,11 +1660,13 @@ function DoorDesigner({ items, doors, positions, labels, labelSide, onMove, onLa
                   </button>
                 ))}
               </div>
-              <p className="mt-3 text-[10.5px] leading-snug text-mute">Позиция и подпись сохраняются автоматически и попадут в общий вид.</p>
+              <p className="mt-3 text-[10.5px] leading-snug text-mute">
+                Предварительный просмотр текущего сеанса: позиция и подпись не сохранятся в проекте.
+              </p>
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-line2 p-3 text-[11.5px] leading-relaxed text-mute">
-              Кликните по элементу на дверце, чтобы переименовать его и выбрать расположение подписи. Перетаскивайте элементы мышью — раскладка сохраняется.
+              Кликните по элементу на дверце, чтобы переименовать его и выбрать расположение подписи. Это предварительный просмотр текущего сеанса: компоновка не сохранится в проекте.
             </div>
           )}
         </div>
