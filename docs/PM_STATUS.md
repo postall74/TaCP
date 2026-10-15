@@ -1,5 +1,11 @@
 # Доска PM
 
+## DOOR-001/002/003 — локальный интеграционный кандидат 2026-10-16
+
+Контракт `cabinet-door-layout-v1` / NEED-012 partial: Backend сохраняет layout в nullable jsonb и версиях; Frontend сохраняет/редактирует дверцу с подтверждением API и упорядочивает запись перед снимком версии. PM свёл backend `39509390`, backend QA `5abce523`, frontend `54cc21b5`, pointercancel fix `6023c0ea` и frontend QA `bc32ec5e` в локальной ветке `codex/pm/door-001-integration`, SHA `a6cc395`. PM docs/ADR-014 — локальный SHA `525f4e5c`. Main и remote не менялись.
+
+Независимая QA: frontend 93/93, backend 153/153, typecheck и build прошли; первый дефект pointercancel устранён и адресно перепроверен. Результат условный: нет живой PostgreSQL/API и браузерной сессии, поэтому migration apply/up/down, реальный JSONB/HTTP roundtrip, version restore, 400/409 atomicity, 401/403/404 и визуальная матрица не подтверждены. Vite сообщил прежнее предупреждение circular vendor chunks; backend Release дал NU1900 из-за недоступного индекса уязвимостей NuGet. NEED-012 остаётся частичным; инструкция с актуальными скриншотами, CI и отдельный общий вид не приняты. В main не сливать и тег не создавать до полного закрытия потребности или отдельного разрешения пользователя.
+
 ## RATE-001 / OPS-001 — объединённый кандидат 2026-09-30
 
 PM опубликовал feature-ветку `codex/pm/ops-rate-integration` с точным SHA
