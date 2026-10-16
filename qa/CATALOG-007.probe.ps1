@@ -91,9 +91,3 @@ CREATE TRIGGER qa_fail_catalog007_delete BEFORE INSERT ON deleted_equipment FOR 
 '@;$deleteTrigger|& "$pgBin\psql.exe" -h 127.0.0.1 -p $pgPort -U postgres -d $db -v ON_ERROR_STOP=1|Out-Null;Check($LASTEXITCODE-eq0)'unrelated DELETE failure trigger installed';Check((Request DELETE '/api/catalog/forced-delete-500' $null $tokens.admin).Status-eq500)'unrelated DELETE DB failure remains 500';Check((Sql "SELECT (SELECT count(*) FROM equipment_catalog WHERE `"Id`"='forced-delete-500')||':'||(SELECT count(*) FROM deleted_equipment WHERE `"Id`"='forced-delete-500');")-eq'1:0')'unrelated failure leaves active1 tomb0'
  "CATALOG-007 COMPLETE: $checks passing checks, 0 confirmed defects"
 }finally{if($apiProcess2-and-not$apiProcess2.HasExited){Stop-Process -Id $apiProcess2.Id -Force;Wait-Process -Id $apiProcess2.Id -ErrorAction SilentlyContinue};if($apiProcess-and-not$apiProcess.HasExited){Stop-Process -Id $apiProcess.Id -Force;Wait-Process -Id $apiProcess.Id -ErrorAction SilentlyContinue};if(Test-Path(Join-Path $data 'postmaster.pid')){& "$pgBin\pg_ctl.exe" stop -D $data -m fast -W;for($i=0;$i -lt 50;$i++){& "$pgBin\pg_isready.exe" -h 127.0.0.1 -p $pgPort -U postgres *> $null;if($LASTEXITCODE -ne 0){break};Start-Sleep -Milliseconds 100}};Remove-Item Env:ConnectionStrings__Tkp,Env:Jwt__Key,Env:Jwt__Issuer,Env:Jwt__Audience,Env:Jwt__ExpireMinutes,Env:Cors__AllowedOrigins__0,Env:AllowedHosts,Env:Admin__Enabled,Env:Admin__Email,Env:Admin__Password,Env:ASPNETCORE_URLS,Env:ASPNETCORE_ENVIRONMENT -ErrorAction SilentlyContinue;Start-Sleep -Milliseconds 200;if(Test-Path $root){Remove-Item -LiteralPath $root -Recurse -Force}}
-
-
-
-
-
-
