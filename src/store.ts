@@ -1088,7 +1088,11 @@ export const useStore = create<StoreState>()(
               await a.restoreEquipment(id);
               get().toast(`"${deletedItem.name}" восстановлен`, "ok");
             } catch (e) {
-              get().toast("Ошибка восстановления на сервере (требуется бэкенд)", "err");
+              set((s) => ({
+                catalog: s.catalog.filter((item) => item.id !== id),
+                deletedCatalog: [deletedItem, ...s.deletedCatalog.filter((item) => item.id !== id)],
+              }));
+              throw e;
             }
           } else {
             get().toast(`"${deletedItem.name}" восстановлен локально`, "ok");
