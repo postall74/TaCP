@@ -162,8 +162,11 @@ app.MapGet("/api/projects", async (TkpDbContext db) =>
                      .OrderByDescending(p => p.UpdatedAt).ToListAsync())
    .RequireAuthorization("Staff");
 
-app.MapPost("/api/projects", async (Project p, TkpDbContext db) =>
+app.MapPost("/api/projects", async (Project p, TkpDbContext db, ClaimsPrincipal user) =>
 {
+    var statusPermission = Rights.PermForStatus(p.Status);
+    if (!Rights.Can(user, statusPermission)) return Rights.Forbid(user, statusPermission);
+
     if (string.IsNullOrEmpty(p.Id)) p.Id = Guid.NewGuid().ToString();
     db.Projects.Add(p);
     await db.SaveChangesAsync();
