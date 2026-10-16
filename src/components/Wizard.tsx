@@ -444,19 +444,23 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
     }
     /* нестандартный корпус добавляем в справочник, чтобы позиция была переиспользуемой */
     if (d.cabNeed && d.cabMode === "kit" && d.customDim && d.customName.trim()) {
-      upsertEquipment({
+      void upsertEquipment({
         id: genId("eq"), sku: "РУЧНОЙ-ВВОД", name: d.customName.trim(), brand: "—",
         category: "Корпуса и щиты", direction: project.direction, unit: "шт",
         purchase: Math.max(1, d.customPrice),
         attrs: "нестандартный габарит, добавлен из мастера подбора",
+      }).catch((error) => {
+        toast(error instanceof Error ? `Не удалось сохранить корпус в справочнике: ${error.message}` : "Не удалось сохранить корпус в справочнике", "err");
       });
     }
     if (d.cabNeed && d.cabMode === "manual" && d.manualName.trim()) {
-      upsertEquipment({
+      void upsertEquipment({
         id: genId("eq"), sku: "РУЧНОЙ-ВВОД", name: d.manualName.trim(), brand: "—",
         category: "Корпуса и щиты", direction: project.direction, unit: "шт",
         purchase: Math.max(1, d.manualPrice),
         attrs: "добавлено вручную из мастера подбора",
+      }).catch((error) => {
+        toast(error instanceof Error ? `Не удалось сохранить корпус в справочнике: ${error.message}` : "Не удалось сохранить корпус в справочнике", "err");
       });
     }
     const cabs: Cabinet[] = [
