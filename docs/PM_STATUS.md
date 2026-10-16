@@ -12,8 +12,10 @@
 `PUT /api/auth/users/{id}` принимает DTO без email и возвращает 200, оставляя
 старый email/login. Backend предложил узкий обратно совместимый
 `user-admin-v3`; PM зарегистрировал ADMIN-006 с критериями и rollback в
-ROADMAP/ARCHITECTURE. Задача пока blocked до интеграционной базы с
-ADMIN-003/004, SEC-004 и текущим DOOR-кандидатом. NEED-001 остаётся partial.
+ROADMAP/ARCHITECTURE. PM собрал чистую интеграционную базу `6b36e210` с ADMIN-003/004, SEC-004
+и DOOR; backend 154/154, frontend 93/93, typecheck/build прошли. ADMIN-006
+переведён в ready. Frontend ADMIN-007 ждёт backend fixture. NEED-001 остаётся partial.
+
 ## RATE-001 / OPS-001 — объединённый кандидат 2026-09-30
 
 PM опубликовал feature-ветку `codex/pm/ops-rate-integration` с точным SHA

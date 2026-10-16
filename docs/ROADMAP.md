@@ -154,8 +154,9 @@ Rollback: возврат UI commit допустим только до включ
 
 ### ADMIN-006 — сохранять email пользователя при правке администратором
 
-Владелец: Backend. Статус: `blocked` до подготовки PM integration base,
-содержащей ADMIN-003, ADMIN-004, SEC-004 и текущий DOOR-кандидат. Приоритет: P1.
+Владелец: Backend. Статус: `ready`. Приоритет: P1. PM integration base
+`codex/pm/admin-006-base` = `6b36e210223c804cf6581fdae4880e75f2eef3a1`
+содержит ADMIN-003, ADMIN-004, SEC-004 и текущий DOOR-кандидат.
 Контракт: `user-admin-v3`; NEED-001: `partial`. После backend handoff Frontend
 отдельным срезом уточняет клиентский DTO и подтверждение сохранения; QA проверяет
 оба слоя независимо. В `main` и production этот частичный срез не выпускать без
@@ -188,6 +189,26 @@ role/delete/register/me, backend suite, Release build и изолированн�
 PostgreSQL HTTP/SQL roundtrip. Backend публикует fixture и handoff с exact base
 SHA. Frontend нельзя включать до проверенного ответа `user-admin-v3`: старый
 backend молча игнорирует email. Rollback backend раньше frontend небезопасен.
+
+### ADMIN-007 — показывать подтверждённый email после правки пользователя
+
+Владелец: Frontend. Статус: `blocked` до backend fixture/handoff ADMIN-006.
+Приоритет: P1. Контракт: `user-admin-v3`; NEED-001: `partial`.
+Область: `src/api/client.ts`, `src/store.ts`,
+`src/admin/components/UsersPage.tsx` и адресные frontend-тесты QA.
+Разделить типы собственного профиля и административной правки: только
+административный PUT может передать email. После ответа API сравнить
+фактически сохранённый email с запрошенным нормализованным значением; прежний
+сервер, возвращающий 200 со старым email, не должен показывать успех или
+оптимистично менять профиль. Ошибка 400/401/403/404/409/network оставляет
+подтверждённые данные и форму доступной для исправления/повтора. Локальный
+режим сохраняет прежнюю семантику. Права и остальные поля не расширять.
+
+Приёмка: новый backend fixture подтверждает email и успех, устаревший 200
+со старым email даёт понятную ошибку без success-toast; ошибки API не меняют
+подтверждённые данные; self-edit обновляет отображаемый email только после
+ответа; 1024/1440 px и обе темы, typecheck, frontend suite, build и независимый
+browser/API QA. Полный NEED-001 этим срезом не закрывается.
 
 ### WIZ-UI-001 — выровнять форму «Работы и ППО»
 
