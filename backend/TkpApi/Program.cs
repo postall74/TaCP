@@ -546,6 +546,10 @@ app.MapPut("/api/catalog/{id}", async (string id, Equipment e, TkpDbContext db) 
 app.MapDelete("/api/catalog/{id}", async (string id, TkpDbContext db, ClaimsPrincipal user) =>
 {
     if (!Rights.Can(user, Rights.CatalogDelete)) return Rights.Forbid(user, Rights.CatalogDelete);
+    await using var transaction = await db.Database.BeginTransactionAsync();
+    await db.Database.ExecuteSqlInterpolatedAsync(
+        $"SELECT pg_advisory_xact_lock(hashtextextended({id}, 1))");
+
     var e = await db.Equipment.FindAsync(id);
     if (e is null) return Results.NoContent(); // уже удалена (например, офлайн-очередью)
 
@@ -561,6 +565,7 @@ app.MapDelete("/api/catalog/{id}", async (string id, TkpDbContext db, ClaimsPrin
     });
     db.Equipment.Remove(e);
     await db.SaveChangesAsync();
+    await transaction.CommitAsync();
     return Results.NoContent();
 }).RequireAuthorization("Staff");
 
