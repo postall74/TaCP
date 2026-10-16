@@ -1,0 +1,39 @@
+{
+  "contract": "user-admin-v3",
+  "method": "PUT",
+  "path": "/api/auth/users/{id}",
+  "policy": "AdminOnly",
+  "request": {
+    "fullName": "Иван Петров",
+    "position": "Ведущий инженер",
+    "phone": "+7 900 000-00-00",
+    "email": " ivan.petrov@example.test "
+  },
+  "success": {
+    "status": 200,
+    "body": {
+      "id": "user-id",
+      "email": "ivan.petrov@example.test",
+      "fullName": "Иван Петров",
+      "position": "Ведущий инженер",
+      "phone": "+7 900 000-00-00",
+      "roles": ["engineer"]
+    }
+  },
+  "errors": {
+    "invalidOrDuplicate": { "status": 400, "bodyFields": ["errors"] },
+    "concurrency": { "status": 409, "bodyFields": ["errors"] },
+    "unknownUser": 404,
+    "anonymous": 401,
+    "managerOrEngineer": 403
+  },
+  "preservesExistingEmail": ["email omitted", "email null"],
+  "unchanged": [
+    "PUT /api/auth/me DTO",
+    "schema and migrations",
+    "roles",
+    "JWT shape and expiry",
+    "password",
+    "register, delete and role endpoints"
+  ]
+}
