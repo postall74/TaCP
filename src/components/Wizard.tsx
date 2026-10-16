@@ -1,8 +1,7 @@
-import { useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { useMemo, useState } from "react";
 import { useStore } from "../store";
 import { findEq } from "../data/catalog";
-import type { Cabinet, CabinetSegment, Equipment, LineItem, Project, SeparationForm } from "../types";
+import type { Cabinet, CabinetDoorElementKind, CabinetDoorLampTone, CabinetSegment, Equipment, LineItem, Project, SeparationForm } from "../types";
 import { CABINET_KINDS, DIRECTIONS } from "../types";
 import { fmtMoney, genId } from "../utils";
 import {
@@ -10,7 +9,9 @@ import {
   nearestDims, hasExactDims, KIT_SYSTEMS, KIT_GROUP_LABEL,
 } from "../utils/kit";
 import { buildSegmentLines, FORM_META, segmentsForForm } from "../utils/segments";
+import { defaultDoorPlacement } from "../utils/doorLayout";
 import { Btn, Field, Input, NumInput, Select, Toggle, cx } from "./ui";
+import { DoorLayoutCanvas } from "./DoorLayoutEditor";
 import { IcAlert, IcArrowLeft, IcCheck, IcChevronRight, IcWand, IcX } from "./icons";
 
 /* ============================================================
@@ -77,7 +78,7 @@ interface Draft {
   lineBtns: number;
   avrInd: boolean;
   /** Позиции элементов на дверце (координаты viewBox макета), ключ — стабильный id элемента. */
-  doorPos: Record<string, { x: number; y: number }>;
+  doorPos: Record<string, { door: number; x: number; y: number }>;
   /** Свои подписи элементов (переопределяют названия по умолчанию). */
   doorLabels: Record<string, string>;
   /** Подписи элементов: под элементом или над ним. */
@@ -192,6 +193,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
   const toast = useStore((s) => s.toast);
 
   const [step, setStep] = useState(0);
+  const [applying, setApplying] = useState(false);
   const [d, setD] = useState<Draft>(() => ({
     kind: CABINET_KINDS[project.direction][0],
     cabNeed: true,
@@ -418,25 +420,23 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
   /* ---------- элементы на дверце (интерактивный макет) ----------
      Ключи стабильны, поэтому заданные вручную позиции (doorPos) и подписи
      (doorLabels) сохраняются при изменении количества. */
-  const doorItems = useMemo(() => {
-    const els: DoorItem[] = [];
-    if (d.on.controls) {
-      if (d.on.avr && d.avrInd) {
-        els.push({ key: "avr-0", kind: "lamp", label: "Сеть 1", color: "#1f8a5b" });
-        els.push({ key: "avr-1", kind: "lamp", label: "Сеть 2", color: "#a8770e" });
-        els.push({ key: "avr-2", kind: "lamp", label: "Авария", color: "#ce4432" });
-      }
-      for (let i = 0; i < d.lamps; i++) els.push({ key: `lamp-${i}`, kind: "lamp", label: `Лампа ${i + 1}`, color: "#6f7b8b" });
-      for (let i = 0; i < d.switches; i++) els.push({ key: `sel-${i}`, kind: "sel", label: "Режим" });
-      for (let i = 0; i < d.lineBtns; i++) els.push({ key: `pair-${i}`, kind: "pair", label: `Л${i + 1} Пуск/Стоп` });
-      for (let i = 0; i < d.buttons; i++) els.push({ key: `btn-${i}`, kind: "btn", label: `Кнопка ${i + 1}` });
-      for (let i = 0; i < d.btnStop; i++) els.push({ key: `stop-${i}`, kind: "stop", label: "Авар. стоп" });
-    }
-    return els;
-  }, [d.on.controls, d.on.avr, d.avrInd, d.lamps, d.switches, d.lineBtns, d.buttons, d.btnStop]);
-  const doorsCount = d.cabNeed && d.cabMode === "kit" && !d.customDim && sys.mount === "floor" ? Math.max(1, Math.min(sys.maxDoors, d.kitDoors)) : 1;
+  const doorItems = useMemo(() => buildDoorItems(d),
+    [d.on.controls, d.on.avr, d.avrInd, d.lamps, d.switches, d.lineBtns, d.buttons, d.btnStop]);
+  const doorsCount: 1 | 2 = d.cabNeed && d.cabMode === "kit" && !d.customDim && sys.mount === "floor" && Math.min(sys.maxDoors, d.kitDoors) >= 2 ? 2 : 1;
+  const doorLayout = useMemo(() => ({
+    schema: "cabinet-door-layout-v1" as const,
+    doorCount: doorsCount,
+    labelSide: d.doorLabelSide,
+    elements: doorItems.map((item, index) => ({
+      id: item.key,
+      kind: item.kind,
+      ...(item.kind === "lamp" ? { tone: item.tone ?? "neutral" } : {}),
+      label: d.doorLabels[item.key] ?? item.label,
+      ...(d.doorPos[item.key] ?? defaultDoorPlacement(index, doorsCount)),
+    })),
+  }), [doorItems, doorsCount, d.doorLabelSide, d.doorLabels, d.doorPos]);
 
-  const apply = () => {
+  const apply = async () => {
     const { main, zipItems } = bundle;
     if (main.length === 0 && zipItems.length === 0) {
       toast("Мастер ничего не добавит — включите хотя бы один шаг", "err");
@@ -466,16 +466,20 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
         hours: d.hours + (segBuild?.hours ?? 0),
         designHours: d.designHours, softwareHours: d.softwareHours,
         ...(d.segOn ? { segments: segSegments, form: segForm } : {}),
+        ...(d.on.controls ? { doorLayout } : {}),
       },
     ];
     if (zipItems.length > 0) {
       cabs.push({ id: genId("cab"), kind: "ЗИП", name: "ЗИП — запасные части и принадлежности", items: zipItems, hours: 0, designHours: 0, softwareHours: 0 });
     }
-    addCabinetsBulk(project.id, cabs);
     updateProject(project.id, {
       showWorkLines: d.separateLine,
       transportPct: d.transportOn ? d.transportPct : 0,
     });
+    setApplying(true);
+    const saved = await addCabinetsBulk(project.id, cabs);
+    setApplying(false);
+    if (!saved) return;
     toast(`Добавлено: ${cabs.length} ${cabs.length === 1 ? "шкаф" : "шкафа"}, ${main.length + zipItems.length} позиций`);
     onClose();
   };
@@ -730,17 +734,23 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                   </div>
 
                   {/* интерактивная дверца — во всю ширину, под вопросами */}
-                  <DoorDesigner
-                    items={doorItems}
-                    doors={doorsCount}
-                    positions={d.doorPos}
-                    labels={d.doorLabels}
-                    labelSide={d.doorLabelSide}
-                    onMove={(key, xy) => set({ doorPos: { ...d.doorPos, [key]: xy } })}
-                    onLabel={(key, text) => set({ doorLabels: { ...d.doorLabels, [key]: text } })}
-                    onLabelSide={(side) => set({ doorLabelSide: side })}
-                    onReset={() => set({ doorPos: {} })}
-                  />
+                  <div className="mt-5">
+                    <DoorLayoutCanvas
+                      layout={doorLayout}
+                      allowElementChanges={false}
+                      allowDoorCountChange={false}
+                      onChange={(layout) => set({
+                        doorPos: Object.fromEntries(layout.elements.map((element) => [element.id, {
+                          door: element.door, x: element.x, y: element.y,
+                        }])),
+                        doorLabels: Object.fromEntries(layout.elements.map((element) => [element.id, element.label])),
+                        doorLabelSide: layout.labelSide,
+                      })}
+                    />
+                    <p className="mt-2 text-[11px] leading-relaxed text-mute">
+                      Компоновка сохранится вместе со шкафом и останется доступна для редактирования в структуре проекта.
+                    </p>
+                  </div>
                 </StepShell>
               )}
               {meta.id === "meters" && (
@@ -748,7 +758,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                   <div className="max-w-2xl">
                     {/* ---- вводные средства измерения ---- */}
                     <div className="mb-1.5 text-[11px] font-bold tracking-wide text-mute uppercase">Вводные средства измерения</div>
-                    <SelectRow
+                    <InstrumentSelectRow
                       label="Измеритель параметров сети на вводе (Wiren Board WB-MAP), тип"
                       hint="U/I/P/E по фазам, cos φ, гармоника — передача по RS-485 Modbus RTU"
                       value={d.netInKind}
@@ -770,7 +780,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                       value={d.ammOut}
                       onChange={(v) => set({ ammOut: Math.max(0, Math.round(v)) })}
                     />
-                    <SelectRow
+                    <InstrumentSelectRow
                       label="Тип амперметра на канал"
                       value={d.ammOutKind}
                       onChange={(v) => set({ ammOutKind: v as Draft["ammOutKind"] })}
@@ -779,7 +789,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                         { value: "panel", label: "Панельный (Э378 100/5, под ТТ)" },
                       ]}
                     />
-                    <SelectRow
+                    <InstrumentSelectRow
                       label="Трансформатор тока, тип"
                       hint="Первичный ток подбирается под номинал отходящего аппарата"
                       value={d.ctId}
@@ -790,7 +800,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                         { value: "ct-150", label: "Т-0666 150/5 А" },
                       ]}
                     />
-                    <SelectRow
+                    <InstrumentSelectRow
                       label="Фаз на канал (ТТ на канал)"
                       hint="3 — поканально на каждую фазу (трёхфазный), 1 — однофазный"
                       value={String(d.ctPerChannel)}
@@ -999,7 +1009,13 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                 return (
                   <div className="max-w-2xl">
                     {/* строки нормо-часов с живым расчётом стоимости */}
-                    <div className="rounded-lg border border-line bg-card px-4">
+                    <div className="grid grid-cols-[minmax(0,1fr)_90px_100px_110px] gap-x-3 rounded-lg border border-line bg-card px-4">
+                      <div className="col-span-4 grid grid-cols-subgrid items-center border-b border-line py-2 text-[10.5px] font-semibold text-mute">
+                        <span>Вид работ</span>
+                        <span className="text-right">Часы</span>
+                        <span className="text-right">Ставка, ₽/ч</span>
+                        <span className="text-right">Стоимость, ₽</span>
+                      </div>
                       <WorkRow
                         label="Сборка (производство)"
                         hint="Монтаж оборудования, ошиновка, маркировка — ставка «Производство»"
@@ -1137,8 +1153,8 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                   Далее <IcChevronRight size={14} />
                 </Btn>
               ) : (
-                <Btn size="sm" onClick={apply}>
-                  <IcCheck size={14} /> Добавить в проект
+                <Btn size="sm" onClick={apply} disabled={applying}>
+                  <IcCheck size={14} /> {applying ? "Сохранение…" : "Добавить в проект"}
                 </Btn>
               )}
             </div>
@@ -1180,13 +1196,23 @@ function StepCab({
   near: { h: number; w: number; d: number };
 }) {
   const sys = findKitSystem(d.kitSystem);
+  const hasSecondDoorElements = buildDoorItems(d).some((item) => d.doorPos[item.key]?.door === 1);
+  const setSingleDoor = (patch: Partial<Draft>) => {
+    if (hasSecondDoorElements) return;
+    set(patch);
+  };
   const previewGroups = (["frame", "skin", "mount", "door", "base", "joint"] as const)
     .map((g) => ({ g, lines: kitLines.filter((l) => l.group === g) }))
     .filter((x) => x.lines.length > 0);
 
   return (
     <div>
-      <Toggle on={d.cabNeed} onChange={(v) => set({ cabNeed: v })} label="Корпус шкафа комплектуем мы" />
+      <Toggle on={d.cabNeed} onChange={(v) => v ? set({ cabNeed: true }) : setSingleDoor({ cabNeed: false })} label="Корпус шкафа комплектуем мы" />
+      {hasSecondDoorElements && (
+        <div className="mt-2 rounded-md border border-warn/40 bg-warn-soft px-3 py-2 text-[11.5px] text-ink2">
+          На второй дверце есть элементы. Перенесите их на первую в шаге «Кнопки и индикация», прежде чем выбирать однодверный корпус.
+        </div>
+      )}
       {!d.cabNeed && (
         <div className="anim-step mt-3 rounded-md bg-steel-soft px-4 py-3 text-[12.5px] text-steel">
           Поняли — корпус в состав не включаем (например, поставляется заказчиком). Переходите к следующему шагу.
@@ -1197,8 +1223,8 @@ function StepCab({
           {/* способ подбора корпуса */}
           <div className="grid gap-2 md:grid-cols-3">
             <ChoiceCard active={d.cabMode === "kit"} onClick={() => set({ cabMode: "kit", manualOn: false })} title="Составной комплект" text="Конфигуратор: тип → система → габариты → составной ряд, двери, траверсы, цоколи" />
-            <ChoiceCard active={d.cabMode === "catalog"} onClick={() => set({ cabMode: "catalog", manualOn: false })} title="Готовый корпус" text="Целиком из справочника — одна позиция в составе шкафа" />
-            <ChoiceCard active={d.cabMode === "manual"} onClick={() => set({ cabMode: "manual", manualOn: true, cabId: null })} title="Ручной ввод" text="Нестандартный корпус — внесём в справочник для переиспользования" />
+            <ChoiceCard active={d.cabMode === "catalog"} onClick={() => setSingleDoor({ cabMode: "catalog", manualOn: false })} title="Готовый корпус" text="Целиком из справочника — одна позиция в составе шкафа" />
+            <ChoiceCard active={d.cabMode === "manual"} onClick={() => setSingleDoor({ cabMode: "manual", manualOn: true, cabId: null })} title="Ручной ввод" text="Нестандартный корпус — внесём в справочник для переиспользования" />
           </div>
 
           <div className="mt-4 max-w-xs">
@@ -1214,7 +1240,7 @@ function StepCab({
               <div className="text-[11px] font-bold tracking-wide text-mute uppercase">1 · Тип шкафа</div>
               <div className="mt-1.5 grid max-w-md gap-2 md:grid-cols-2">
                 <ChoiceCard active={d.cabMountKit === "floor"} onClick={() => switchMount("floor")} title="Напольный" text="Каркасный: стойки, крыша, основание, панели, цоколи" />
-                <ChoiceCard active={d.cabMountKit === "wall"} onClick={() => switchMount("wall")} title="Навесной" text="Корпус с задней стенкой, монтаж на стену" />
+                <ChoiceCard active={d.cabMountKit === "wall"} onClick={() => { if (!hasSecondDoorElements) switchMount("wall"); }} title="Навесной" text="Корпус с задней стенкой, монтаж на стену" />
               </div>
 
               {/* 2) система */}
@@ -1224,7 +1250,7 @@ function StepCab({
                   <ChoiceCard
                     key={s.id}
                     active={d.kitSystem === s.id}
-                    onClick={() => set({ kitSystem: s.id, kitH: s.heights[Math.floor(s.heights.length / 2)], kitW: s.widths[0], kitD: s.depths[0], kitDoors: 1, customDim: false })}
+                    onClick={() => setSingleDoor({ kitSystem: s.id, kitH: s.heights[Math.floor(s.heights.length / 2)], kitW: s.widths[0], kitD: s.depths[0], kitDoors: 1, customDim: false })}
                     title={`${s.name} · ${s.brand} · IP${s.ip}`}
                     text={s.note}
                   />
@@ -1245,7 +1271,7 @@ function StepCab({
                 </Field>
                 {sys.mount === "floor" && (
                   <Field label="Дверей на корпус">
-                    <Select value={String(d.kitDoors)} onChange={(v) => set({ kitDoors: Number(v) })} options={Array.from({ length: sys.maxDoors }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))} />
+                    <Select value={String(d.kitDoors)} onChange={(v) => Number(v) === 1 ? setSingleDoor({ kitDoors: 1 }) : set({ kitDoors: 2 })} options={Array.from({ length: sys.maxDoors }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))} />
                   </Field>
                 )}
                 {sys.mount === "floor" && (
@@ -1272,7 +1298,7 @@ function StepCab({
 
               {/* нестандартный габарит */}
               <div className={cx("mt-4 max-w-3xl rounded-lg border p-3", d.customDim ? "border-accent bg-accent-soft/40" : "border-dashed border-line2")}>
-                <Toggle on={d.customDim} onChange={(v) => set({ customDim: v })} label="Нужного типоразмера нет — нестандартный корпус" />
+                <Toggle on={d.customDim} onChange={(v) => v ? setSingleDoor({ customDim: true }) : set({ customDim: false })} label="Нужного типоразмера нет — нестандартный корпус" />
                 {d.customDim && (
                   <div className="anim-step mt-3">
                     <div className="rounded-md bg-warn-soft px-3 py-2 text-[12px] text-ink2">
@@ -1400,9 +1426,25 @@ function StepCab({
 
 interface DoorItem {
   key: string;
-  kind: "lamp" | "btn" | "pair" | "sel" | "stop";
+  kind: CabinetDoorElementKind;
   label: string;
-  color?: string;
+  tone?: CabinetDoorLampTone;
+}
+
+function buildDoorItems(draft: Draft): DoorItem[] {
+  if (!draft.on.controls) return [];
+  const items: DoorItem[] = [];
+  if (draft.on.avr && draft.avrInd) {
+    items.push({ key: "avr-0", kind: "lamp", label: "Сеть 1", tone: "green" });
+    items.push({ key: "avr-1", kind: "lamp", label: "Сеть 2", tone: "amber" });
+    items.push({ key: "avr-2", kind: "lamp", label: "Авария", tone: "red" });
+  }
+  for (let i = 0; i < draft.lamps; i++) items.push({ key: `lamp-${i}`, kind: "lamp", label: `Лампа ${i + 1}`, tone: "neutral" });
+  for (let i = 0; i < draft.switches; i++) items.push({ key: `sel-${i}`, kind: "selector", label: "Режим" });
+  for (let i = 0; i < draft.lineBtns; i++) items.push({ key: `pair-${i}`, kind: "start-stop-pair", label: `Л${i + 1} Пуск/Стоп` });
+  for (let i = 0; i < draft.buttons; i++) items.push({ key: `btn-${i}`, kind: "button", label: `Кнопка ${i + 1}` });
+  for (let i = 0; i < draft.btnStop; i++) items.push({ key: `stop-${i}`, kind: "emergency-stop", label: "Авар. стоп" });
+  return items;
 }
 
 /** Выровненная строка опросника «вопрос — количество» (единая сетка шага). */
@@ -1441,6 +1483,27 @@ function SelectRow({ label, value, onChange, options, hint }: {
   );
 }
 
+/** Локальная строка шага измерительных приборов: широкая колонка сохраняет
+    полное выбранное название в закрытом списке, а на узком экране список
+    переносится под вопрос без горизонтальной прокрутки. */
+function InstrumentSelectRow({ label, value, onChange, options, hint }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  hint?: string;
+}) {
+  return (
+    <div className="grid min-w-0 gap-2 border-b border-line/50 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] sm:items-center sm:gap-4">
+      <div className="min-w-0">
+        <div className="text-[12.5px] font-semibold text-ink">{label}</div>
+        {hint && <div className="text-[10.5px] leading-snug text-mute">{hint}</div>}
+      </div>
+      <Select className="min-w-0 w-full" value={value} onChange={onChange} options={options} />
+    </div>
+  );
+}
+
 /** Строка «нормо-часы» шага «Работы и ППО»: часы + живой расчёт стоимости
     по тарифу (часы × ставка) — единая сетка с остальными шагами опросника. */
 function WorkRow({ label, hint, hours, rate, onChange }: {
@@ -1452,199 +1515,17 @@ function WorkRow({ label, hint, hours, rate, onChange }: {
 }) {
   const cost = Math.round(hours * rate);
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-line/50 py-2">
+    <div className="col-span-4 grid grid-cols-subgrid items-center border-b border-line/50 py-3 last:border-b-0">
       <div className="min-w-0">
         <div className="text-[12.5px] font-semibold text-ink">{label}</div>
         <div className="text-[10.5px] leading-snug text-mute">{hint}</div>
       </div>
-      <div className="flex shrink-0 items-center gap-3">
-        <div className="w-[90px]">
-          <NumInput value={hours} step={1} onChange={onChange} />
-        </div>
-        <div className="w-[110px] text-right">
-          <div className="font-mono text-[12.5px] font-bold tabular-nums text-ink">{fmtMoney(cost)}</div>
-          <div className="text-[9.5px] text-mute">× {fmtMoney(rate)}/ч</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* Геометрия макета: дверца 230×450, полотно 500 по высоте. */
-const DOOR = { w: 230, h: 450, y: 25, gap: 30, x0: 25 };
-const CANVAS_H = 500;
-
-function DoorDesigner({ items, doors, positions, labels, labelSide, onMove, onLabel, onLabelSide, onReset }: {
-  items: DoorItem[];
-  doors: number;
-  positions: Record<string, { x: number; y: number }>;
-  labels: Record<string, string>;
-  labelSide: "below" | "above";
-  onMove: (key: string, xy: { x: number; y: number }) => void;
-  onLabel: (key: string, text: string) => void;
-  onLabelSide: (side: "below" | "above") => void;
-  onReset: () => void;
-}) {
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  const dragRef = useRef<{ key: string; dx: number; dy: number } | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
-
-  const W = doors === 2 ? DOOR.x0 + 2 * DOOR.w + DOOR.gap + DOOR.x0 : DOOR.x0 + DOOR.w + DOOR.x0;
-
-  /* авто-раскладка: сетка 4 колонки на первой двери */
-  const autoPos = (i: number) => ({
-    x: DOOR.x0 + 25 + 45 * ((i % 4) + 0.5),
-    y: 80 + Math.floor(i / 4) * 52,
-  });
-
-  const toCanvas = (e: { clientX: number; clientY: number }) => {
-    const rect = svgRef.current!.getBoundingClientRect();
-    return { x: (e.clientX - rect.left) * (W / rect.width), y: (e.clientY - rect.top) * (CANVAS_H / rect.height) };
-  };
-
-  const startDrag = (e: ReactPointerEvent<SVGGElement>, key: string, x: number, y: number) => {
-    e.stopPropagation();
-    setSelected(key);
-    const p = toCanvas(e);
-    dragRef.current = { key, dx: x - p.x, dy: y - p.y };
-    svgRef.current?.setPointerCapture(e.pointerId);
-  };
-  const onMoveCanvas = (e: ReactPointerEvent<SVGSVGElement>) => {
-    const dr = dragRef.current;
-    if (!dr) return;
-    const p = toCanvas(e);
-    onMove(dr.key, {
-      x: Math.min(W - 30, Math.max(30, p.x + dr.dx)),
-      y: Math.min(CANVAS_H - 25, Math.max(DOOR.y + 20, p.y + dr.dy)),
-    });
-  };
-  const endDrag = () => { dragRef.current = null; };
-
-  const selItem = selected ? items.find((i) => i.key === selected) : undefined;
-
-  return (
-    <div className="mt-5 rounded-lg border border-line bg-card p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-[10px] font-bold tracking-wide text-mute uppercase">
-          Компоновка дверцы{doors === 2 ? " · двухдверный шкаф" : ""} — перетаскивайте элементы, клик — подпись
-        </div>
-        <button type="button" onClick={() => { onReset(); setSelected(null); }}
-          className="cursor-pointer rounded-md border border-line px-2 py-1 text-[10.5px] font-bold text-mute transition-colors hover:border-heat hover:text-heat">
-          Сбросить раскладку
-        </button>
-      </div>
-
-      <div className="mt-2 flex flex-col gap-3 lg:flex-row">
-        <div className="min-w-0 flex-1 rounded-lg bg-dark2/40 p-2">
-          <svg ref={svgRef} width="100%" viewBox={`0 0 ${W} ${CANVAS_H}`} style={{ display: "block", maxHeight: 470 }}
-            onPointerMove={onMoveCanvas} onPointerUp={endDrag} onPointerLeave={endDrag}
-            onPointerDown={() => setSelected(null)}>
-            <defs>
-              <linearGradient id="doorSteel" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0" stopColor="#3d4a59" />
-                <stop offset="0.5" stopColor="#4c5a6b" />
-                <stop offset="1" stopColor="#37434f" />
-              </linearGradient>
-            </defs>
-
-            {/* дверцы шкафа */}
-            {Array.from({ length: doors }, (_, di) => {
-              const ox = DOOR.x0 + di * (DOOR.w + DOOR.gap);
-              return (
-                <g key={di}>
-                  <rect x={ox} y={DOOR.y} width={DOOR.w} height={DOOR.h} rx={9} fill="#222b35" stroke="#141b24" strokeWidth={1.5} />
-                  <rect x={ox + 9} y={DOOR.y + 9} width={DOOR.w - 18} height={DOOR.h - 18} rx={6} fill="url(#doorSteel)" stroke="#2c3742" strokeWidth={1} />
-                  <rect x={ox - 3} y={DOOR.y + 60} width={7} height={30} rx={2.5} fill="#5b6875" />
-                  <rect x={ox - 3} y={DOOR.y + DOOR.h - 90} width={7} height={30} rx={2.5} fill="#5b6875" />
-                  <rect x={ox + DOOR.w - 17} y={DOOR.y + DOOR.h / 2 - 32} width={8} height={64} rx={4} fill="#c2cad4" stroke="#8b98a9" strokeWidth={0.8} />
-                  {[0, 1, 2, 3].map((k) => (
-                    <rect key={k} x={ox + 30 + k * 42} y={DOOR.y + DOOR.h - 26} width={30} height={3} rx={1.5} fill="#2c3742" />
-                  ))}
-                </g>
-              );
-            })}
-
-            {/* элементы управления */}
-            {items.map((it, i) => {
-              const { x, y } = positions[it.key] ?? autoPos(i);
-              const isSel = selected === it.key;
-              const label = labels[it.key] ?? it.label;
-              const labelY = labelSide === "below"
-                ? y + (it.kind === "stop" ? 28 : it.kind === "pair" ? 24 : 25)
-                : y - (it.kind === "stop" ? 24 : 20);
-              return (
-                <g key={it.key} style={{ cursor: "grab" }} onPointerDown={(e) => startDrag(e, it.key, x, y)}>
-                  {isSel && <rect x={x - 24} y={y - 24} width={48} height={48} rx={10} fill="rgba(37,99,235,0.12)" stroke="#2563eb" strokeWidth={1.2} strokeDasharray="4 3" />}
-                  <circle cx={x} cy={y} r={20} fill="transparent" />
-                  {it.kind === "lamp" && (
-                    <>
-                      <circle cx={x} cy={y} r={10} fill={it.color} stroke="#141b24" strokeWidth={1.3} />
-                      <circle cx={x - 3.5} cy={y - 3.5} r={3} fill="#fff" opacity={0.35} />
-                    </>
-                  )}
-                  {it.kind === "btn" && <rect x={x - 11} y={y - 11} width={22} height={22} rx={5} fill="#141b24" stroke="#3d4a59" strokeWidth={1.3} />}
-                  {it.kind === "sel" && (
-                    <>
-                      <rect x={x - 12} y={y - 12} width={24} height={24} rx={4} fill="#eceef1" stroke="#141b24" strokeWidth={1.3} />
-                      <text x={x} y={y + 3.4} textAnchor="middle" fontSize={8} fontWeight={700} fill="#141b24">I·0·II</text>
-                    </>
-                  )}
-                  {it.kind === "stop" && (
-                    <>
-                      <rect x={x - 16} y={y - 16} width={32} height={32} rx={5} fill="#f7edd8" stroke="#a8770e" strokeWidth={1.3} />
-                      <circle cx={x} cy={y} r={11} fill="#ce4432" stroke="#8f2f22" strokeWidth={1.3} />
-                    </>
-                  )}
-                  {it.kind === "pair" && (
-                    <>
-                      <circle cx={x - 12} cy={y} r={9} fill="#1f8a5b" stroke="#141b24" strokeWidth={1.2} />
-                      <circle cx={x + 12} cy={y} r={9} fill="#ce4432" stroke="#141b24" strokeWidth={1.2} />
-                    </>
-                  )}
-                  <text x={x} y={labelY} textAnchor="middle" fontSize={9} fontWeight={600} fill="#e6ebf2" stroke="#141b24" strokeWidth={2.5} style={{ paintOrder: "stroke" }}>
-                    {label.length > 14 ? label.slice(0, 13) + "…" : label}
-                  </text>
-                </g>
-              );
-            })}
-
-            {items.length === 0 && (
-              <text x={W / 2} y={CANVAS_H / 2} textAnchor="middle" fontSize={11} fill="#8b98a9">
-                Задайте количество элементов выше — они появятся на дверце
-              </text>
-            )}
-          </svg>
-        </div>
-
-        {/* панель редактирования подписи */}
-        <div className="w-full shrink-0 lg:w-60">
-          {selItem ? (
-            <div className="anim-step rounded-lg border border-line bg-paper p-3">
-              <div className="text-[10px] font-bold tracking-wide text-mute uppercase">Подпись элемента</div>
-              <input
-                value={labels[selItem.key] ?? selItem.label}
-                onChange={(e) => onLabel(selItem.key, e.target.value)}
-                className="mt-1.5 w-full rounded-md border border-line bg-card px-2 py-1.5 text-[12.5px] font-semibold text-ink outline-none focus:border-steel"
-              />
-              <div className="mt-3 text-[10px] font-bold tracking-wide text-mute uppercase">Расположение подписи</div>
-              <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-                {(["below", "above"] as const).map((s) => (
-                  <button key={s} type="button" onClick={() => onLabelSide(s)}
-                    className={cx("cursor-pointer rounded-md border px-2 py-1.5 text-[11px] font-bold transition-colors",
-                      labelSide === s ? "border-accent bg-accent-soft/60 text-accent-deep" : "border-line bg-card text-mute hover:border-line2")}>
-                    {s === "below" ? "Снизу" : "Сверху"}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-3 text-[10.5px] leading-snug text-mute">Позиция и подпись сохраняются автоматически и попадут в общий вид.</p>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed border-line2 p-3 text-[11.5px] leading-relaxed text-mute">
-              Кликните по элементу на дверце, чтобы переименовать его и выбрать расположение подписи. Перетаскивайте элементы мышью — раскладка сохраняется.
-            </div>
-          )}
-        </div>
-      </div>
+      <label className="min-w-0">
+        <span className="sr-only">{label}, часы</span>
+        <NumInput value={hours} step={1} onChange={onChange} />
+      </label>
+      <div className="text-right font-mono text-[11px] tabular-nums text-mute">{fmtMoney(rate)}</div>
+      <div className="text-right font-mono text-[12.5px] font-bold tabular-nums text-ink">{fmtMoney(cost)}</div>
     </div>
   );
 }

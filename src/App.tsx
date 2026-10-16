@@ -283,13 +283,14 @@ export default function App() {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         initial={settings}
+        canEdit={can(user, "settings.edit")}
         onSave={(s) => {
-          updateSettings(s);
+          if (!updateSettings(s)) return;
           toast("Реквизиты сохранены — шапка документов обновлена");
           setSettingsOpen(false);
         }}
         onReset={() => {
-          updateSettings(DEFAULT_SETTINGS);
+          if (!updateSettings(DEFAULT_SETTINGS)) return;
           toast("Реквизиты сброшены к значениям по умолчанию", "info");
         }}
       />
@@ -301,11 +302,12 @@ export default function App() {
 /* ---------------- реквизиты компании + подключение к API ---------------- */
 
 function SettingsModal({
-  open, onClose, initial, onSave, onReset,
+  open, onClose, initial, canEdit, onSave, onReset,
 }: {
   open: boolean;
   onClose: () => void;
   initial: Settings;
+  canEdit: boolean;
   onSave: (s: Settings) => void;
   onReset: () => void;
 }) {
@@ -321,15 +323,19 @@ function SettingsModal({
       w="max-w-2xl"
       footer={
         <>
-          <button onClick={onReset} className="mr-auto flex cursor-pointer items-center gap-1.5 text-[12px] font-semibold text-mute transition-colors hover:text-ink">
-            <IcRefresh size={13} /> Сбросить
+          {canEdit && (
+            <button onClick={onReset} className="mr-auto flex cursor-pointer items-center gap-1.5 text-[12px] font-semibold text-mute transition-colors hover:text-ink">
+              <IcRefresh size={13} /> Сбросить
+            </button>
+          )}
+          <button onClick={onClose} className={cx("cursor-pointer rounded-md border border-line px-3.5 py-2 text-[13px] font-bold text-ink2 transition-colors hover:bg-paper", !canEdit && "ml-auto")}>
+            {canEdit ? "Отмена" : "Закрыть"}
           </button>
-          <button onClick={onClose} className="cursor-pointer rounded-md border border-line px-3.5 py-2 text-[13px] font-bold text-ink2 transition-colors hover:bg-paper">
-            Отмена
-          </button>
-          <button onClick={() => onSave(f)} className="cursor-pointer rounded-md bg-accent px-4 py-2 text-[13px] font-bold text-white transition-all hover:bg-accent-deep active:scale-95">
-            Сохранить
-          </button>
+          {canEdit && (
+            <button onClick={() => onSave(f)} className="cursor-pointer rounded-md bg-accent px-4 py-2 text-[13px] font-bold text-white transition-all hover:bg-accent-deep active:scale-95">
+              Сохранить
+            </button>
+          )}
         </>
       }
     >
@@ -337,35 +343,62 @@ function SettingsModal({
         Эти данные попадают в шапку и подпись каждого документа ТКП (PDF/Word). Ставки нормо-часов — на странице{" "}
         <b className="text-ink2">«Тарифы»</b>.
       </p>
+      {!canEdit && (
+        <p className="mb-3 rounded-lg border border-line bg-paper/60 px-3 py-2 text-[11.5px] leading-relaxed text-mute">
+          Реквизиты доступны только для чтения. Изменять их могут менеджер и администратор.
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Название компании">
-          <Input value={f.companyName} onChange={(v) => set({ companyName: v })} />
+          <CompanyInput value={f.companyName} canEdit={canEdit} onChange={(v) => set({ companyName: v })} />
         </Field>
         <Field label="Слоган / профиль">
-          <Input value={f.tagline} onChange={(v) => set({ tagline: v })} />
+          <CompanyInput value={f.tagline} canEdit={canEdit} onChange={(v) => set({ tagline: v })} />
         </Field>
         <Field label="Телефон">
-          <Input value={f.phone} onChange={(v) => set({ phone: v })} />
+          <CompanyInput value={f.phone} canEdit={canEdit} onChange={(v) => set({ phone: v })} />
         </Field>
         <Field label="E-mail">
-          <Input value={f.email} onChange={(v) => set({ email: v })} />
+          <CompanyInput value={f.email} canEdit={canEdit} onChange={(v) => set({ email: v })} />
         </Field>
         <Field label="Адрес" className="col-span-2">
-          <Input value={f.address} onChange={(v) => set({ address: v })} />
+          <CompanyInput value={f.address} canEdit={canEdit} onChange={(v) => set({ address: v })} />
         </Field>
         <Field label="Банковские реквизиты (ИНН, счёт…)" className="col-span-2">
-          <Textarea rows={2} value={f.requisites} onChange={(v) => set({ requisites: v })} />
+          {canEdit ? (
+            <Textarea rows={2} value={f.requisites} onChange={(v) => set({ requisites: v })} />
+          ) : (
+            <textarea
+              readOnly
+              aria-readonly="true"
+              rows={2}
+              value={f.requisites}
+              className="w-full resize-y rounded-md border border-line bg-line/20 px-3 py-2 text-[13px] font-medium text-mute outline-none"
+            />
+          )}
         </Field>
         <Field label="Менеджер (подписант)">
-          <Input value={f.manager} onChange={(v) => set({ manager: v })} />
+          <CompanyInput value={f.manager} canEdit={canEdit} onChange={(v) => set({ manager: v })} />
         </Field>
         <Field label="Исполнитель (инженер)">
-          <Input value={f.executor} onChange={(v) => set({ executor: v })} />
+          <CompanyInput value={f.executor} canEdit={canEdit} onChange={(v) => set({ executor: v })} />
         </Field>
       </div>
 
       <ApiBlock f={f} set={set} />
     </Modal>
+  );
+}
+
+function CompanyInput({ value, canEdit, onChange }: { value: string; canEdit: boolean; onChange: (value: string) => void }) {
+  if (canEdit) return <Input value={value} onChange={onChange} />;
+  return (
+    <input
+      readOnly
+      aria-readonly="true"
+      value={value}
+      className="h-9 w-full rounded-md border border-line bg-line/20 px-3 text-[13px] font-medium text-mute outline-none"
+    />
   );
 }
 
