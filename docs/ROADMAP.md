@@ -154,7 +154,7 @@ Rollback: возврат UI commit допустим только до включ
 
 ### ADMIN-006 — сохранять email пользователя при правке администратором
 
-Владелец: Backend. Статус: `ready`. Приоритет: P1. PM integration base
+Владелец: Backend. Статус: `QA passed; integration pending`. Приоритет: P1. PM integration base
 `codex/pm/admin-006-base` = `6b36e210223c804cf6581fdae4880e75f2eef3a1`
 содержит ADMIN-003, ADMIN-004, SEC-004 и текущий DOOR-кандидат.
 Контракт: `user-admin-v3`; NEED-001: `partial`. После backend handoff Frontend
@@ -192,7 +192,7 @@ backend молча игнорирует email. Rollback backend раньше fro
 
 ### ADMIN-007 — показывать подтверждённый email после правки пользователя
 
-Владелец: Frontend. Статус: `blocked` до backend fixture/handoff ADMIN-006.
+Владелец: Frontend. Статус: `QA in progress` после backend fixture/handoff ADMIN-006.
 Приоритет: P1. Контракт: `user-admin-v3`; NEED-001: `partial`.
 Область: `src/api/client.ts`, `src/store.ts`,
 `src/admin/components/UsersPage.tsx` и адресные frontend-тесты QA.

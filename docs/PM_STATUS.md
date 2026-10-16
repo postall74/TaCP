@@ -1,8 +1,8 @@
 # Доска PM
 
-## DOOR-001/002/003 — локальный интеграционный кандидат 2026-10-16
+## DOOR-001/002/003 — опубликованный кандидат и откат преждевременного merge 2026-10-16
 
-Контракт `cabinet-door-layout-v1` / NEED-012 partial: Backend сохраняет layout в nullable jsonb и версиях; Frontend сохраняет/редактирует дверцу с подтверждением API и упорядочивает запись перед снимком версии. PM свёл backend `39509390`, backend QA `5abce523`, frontend `54cc21b5`, pointercancel fix `6023c0ea` и frontend QA `bc32ec5e` в локальной ветке `codex/pm/door-001-integration`, SHA `a6cc395`. PM docs/ADR-014 — локальный SHA `525f4e5c`. Main и remote не менялись.
+Контракт `cabinet-door-layout-v1` / NEED-012 partial: Backend сохраняет layout в nullable jsonb и версиях; Frontend сохраняет/редактирует дверцу с подтверждением API и упорядочивает запись перед снимком версии. PM свёл backend `39509390`, backend QA `5abce523`, frontend `54cc21b5`, pointercancel fix `6023c0ea` и frontend QA `bc32ec5e` в локальной ветке `codex/pm/door-001-integration`, SHA `a6cc395`. PM docs/ADR-014 — локальный SHA `525f4e5c`. Ветка опубликована на GitHub с SHA `a6cc395`. PR #99 был слит пользователем в `main` до завершения NEED-012 gates; по его условию PM выполнил точный revert через PR #100. Текущий remote `main` — `48b336c1`, его дерево равно pre-merge `1edff933`; кандидат сохранён в feature-ветке.
 
 Независимая QA: frontend 93/93, backend 153/153, typecheck и build прошли; первый дефект pointercancel устранён и адресно перепроверен. Результат условный: QA browser smoke в localStorage-режиме подтвердил create/reload/version restore/reload для двух дверец и кириллической подписи; Frontend адресно проверил 1024/1440 px и обе темы без переполнения и ошибок консоли. Нет живой PostgreSQL/API, поэтому migration apply/up/down, реальный JSONB/HTTP roundtrip, version restore через API, 400/409 atomicity и 401/403/404 не подтверждены. Реальные pointercancel/lostpointercapture события не автоматизированы. Vite сообщил прежнее предупреждение circular vendor chunks; backend Release дал NU1900 из-за недоступного индекса уязвимостей NuGet. NEED-012 остаётся частичным; инструкция с актуальными скриншотами, CI и отдельный общий вид не приняты. В main не сливать и тег не создавать до полного закрытия потребности или отдельного разрешения пользователя.
 
@@ -13,8 +13,7 @@
 старый email/login. Backend предложил узкий обратно совместимый
 `user-admin-v3`; PM зарегистрировал ADMIN-006 с критериями и rollback в
 ROADMAP/ARCHITECTURE. PM собрал чистую интеграционную базу `6b36e210` с ADMIN-003/004, SEC-004
-и DOOR; backend 154/154, frontend 93/93, typecheck/build прошли. ADMIN-006
-переведён в ready. Frontend ADMIN-007 ждёт backend fixture. NEED-001 остаётся partial.
+и DOOR; backend 154/154, frontend 93/93, typecheck/build прошли. Backend ADMIN-006 опубликован как `130afcf9`; независимый QA на изолированном PostgreSQL/HTTP прошёл 42/42, backend suite 154/154 и Release build. QA harness опубликован как `43c40e02`. Frontend ADMIN-007 опубликован как `eb002ff2` (typecheck, 93/93, build); независимый QA запущен. NEED-001 остаётся partial.
 
 ## RATE-001 / OPS-001 — объединённый кандидат 2026-09-30
 
