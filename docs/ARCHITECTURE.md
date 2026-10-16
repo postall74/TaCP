@@ -87,6 +87,7 @@ email отклоняет весь update с 400, конкурентный кон
 - `auth-v2` / SEC-001 / ADR-008: register становится admin-only (401/403),
   успешные DTO сохраняются; анонимные клиенты регистрации должны перейти на
   административный сценарий. Login сохраняется. Backend публикует fixture.
+  AUTH-TYPES-001 уточняет только TypeScript-типы ответов login/register в `src/api/client.ts` по `auth-v2.fixture.json`: `expiresAt` — Unix milliseconds number, register — краткий DTO. HTTP wire format, маршруты и backend не меняются; клиенты, не читающие эти поля, сохраняют поведение.
 - `tenant-deploy-v1` / TEN-001 / ADR-007: проектирование отдельной БД и стека
   для каждого tenant; версия пока planned. Существующая БД — один исходный
   tenant, без автоматического перераспределения. Миграция и rollback подлежат

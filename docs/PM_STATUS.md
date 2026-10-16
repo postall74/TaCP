@@ -13,7 +13,7 @@
 старый email/login. Backend предложил узкий обратно совместимый
 `user-admin-v3`; PM зарегистрировал ADMIN-006 с критериями и rollback в
 ROADMAP/ARCHITECTURE. PM собрал чистую интеграционную базу `6b36e210` с ADMIN-003/004, SEC-004
-и DOOR; backend 154/154, frontend 93/93, typecheck/build прошли. Backend ADMIN-006 опубликован как `130afcf9`; независимый QA на изолированном PostgreSQL/HTTP прошёл 42/42, backend suite 154/154 и Release build. QA harness опубликован как `43c40e02`. Frontend ADMIN-007 опубликован как `eb002ff2` (typecheck, 93/93, build); независимый QA запущен. NEED-001 остаётся partial.
+и DOOR; backend 154/154, frontend 93/93, typecheck/build прошли. Backend ADMIN-006 опубликован как `130afcf9`; независимый QA на изолированном PostgreSQL/HTTP прошёл 42/42, backend suite 154/154 и Release build. QA harness опубликован как `43c40e02`. Frontend ADMIN-007 опубликован как `eb002ff2`; независимый QA прошёл 4/4 адресных и 97/97 полных тестов, typecheck/build и browser smoke на 1024/1440 в обеих темах. QA-тест опубликован как `54ee9b08` (PR #105). NEED-001 остаётся partial.
 
 ## RATE-001 / OPS-001 — объединённый кандидат 2026-09-30
 

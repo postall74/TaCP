@@ -192,7 +192,7 @@ backend молча игнорирует email. Rollback backend раньше fro
 
 ### ADMIN-007 — показывать подтверждённый email после правки пользователя
 
-Владелец: Frontend. Статус: `QA in progress` после backend fixture/handoff ADMIN-006.
+Владелец: Frontend. Статус: `QA passed; integration pending` после backend fixture/handoff ADMIN-006.
 Приоритет: P1. Контракт: `user-admin-v3`; NEED-001: `partial`.
 Область: `src/api/client.ts`, `src/store.ts`,
 `src/admin/components/UsersPage.tsx` и адресные frontend-тесты QA.
