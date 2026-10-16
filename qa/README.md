@@ -1,5 +1,9 @@
 # QA: журнал проверок и передача PM
 
+ADMIN-002: [независимый QA catalog-recycle-v1](ADMIN-002.md), backend snapshot
+от base `1edff933`: 100 .NET tests, clean Release build и 56 PostgreSQL/HTTP
+assertions прошли. Новых дефектов нет; NEED-001 остаётся partial.
+
 SEC-001: [независимый QA auth-v2](SEC-001.md), production `b1bb51eb`:
 96 .NET tests и 21 адресная HTTP/DB проверка прошли. Новых дефектов защиты
 registration не найдено. Git-операции оставлены PM.

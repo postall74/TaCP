@@ -1,4 +1,4 @@
-import type { AuthUser } from "../api/client";
+import { ApiError, type AuthUser } from "../api/client";
 import { genId } from "../utils";
 import type { Role } from "./roles";
 
@@ -51,7 +51,7 @@ const toAuthUser = (u: LocalUser): AuthUser => ({
 /** При первом запуске создаёт администратора (идемпотентно, как серверный сид). */
 export async function ensureLocalAdmin(): Promise<void> {
   const users = readUsers();
-  if (users.some((u) => u.email.toLowerCase() === ADMIN_SEED.email)) return;
+  if (users.some((u) => u.email.toLowerCase() === ADMIN_SEED.email || u.roles.some((r) => r.toLowerCase() === "admin"))) return;
   users.push({
     id: genId("usr"),
     email: ADMIN_SEED.email,
@@ -150,4 +150,19 @@ export async function localSetUserRole(id: string, role: Role): Promise<void> {
     );
   u.roles = [role];
   writeUsers(users);
+}
+
+/** user-admin-v1: demo deletion preserves the current session and other data. */
+export function localDeleteUser(id: string): void {
+  const users = readUsers();
+  const actor = users.find((u) => u.id === localStorage.getItem(LS_SESSION));
+  const isAdmin = (u: LocalUser) => u.roles.some((r) => r.toLowerCase() === "admin");
+  if (!actor) throw new ApiError(401, "Необходимо войти в систему");
+  if (!isAdmin(actor)) throw new ApiError(403, "Удаление доступно только администратору");
+  const target = users.find((u) => u.id === id);
+  if (!target) throw new ApiError(404, "Пользователь не найден");
+  if (id === actor.id || (isAdmin(target) && users.filter(isAdmin).length <= 1)) {
+    throw new ApiError(409, "Нельзя удалить текущего или последнего администратора");
+  }
+  writeUsers(users.filter((u) => u.id !== id));
 }

@@ -10,7 +10,7 @@ import { calcProject, genId } from "./utils";
 import { can, denyReason, type Role } from "./utils/roles";
 import {
   ensureLocalAdmin, localListUsers, localLogin, localLogout, localMe, localRegister, localSetUserRole,
-  localUpdateProfile, localUpdateUserProfile,
+  localUpdateProfile, localUpdateUserProfile, localDeleteUser,
 } from "./utils/localAuth";
 
 /* ============================================================
@@ -152,6 +152,7 @@ interface StoreState {
   initAuth: () => Promise<void>;
   /** Список пользователей: сервер (admin) или локальное хранилище. */
   listUsers: () => Promise<AuthUser[]>;
+  deleteUser: (id: string) => Promise<void>;
   /** Смена роли пользователя (сервер: PUT /api/auth/users/{id}/role, локально: сразу). */
   setUserRole: (id: string, role: string) => Promise<void>;
   /** Редактирование профиля любого пользователя (только admin через API). */
@@ -528,6 +529,15 @@ export const useStore = create<StoreState>()(
         listUsers: async () => {
           const a = api();
           return a ? a.users() : localListUsers();
+        },
+
+        deleteUser: async (id) => {
+          const me = get().user;
+          if (!me || !can(me, "users.manage")) throw new ApiError(403, "Удаление доступно только администратору");
+          if (id === me.id) throw new ApiError(409, "Нельзя удалить текущего пользователя");
+          const a = api();
+          if (a) await a.deleteUser(id);
+          else localDeleteUser(id);
         },
 
         setUserRole: async (id, role) => {

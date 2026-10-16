@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useStore } from "../../store";
 import { Plus, Edit2, Trash2, Shield, X, UserCog } from "lucide-react";
-import type { AuthUser } from "../../api/client";
+import { ApiError, type AuthUser } from "../../api/client";
 import { Btn, Field, Input, Modal, Select, cx } from "../../components/ui";
 import { ROLE_LABEL } from "../../utils/roles";
 
@@ -11,6 +11,7 @@ import { ROLE_LABEL } from "../../utils/roles";
  * Стиль соответствует основному приложению (токены bg-paper, text-ink и т.д.)
  */
 export default function UsersPage() {
+  const deleteUser = useStore((s) => s.deleteUser);
   const listUsers = useStore((s) => s.listUsers);
   const setUserRole = useStore((s) => s.setUserRole);
   const register = useStore((s) => s.register);
@@ -23,6 +24,11 @@ export default function UsersPage() {
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingUser, setEditingUser] = useState<AuthUser | null>(null);
+
+  const [deleteTarget, setDeleteTarget] = useState<AuthUser | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const deletePending = useRef(false);
 
   // Форма добавления
   const [newEmail, setNewEmail] = useState("");
@@ -71,14 +77,28 @@ export default function UsersPage() {
     }
   };
 
-  const handleDeleteUser = async (u: AuthUser) => {
-    if (u.id === user?.id) {
-      toast("Нельзя удалить самого себя", "err");
-      return;
+  const handleDeleteUser = async () => {
+    if (!deleteTarget || deletePending.current) return;
+    const target = deleteTarget;
+    deletePending.current = true;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await deleteUser(target.id);
+      setUsers((current) => current.filter((u) => u.id !== target.id));
+      setDeleteTarget(null);
+      toast(`Пользователь ${target.email} удалён`, "ok");
+      await loadUsers();
+    } catch (e) {
+      setDeleteError(e instanceof ApiError && e.status === 404
+        ? "Пользователь не найден. Возможно, он уже удалён. Закройте окно и обновите список."
+        : e instanceof ApiError && e.status === 409
+          ? "Удаление отклонено: нельзя удалить текущего или последнего администратора. Обновите список пользователей."
+          : e instanceof Error ? e.message : "Не удалось удалить пользователя. Повторите попытку.");
+    } finally {
+      deletePending.current = false;
+      setDeleting(false);
     }
-    if (!confirm(`Удалить пользователя ${u.email}?`)) return;
-    // В реальном проекте здесь будет вызов deleteUser
-    toast(`Удаление ${u.email} — функция в разработке (требуется бэкенд)`, "info");
   };
 
   const handleRoleChange = async (u: AuthUser, role: string) => {
@@ -145,6 +165,7 @@ export default function UsersPage() {
           <h2 className="font-display text-[26px] font-bold tracking-tight text-ink">Управление пользователями</h2>
           <p className="mt-1 text-[13.5px] text-mute">Всего: {users.length} пользователей</p>
         </div>
+        <Btn variant="ghost" onClick={loadUsers}>Обновить список</Btn>
         <Btn onClick={() => setShowAddModal(true)}>
           <Plus size={18} /> Добавить пользователя
         </Btn>
@@ -184,7 +205,7 @@ export default function UsersPage() {
                       <select
                         value={currentRole}
                         onChange={(e) => handleRoleChange(u, e.target.value)}
-                        disabled={u.id === user?.id}
+                        disabled={u.id === user?.id || deleting}
                         className={`px-2 py-1 text-xs rounded-full border-0 cursor-pointer font-semibold ${ROLE_COLORS[currentRole] || "bg-line text-mute"}`}
                       >
                         <option value="admin">Администратор</option>
@@ -203,8 +224,8 @@ export default function UsersPage() {
                     <Edit2 size={16} />
                   </button>
                   <button
-                    onClick={() => handleDeleteUser(u)}
-                    disabled={u.id === user?.id}
+                    onClick={() => { setDeleteTarget(u); setDeleteError(""); }}
+                    disabled={u.id === user?.id || deleting}
                     className="p-1 text-heat hover:bg-heat/10 rounded transition-colors disabled:opacity-30"
                     title="Удалить"
                   >
@@ -220,6 +241,15 @@ export default function UsersPage() {
         )}
       </div>
 
+      <Modal open={!!deleteTarget} onClose={() => { if (!deletePending.current) setDeleteTarget(null); }} title="Удалить пользователя?"
+        footer={<>
+          <Btn variant="ghost" disabled={deleting} onClick={() => setDeleteTarget(null)}>Отмена</Btn>
+          <Btn variant="danger" disabled={deleting} onClick={handleDeleteUser}>{deleting ? "Удаление…" : "Удалить пользователя"}</Btn>
+        </>}>
+        <p className="text-sm text-ink">Удалить пользователя {deleteTarget?.email}? Действие нельзя отменить.</p>
+        {deleting && <p role="status" className="mt-3 text-sm text-mute">Удаление…</p>}
+        {deleteError && <p role="alert" className="mt-3 text-sm text-heat">{deleteError}</p>}
+      </Modal>
       {/* Модальное окно добавления */}
       {showAddModal && (
         <Modal
