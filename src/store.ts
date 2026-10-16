@@ -262,7 +262,9 @@ export const useStore = create<StoreState>()(
       const enqueue = (op: OutboxOp) =>
         set((s) => {
           let rest = s.outbox.filter((x) => opKey(x) !== opKey(op));
-          if (op.kind === "equipment.delete") {
+          if (op.kind === "project.delete") {
+            rest = rest.filter((x) => !(x.kind === "project.upsert" && x.id === op.id));
+          } else if (op.kind === "equipment.delete") {
             rest = rest.filter((x) => !(x.kind === "equipment.upsert" && x.eqId === op.eqId));
           }
           return { outbox: [...rest, op] };
@@ -436,13 +438,25 @@ export const useStore = create<StoreState>()(
           const a = api();
           if (!a) return;
           const queue = [...get().outbox];
-          for (const op of queue) {
+          for (let index = 0; index < queue.length; index += 1) {
+            const op = queue[index];
             try {
               if (op.kind === "project.upsert") {
                 const p = get().projects.find((x) => x.id === op.id);
                 // Без локального payload отправлять нечего: сохраняем операцию,
                 // чтобы не отмечать потерянный проект как синхронизированный.
-                if (!p) return;
+                if (!p) {
+                  const supersededByDelete = queue.slice(index + 1).some(
+                    (candidate) => candidate.kind === "project.delete" && candidate.id === op.id,
+                  );
+                  // Совместимость со старой persisted-очередью: delete уже
+                  // заменил отсутствующий payload, поэтому upsert можно снять.
+                  if (supersededByDelete) {
+                    dequeue(op);
+                    continue;
+                  }
+                  return;
+                }
                 await sendProject(a, p);
               } else if (op.kind === "project.delete") {
                 await a.deleteProject(op.id);
