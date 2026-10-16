@@ -3,7 +3,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 using TkpApi;
 using TkpApi.Services;
@@ -154,104 +153,29 @@ _ = new Timer(_ =>
 app.MapGet("/api/health", () =>
     Results.Ok(new { status = "ok", service = "tkp-api", time = DateTime.UtcNow }));
 
-/* AsSplitQuery: дочерние наборы (шкафы, позиции, отсеки и версии) читаются
+/* AsSplitQuery: два дочерних набора (шкафы+позиции и версии) читаются
    отдельными SQL-запросами — без декартова произведения и предупреждения EF. */
 app.MapGet("/api/projects", async (TkpDbContext db) =>
-{
-    var projects = await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
-                     .Include(p => p.Cabinets).ThenInclude(c => c.Segments)
+    await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
                      .Include(p => p.Versions)
                      .AsSplitQuery()
-                     .OrderByDescending(p => p.UpdatedAt).ToListAsync();
-    foreach (var project in projects)
-        project.Versions = ProjectVersionSnapshots.ForResponse(project.Versions);
-    return projects;
-})
+                     .OrderByDescending(p => p.UpdatedAt).ToListAsync())
    .RequireAuthorization("Staff");
 
-app.MapPost("/api/projects", async (Project p, TkpDbContext db, ClaimsPrincipal user) =>
+app.MapPost("/api/projects", async (Project p, TkpDbContext db) =>
 {
-    var statusPermission = Rights.PermForStatus(p.Status);
-    if (!Rights.Can(user, statusPermission)) return Rights.Forbid(user, statusPermission);
-
-    var layoutError = (p.Cabinets ?? []).Select(CabinetDoorLayouts.Validate).FirstOrDefault(error => error is not null);
-    if (layoutError is not null) return Results.BadRequest(layoutError);
-
     if (string.IsNullOrEmpty(p.Id)) p.Id = Guid.NewGuid().ToString();
-    else if (await db.Projects.AnyAsync(existing => existing.Id == p.Id))
-        return ProjectIdConflict.Result();
-    if (await db.Projects.AnyAsync(x => x.Number == p.Number))
-        return ProjectNumberConflict.Result();
-
-    var cabinetIds = (p.Cabinets ?? []).Select(cabinet => cabinet.Id).ToList();
-    if (CabinetBatchConflict.HasDuplicateIds(cabinetIds) ||
-        (cabinetIds.Count > 0 && await db.Cabinets.AnyAsync(cabinet => cabinetIds.Contains(cabinet.Id))))
-        return CabinetBatchConflict.Result();
-
-    var itemIds = (p.Cabinets ?? []).SelectMany(cabinet => cabinet.Items ?? []).Select(item => item.Id).ToList();
-    if (CabinetItemBatchConflict.HasDuplicateIds(itemIds) ||
-        (itemIds.Count > 0 && await db.Items.AnyAsync(item => itemIds.Contains(item.Id))))
-        return CabinetItemBatchConflict.Result();
-
-    var segmentIds = (p.Cabinets ?? []).SelectMany(cabinet => cabinet.Segments ?? []).Select(segment => segment.Id).ToList();
-    if (CabinetSegmentBatchConflict.HasDuplicateIds(segmentIds) ||
-        (segmentIds.Count > 0 && await db.Segments.AnyAsync(segment => segmentIds.Contains(segment.Id))))
-        return CabinetSegmentBatchConflict.Result();
-
-    var versionIds = (p.Versions ?? []).Select(version => version.Id).ToList();
-    if (ProjectVersionBatchConflict.HasDuplicateIds(versionIds) ||
-        (versionIds.Count > 0 && await db.Versions.AnyAsync(version => versionIds.Contains(version.Id))))
-        return ProjectVersionBatchConflict.Result();
-
     db.Projects.Add(p);
-    try
-    {
-        await db.SaveChangesAsync();
-    }
-    catch (DbUpdateException error) when (ProjectIdConflict.Is(error))
-    {
-        // A concurrent request may claim the explicit ID after the precheck.
-        return ProjectIdConflict.Result();
-    }
-    catch (DbUpdateException error) when (ProjectNumberConflict.Is(error))
-    {
-        // A concurrent request may claim the number after the precheck.
-        return ProjectNumberConflict.Result();
-    }
-    catch (DbUpdateException error) when (CabinetBatchConflict.Is(error))
-    {
-        // A concurrent project may claim a nested cabinet ID after the precheck.
-        return CabinetBatchConflict.Result();
-    }
-    catch (DbUpdateException error) when (CabinetItemBatchConflict.Is(error))
-    {
-        // A concurrent project may claim a nested item ID after the precheck.
-        return CabinetItemBatchConflict.Result();
-    }
-    catch (DbUpdateException error) when (CabinetSegmentBatchConflict.Is(error))
-    {
-        // A concurrent project may claim a nested segment ID after the precheck.
-        return CabinetSegmentBatchConflict.Result();
-    }
-    catch (DbUpdateException error) when (ProjectVersionBatchConflict.Is(error))
-    {
-        // A concurrent project may claim a nested version ID after the precheck.
-        return ProjectVersionBatchConflict.Result();
-    }
+    await db.SaveChangesAsync();
     return Results.Created($"/api/projects/{p.Id}", p);
 }).RequireAuthorization("Staff");
 
 app.MapGet("/api/projects/{id}", async (string id, TkpDbContext db) =>
-{
-    var p = await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
-                     .Include(p => p.Cabinets).ThenInclude(c => c.Segments)
+    await db.Projects.Include(p => p.Cabinets).ThenInclude(c => c.Items)
                      .Include(p => p.Versions)
-                     .AsSplitQuery()
-                     .FirstOrDefaultAsync(p => p.Id == id);
-    if (p is null) return Results.NotFound();
-    p.Versions = ProjectVersionSnapshots.ForResponse(p.Versions);
-    return Results.Ok(p);
-})
+                     .FirstOrDefaultAsync(p => p.Id == id) is { } p
+        ? Results.Ok(p)
+        : Results.NotFound())
    .RequireAuthorization("Staff");
 
 /* Полная синхронизация: скаляры проекта + замена состава шкафов одним пакетом.
@@ -261,20 +185,8 @@ app.MapGet("/api/projects/{id}", async (string id, TkpDbContext db) =>
 app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext db, ClaimsPrincipal user) =>
 {
     var p = await db.Projects.Include(x => x.Cabinets).ThenInclude(c => c.Items)
-                             .Include(x => x.Cabinets).ThenInclude(c => c.Segments)
-                             .AsSplitQuery()
                              .FirstOrDefaultAsync(x => x.Id == id);
     if (p is null) return Results.NotFound();
-
-    var schemaConflict = p.Cabinets.Select(CabinetDoorLayouts.UnsupportedPersistedSchema)
-        .FirstOrDefault(conflict => conflict is not null);
-    if (schemaConflict is not null) return Results.Conflict(schemaConflict);
-
-    var layoutError = (patch.Cabinets ?? []).Select(CabinetDoorLayouts.Validate).FirstOrDefault(error => error is not null);
-    if (layoutError is not null) return Results.BadRequest(layoutError);
-
-    if (await db.Projects.AnyAsync(x => x.Id != id && x.Number == patch.Number))
-        return ProjectNumberConflict.Result();
 
     if (patch.Status != p.Status)
     {
@@ -282,79 +194,15 @@ app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext d
         if (!Rights.Can(user, perm)) return Rights.Forbid(user, perm);
     }
 
-    var cabinetIds = (patch.Cabinets ?? []).Select(cabinet => cabinet.Id).ToList();
-    if (CabinetBatchConflict.HasDuplicateIds(cabinetIds))
-        return CabinetBatchConflict.Result();
-
-    var ownCabinetIds = p.Cabinets.Select(cabinet => cabinet.Id).ToHashSet(StringComparer.Ordinal);
-    var foreignCandidateIds = cabinetIds.Where(cabinetId => !ownCabinetIds.Contains(cabinetId)).ToList();
-    if (foreignCandidateIds.Count > 0 &&
-        await db.Cabinets.AnyAsync(cabinet => foreignCandidateIds.Contains(cabinet.Id)))
-        return CabinetBatchConflict.Result();
-
-    var itemIds = (patch.Cabinets ?? []).SelectMany(cabinet => cabinet.Items ?? []).Select(item => item.Id).ToList();
-    if (CabinetItemBatchConflict.HasDuplicateIds(itemIds))
-        return CabinetItemBatchConflict.Result();
-
-    var ownItemIds = p.Cabinets.SelectMany(cabinet => cabinet.Items).Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
-    var foreignItemCandidateIds = itemIds.Where(itemId => !ownItemIds.Contains(itemId)).ToList();
-    if (foreignItemCandidateIds.Count > 0 &&
-        await db.Items.AnyAsync(item => foreignItemCandidateIds.Contains(item.Id)))
-        return CabinetItemBatchConflict.Result();
-
-    var segmentIds = (patch.Cabinets ?? []).SelectMany(cabinet => cabinet.Segments ?? []).Select(segment => segment.Id).ToList();
-    if (CabinetSegmentBatchConflict.HasDuplicateIds(segmentIds))
-        return CabinetSegmentBatchConflict.Result();
-
-    var ownSegmentIds = p.Cabinets.SelectMany(cabinet => cabinet.Segments ?? []).Select(segment => segment.Id).ToHashSet(StringComparer.Ordinal);
-    var foreignSegmentCandidateIds = segmentIds.Where(segmentId => !ownSegmentIds.Contains(segmentId)).ToList();
-    if (foreignSegmentCandidateIds.Count > 0 &&
-        await db.Segments.AnyAsync(segment => foreignSegmentCandidateIds.Contains(segment.Id)))
-        return CabinetSegmentBatchConflict.Result();
-
-    var existingLayouts = p.Cabinets
-        .Where(cabinet => cabinet.DoorLayout is not null)
-        .ToDictionary(cabinet => cabinet.Id, cabinet => CabinetDoorLayouts.Clone(cabinet.DoorLayout!), StringComparer.Ordinal);
-    foreach (var cabinet in patch.Cabinets ?? [])
-    {
-        // A legacy full-project payload has no doorLayout. Preserve the last confirmed
-        // layout; explicit clearing is the addressed DELETE endpoint below.
-        if (cabinet.DoorLayout is null && existingLayouts.TryGetValue(cabinet.Id, out var existingLayout))
-            cabinet.DoorLayout = existingLayout;
-    }
-
     var created = p.CreatedAt;
-    patch.Id = id;
     db.Entry(p).CurrentValues.SetValues(patch);
+    p.Id = id;
     p.CreatedAt = created;
     p.UpdatedAt = DateTime.UtcNow;
 
     db.Cabinets.RemoveRange(p.Cabinets);          // cascade удалит позиции
     p.Cabinets = patch.Cabinets ?? new List<Cabinet>();
-    try
-    {
-        await db.SaveChangesAsync();
-    }
-    catch (DbUpdateException error) when (ProjectNumberConflict.Is(error))
-    {
-        // SaveChanges is transactional, so scalar and nested changes are rolled back together.
-        return ProjectNumberConflict.Result();
-    }
-    catch (DbUpdateException error) when (CabinetBatchConflict.Is(error))
-    {
-        // A concurrent project update may claim a new cabinet ID after the precheck.
-        return CabinetBatchConflict.Result();
-    }
-    catch (DbUpdateException error) when (CabinetItemBatchConflict.Is(error))
-    {
-        // A concurrent project update may claim a new nested item ID after the precheck.
-        return CabinetItemBatchConflict.Result();
-    }
-    catch (DbUpdateException error) when (CabinetSegmentBatchConflict.Is(error))
-    {
-        // A concurrent project update may claim a new nested segment ID after the precheck.
-        return CabinetSegmentBatchConflict.Result();
-    }
+    await db.SaveChangesAsync();
     return Results.Ok(p);
 }).RequireAuthorization("Staff");
 
@@ -373,90 +221,13 @@ app.MapDelete("/api/projects/{id}", async (string id, TkpDbContext db, ClaimsPri
 /* Шкафы: пакетное добавление (результат мастера подбора). */
 app.MapPost("/api/projects/{id}/cabinets", async (string id, List<Cabinet> cabs, TkpDbContext db) =>
 {
-    var layoutError = cabs.Select(CabinetDoorLayouts.Validate).FirstOrDefault(error => error is not null);
-    if (layoutError is not null) return Results.BadRequest(layoutError);
-
     var p = await db.Projects.Include(x => x.Cabinets).ThenInclude(c => c.Items)
                              .FirstOrDefaultAsync(x => x.Id == id);
     if (p is null) return Results.NotFound();
-
-    var cabinetIds = cabs.Select(c => c.Id).ToList();
-    if (CabinetBatchConflict.HasDuplicateIds(cabinetIds) ||
-        (cabinetIds.Count > 0 && await db.Cabinets.AnyAsync(c => cabinetIds.Contains(c.Id))))
-        return CabinetBatchConflict.Result();
-
-    var itemIds = cabs.SelectMany(c => c.Items ?? []).Select(item => item.Id).ToList();
-    if (CabinetItemBatchConflict.HasDuplicateIds(itemIds) ||
-        (itemIds.Count > 0 && await db.Items.AnyAsync(item => itemIds.Contains(item.Id))))
-        return CabinetItemBatchConflict.Result();
-
-    var segmentIds = cabs.SelectMany(c => c.Segments ?? []).Select(segment => segment.Id).ToList();
-    if (CabinetSegmentBatchConflict.HasDuplicateIds(segmentIds) ||
-        (segmentIds.Count > 0 && await db.Segments.AnyAsync(segment => segmentIds.Contains(segment.Id))))
-        return CabinetSegmentBatchConflict.Result();
-
     p.Cabinets.AddRange(cabs);
     p.UpdatedAt = DateTime.UtcNow;
-    try
-    {
-        await db.SaveChangesAsync();
-    }
-    catch (DbUpdateException error) when (CabinetBatchConflict.Is(error))
-    {
-        // A concurrent batch may claim a cabinet ID after the precheck.
-        return CabinetBatchConflict.Result();
-    }
-    catch (DbUpdateException error) when (CabinetItemBatchConflict.Is(error))
-    {
-        // A concurrent batch may claim a nested item ID after the precheck.
-        return CabinetItemBatchConflict.Result();
-    }
-    catch (DbUpdateException error) when (CabinetSegmentBatchConflict.Is(error))
-    {
-        // A concurrent batch may claim a nested segment ID after the precheck.
-        return CabinetSegmentBatchConflict.Result();
-    }
+    await db.SaveChangesAsync();
     return Results.Ok(p.Cabinets);
-}).RequireAuthorization("Staff");
-
-app.MapPut("/api/projects/{projectId}/cabinets/{cabinetId}/door-layout",
-    async (string projectId, string cabinetId, CabinetDoorLayout? layout, TkpDbContext db) =>
-{
-    if (layout is null)
-        return Results.BadRequest(new CabinetDoorLayoutError(
-            "Для очистки компоновки используйте DELETE", cabinetId));
-
-    var project = await db.Projects.Include(p => p.Cabinets)
-        .FirstOrDefaultAsync(p => p.Id == projectId);
-    if (project is null) return Results.NotFound();
-    var cabinet = project.Cabinets.FirstOrDefault(c => c.Id == cabinetId);
-    if (cabinet is null) return Results.NotFound();
-    var schemaConflict = CabinetDoorLayouts.UnsupportedPersistedSchema(cabinet);
-    if (schemaConflict is not null) return Results.Conflict(schemaConflict);
-    var layoutError = CabinetDoorLayouts.Validate(cabinetId, layout);
-    if (layoutError is not null) return Results.BadRequest(layoutError);
-
-    cabinet.DoorLayout = layout;
-    project.UpdatedAt = DateTime.UtcNow;
-    await db.SaveChangesAsync();
-    return Results.Ok(cabinet.DoorLayout);
-}).RequireAuthorization("Staff");
-
-app.MapDelete("/api/projects/{projectId}/cabinets/{cabinetId}/door-layout",
-    async (string projectId, string cabinetId, TkpDbContext db) =>
-{
-    var project = await db.Projects.Include(p => p.Cabinets)
-        .FirstOrDefaultAsync(p => p.Id == projectId);
-    if (project is null) return Results.NotFound();
-    var cabinet = project.Cabinets.FirstOrDefault(c => c.Id == cabinetId);
-    if (cabinet is null) return Results.NotFound();
-    var schemaConflict = CabinetDoorLayouts.UnsupportedPersistedSchema(cabinet);
-    if (schemaConflict is not null) return Results.Conflict(schemaConflict);
-
-    cabinet.DoorLayout = null;
-    project.UpdatedAt = DateTime.UtcNow;
-    await db.SaveChangesAsync();
-    return Results.NoContent();
 }).RequireAuthorization("Staff");
 
 app.MapDelete("/api/cabinets/{id}", async (string id, TkpDbContext db) =>
@@ -488,14 +259,10 @@ app.MapPost("/api/cabinets/{id}/items", async (string id, string equipmentId, de
 
 /* ---------------- Версии ---------------- */
 
-app.MapPost("/api/projects/{id}/versions", async (string id, string? label, TkpDbContext db,
-    IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions> jsonOptions) =>
+app.MapPost("/api/projects/{id}/versions", async (string id, string? label, TkpDbContext db) =>
 {
     var p = await db.Projects.Include(x => x.Cabinets).ThenInclude(c => c.Items)
-                             .Include(x => x.Cabinets).ThenInclude(c => c.Segments)
-                             .Include(x => x.Versions)
-                             .AsSplitQuery()
-                             .FirstOrDefaultAsync(x => x.Id == id);
+                             .Include(x => x.Versions).FirstOrDefaultAsync(x => x.Id == id);
     if (p is null) return Results.NotFound();
 
     var eqBase = p.Cabinets.Sum(c => c.Items.Sum(i => i.Purchase * i.Qty)); // база = закупочная
@@ -503,10 +270,10 @@ app.MapPost("/api/projects/{id}/versions", async (string id, string? label, TkpD
     {
         cabinets = p.Cabinets,
         calc = new { eqBase, total = eqBase * (1 + p.Markup / 100m) } // ориентир; полный расчёт — на клиенте
-    }, jsonOptions.Value.SerializerOptions);
+    });
     p.Versions.Insert(0, new ProjectVersion { Label = label ?? $"Версия {p.Versions.Count + 1}", Snapshot = snapshot });
     await db.SaveChangesAsync();
-    return Results.Ok(ProjectVersionSnapshots.ForResponse(p.Versions));
+    return Results.Ok(p.Versions);
 }).RequireAuthorization("Staff");
 
 /* ---------------- Каталог ---------------- */
@@ -522,43 +289,19 @@ app.MapGet("/api/catalog", async (TkpDbContext db) =>
 app.MapPost("/api/catalog", async (Equipment e, TkpDbContext db) =>
 {
     var sku = e.Sku.Trim();
-    await using var transaction = await db.Database.BeginTransactionAsync();
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"SELECT pg_advisory_xact_lock(hashtextextended(lower({sku}), 0))");
-
     var existing = await db.Equipment.FirstOrDefaultAsync(x =>
         x.Sku.ToLower() == sku.ToLower() ||
         (x.Name.ToLower() == e.Name.Trim().ToLower() && x.Brand.ToLower() == e.Brand.Trim().ToLower()));
     if (existing is not null)
         return Results.Conflict(new { detail = "Такая позиция уже есть в справочнике", existing });
 
-    if (string.IsNullOrEmpty(e.Id)) e.Id = Guid.NewGuid().ToString();
-    var existingId = await db.Equipment.FindAsync(e.Id);
-    if (existingId is not null)
-        return Results.Conflict(new { detail = "Позиция с таким идентификатором уже есть в справочнике", existing = existingId });
-
     // повторное добавление артикула возвращает позицию из «корзины»
     var tomb = await db.DeletedEquipment.FirstOrDefaultAsync(x => x.Sku.ToLower() == sku.ToLower());
     if (tomb is not null) db.DeletedEquipment.Remove(tomb);
 
+    if (string.IsNullOrEmpty(e.Id)) e.Id = Guid.NewGuid().ToString();
     db.Equipment.Add(e);
-    try
-    {
-        await db.SaveChangesAsync();
-    }
-    catch (DbUpdateException error) when (error.InnerException is Npgsql.PostgresException
-        { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_equipment_catalog_Sku" })
-    {
-        // A competing create may claim the SKU after the duplicate precheck.
-        return Results.Conflict(new { detail = "Такая позиция уже есть в справочнике" });
-    }
-    catch (DbUpdateException error) when (error.InnerException is Npgsql.PostgresException
-        { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation, ConstraintName: "PK_equipment_catalog" })
-    {
-        // A competing create may claim the explicit ID after the duplicate precheck.
-        return Results.Conflict(new { detail = "Позиция с таким идентификатором уже есть в справочнике" });
-    }
-    await transaction.CommitAsync();
+    await db.SaveChangesAsync();
     return Results.Created("/api/catalog", e);
 }).RequireAuthorization("Staff");
 
@@ -569,36 +312,20 @@ app.MapPost("/api/catalog", async (Equipment e, TkpDbContext db) =>
 app.MapPut("/api/catalog/{id}", async (string id, Equipment e, TkpDbContext db) =>
 {
     e.Id = id;
-    var lockSku = e.Sku.Trim();
-    var sku = lockSku.ToLower();
-    await using var transaction = await db.Database.BeginTransactionAsync();
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"SELECT pg_advisory_xact_lock(hashtextextended(lower({lockSku}), 0))");
-
-    var dup = await db.Equipment.AnyAsync(x => x.Id != id && x.Sku.ToLower() == sku);
-    if (dup) return Results.Conflict(new { detail = "Позиция с таким артикулом уже есть в справочнике" });
-
     var ex = await db.Equipment.FindAsync(id);
     if (ex is null)
     {
+        var sku = e.Sku.Trim().ToLower();
+        var dup = await db.Equipment.AnyAsync(x => x.Id != id && x.Sku.ToLower() == sku);
+        if (dup) return Results.Conflict(new { detail = "Позиция с таким артикулом уже есть в справочнике" });
         db.Equipment.Add(e);
     }
-    else db.Entry(ex).CurrentValues.SetValues(e);
+    else db.Equipment.Update(e);
 
     var tomb = await db.DeletedEquipment.FirstOrDefaultAsync(x => x.Id == id || x.Sku.ToLower() == e.Sku.Trim().ToLower());
     if (tomb is not null) db.DeletedEquipment.Remove(tomb); // «воскрешение»
 
-    try
-    {
-        await db.SaveChangesAsync();
-    }
-    catch (DbUpdateException error) when (error.InnerException is Npgsql.PostgresException
-        { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_equipment_catalog_Sku" })
-    {
-        // A competing write may claim the SKU after the precheck. SaveChanges rolls back the batch.
-        return Results.Conflict(new { detail = "Позиция с таким артикулом уже есть в справочнике" });
-    }
-    await transaction.CommitAsync();
+    await db.SaveChangesAsync();
     return Results.Ok(e);
 }).RequireAuthorization("Staff");
 
@@ -610,10 +337,6 @@ app.MapPut("/api/catalog/{id}", async (string id, Equipment e, TkpDbContext db) 
 app.MapDelete("/api/catalog/{id}", async (string id, TkpDbContext db, ClaimsPrincipal user) =>
 {
     if (!Rights.Can(user, Rights.CatalogDelete)) return Rights.Forbid(user, Rights.CatalogDelete);
-    await using var transaction = await db.Database.BeginTransactionAsync();
-    await db.Database.ExecuteSqlInterpolatedAsync(
-        $"SELECT pg_advisory_xact_lock(hashtextextended({id}, 1))");
-
     var e = await db.Equipment.FindAsync(id);
     if (e is null) return Results.NoContent(); // уже удалена (например, офлайн-очередью)
 
@@ -629,7 +352,6 @@ app.MapDelete("/api/catalog/{id}", async (string id, TkpDbContext db, ClaimsPrin
     });
     db.Equipment.Remove(e);
     await db.SaveChangesAsync();
-    await transaction.CommitAsync();
     return Results.NoContent();
 }).RequireAuthorization("Staff");
 
@@ -666,7 +388,7 @@ app.MapPost("/api/catalog/import", async (HttpRequest req, TkpDbContext db, Clai
 
 /* ---------------- Конфигуратор составных шкафов ---------------- */
 /* Серверное зеркало фронтового src/utils/kit.ts для тонких клиентов. */
-app.MapGet("/api/kits/systems", () => KitEngine.Systems).RequireAuthorization("Staff");
+app.MapGet("/api/kits/systems", () => KitEngine.Systems);
 
 app.MapPost("/api/kits/calculate", (KitInput input) =>
 {
@@ -674,7 +396,7 @@ app.MapPost("/api/kits/calculate", (KitInput input) =>
     var hours = KitEngine.KitAssemblyHours(input);
     var total = lines.Sum(l => l.Qty * l.Purchase);
     return Results.Ok(new { lines, hours, total });
-}).RequireAuthorization("Staff");
+});
 
 var rates = new Rates();
 app.MapGet("/api/rates", () => rates).RequireAuthorization("Staff");
@@ -731,31 +453,31 @@ app.MapPost("/api/cabinets/thermal-calc", (ThermalCalcRequest req) =>
 {
     var heatW = thermalEngine.CalculateHeatDissipation(req.Cabinet, req.Catalog);
     return Results.Ok(new { heatWatts = heatW });
-}).RequireAuthorization("Staff");
+});
 
 app.MapPost("/api/cabinets/configure-empty", (ConfigureEmptyRequest req) =>
 {
     var config = cabinetConfigurator.CreateEmptyCabinet(req.Brand, req.H, req.W, req.D, req.Ip, req.Mount);
     return Results.Ok(config);
-}).RequireAuthorization("Staff");
+});
 
 app.MapPost("/api/cabinets/configure-preassembled", (ConfigurePreassembledRequest req) =>
 {
     var config = cabinetConfigurator.CreatePreassembledCabinet(req.Brand, req.H, req.W, req.D, req.Ip, req.Items);
     return Results.Ok(config);
-}).RequireAuthorization("Staff");
+});
 
 app.MapPost("/api/cabinets/assemble-side", (AssembleRequest req) =>
 {
     var assembly = assemblyService.CreateSideBySideAssembly(req.Name, req.Cabinets);
     return Results.Ok(assembly);
-}).RequireAuthorization("Staff");
+});
 
 app.MapPost("/api/cabinets/assemble-front-back", (AssembleRequest req) =>
 {
     var assembly = assemblyService.CreateFrontToBackAssembly(req.Name, req.Cabinets);
     return Results.Ok(assembly);
-}).RequireAuthorization("Staff");
+});
 
 app.Run();
 
@@ -852,100 +574,4 @@ static bool HasAnyTable(TkpDbContext db)
     {
         return false;
     }
-}
-
-public static class ProjectIdConflict
-{
-    public const string Detail = "Проект с таким идентификатором уже существует";
-
-    public static bool Is(DbUpdateException error) =>
-        error.InnerException is Npgsql.PostgresException
-        {
-            SqlState: Npgsql.PostgresErrorCodes.UniqueViolation,
-            ConstraintName: "PK_projects",
-        };
-
-    public static IResult Result() => Results.Conflict(new { detail = Detail });
-}
-
-public static class ProjectNumberConflict
-{
-    public const string Detail = "Проект с таким номером уже существует";
-
-    public static bool Is(DbUpdateException error) =>
-        error.InnerException is Npgsql.PostgresException
-        {
-            SqlState: Npgsql.PostgresErrorCodes.UniqueViolation,
-            ConstraintName: "IX_projects_Number",
-        };
-
-    public static IResult Result() => Results.Conflict(new { detail = Detail });
-}
-
-public static class CabinetBatchConflict
-{
-    public const string Detail = "Шкаф с таким идентификатором уже существует";
-
-    public static bool HasDuplicateIds(IEnumerable<string> ids) =>
-        ids.GroupBy(id => id, StringComparer.Ordinal).Any(group => group.Count() > 1);
-
-    public static bool Is(DbUpdateException error) =>
-        error.InnerException is Npgsql.PostgresException
-        {
-            SqlState: Npgsql.PostgresErrorCodes.UniqueViolation,
-            ConstraintName: "PK_project_cabinets",
-        };
-
-    public static IResult Result() => Results.Conflict(new { detail = Detail });
-}
-
-public static class CabinetItemBatchConflict
-{
-    public const string Detail = "Позиция шкафа с таким идентификатором уже существует";
-
-    public static bool HasDuplicateIds(IEnumerable<string> ids) =>
-        ids.GroupBy(id => id, StringComparer.Ordinal).Any(group => group.Count() > 1);
-
-    public static bool Is(DbUpdateException error) =>
-        error.InnerException is Npgsql.PostgresException
-        {
-            SqlState: Npgsql.PostgresErrorCodes.UniqueViolation,
-            ConstraintName: "PK_project_items",
-        };
-
-    public static IResult Result() => Results.Conflict(new { detail = Detail });
-}
-
-public static class CabinetSegmentBatchConflict
-{
-    public const string Detail = "Сегмент шкафа с таким идентификатором уже существует";
-
-    public static bool HasDuplicateIds(IEnumerable<string> ids) =>
-        ids.GroupBy(id => id, StringComparer.Ordinal).Any(group => group.Count() > 1);
-
-    public static bool Is(DbUpdateException error) =>
-        error.InnerException is Npgsql.PostgresException
-        {
-            SqlState: Npgsql.PostgresErrorCodes.UniqueViolation,
-            ConstraintName: "PK_cabinet_segments",
-        };
-
-    public static IResult Result() => Results.Conflict(new { detail = Detail });
-}
-
-public static class ProjectVersionBatchConflict
-{
-    public const string Detail = "Версия проекта с таким идентификатором уже существует";
-
-    public static bool HasDuplicateIds(IEnumerable<string> ids) =>
-        ids.GroupBy(id => id, StringComparer.Ordinal).Any(group => group.Count() > 1);
-
-    public static bool Is(DbUpdateException error) =>
-        error.InnerException is Npgsql.PostgresException
-        {
-            SqlState: Npgsql.PostgresErrorCodes.UniqueViolation,
-            ConstraintName: "PK_project_versions",
-        };
-
-    public static IResult Result() => Results.Conflict(new { detail = Detail });
 }

@@ -259,7 +259,6 @@ function VersionsTab({ project }: { project: Project }) {
   const toast = useStore((s) => s.toast);
   const [label, setLabel] = useState("");
   const [confirm, setConfirm] = useState<string | null>(null);
-  const [versionBusy, setVersionBusy] = useState<string | null>(null);
 
   const currentTotal = calcProject(project, useStore.getState().settings.rates).total;
 
@@ -278,15 +277,8 @@ function VersionsTab({ project }: { project: Project }) {
             placeholder={`Версия ${project.versions.length + 1} — например, «после звонка заказчику»`}
             className="h-9 flex-1 rounded-md border border-line bg-card px-3 text-[12.5px] outline-none focus:border-accent"
           />
-          <Btn size="sm" disabled={versionBusy !== null} onClick={async () => {
-            setVersionBusy("save");
-            const saved = await saveVersion(project.id, label.trim());
-            setVersionBusy(null);
-            if (!saved) return;
-            setLabel("");
-            toast("Версия сохранена");
-          }}>
-            <IcPlus size={14} /> {versionBusy === "save" ? "Сохранение…" : "Сохранить"}
+          <Btn size="sm" onClick={() => { saveVersion(project.id, label.trim()); setLabel(""); toast("Версия сохранена"); }}>
+            <IcPlus size={14} /> Сохранить
           </Btn>
         </div>
       </div>
@@ -321,17 +313,9 @@ function VersionsTab({ project }: { project: Project }) {
                 <span className="anim-scale flex gap-1">
                   <button
                     className="cursor-pointer rounded-md bg-warn px-2.5 py-1.5 text-[11px] font-bold text-white"
-                    disabled={versionBusy !== null}
-                    onClick={async () => {
-                      setVersionBusy(v.id);
-                      const restored = await restoreVersion(project.id, v.id);
-                      setVersionBusy(null);
-                      if (!restored) return;
-                      setConfirm(null);
-                      toast("Версия восстановлена в структуру", "info");
-                    }}
+                    onClick={() => { restoreVersion(project.id, v.id); setConfirm(null); toast("Версия восстановлена в структуру", "info"); }}
                   >
-                    {versionBusy === v.id ? "Восстановление…" : "Восстановить?"}
+                    Восстановить?
                   </button>
                   <button className="cursor-pointer rounded-md border border-line px-2 py-1.5 text-[11px] font-bold text-mute" onClick={() => setConfirm(null)}>
                     Нет
