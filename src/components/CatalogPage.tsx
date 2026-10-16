@@ -227,10 +227,15 @@ export default function CatalogPage() {
         setEditTarget(null);
       }} />
 
-      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} onImport={(items, csv) => {
-        const n = importEquipment(items, csv);
-        toast(`Импортировано ${n} ${plural(n, "позиция", "позиции", "позиций")}`);
-        setImportOpen(false);
+      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} onImport={async (items, csv) => {
+        try {
+          const n = await importEquipment(items, csv);
+          toast(`Импортировано ${n} ${plural(n, "позиция", "позиции", "позиций")}`);
+          setImportOpen(false);
+        } catch (error) {
+          toast(error instanceof Error ? error.message : "Не удалось импортировать справочник", "err");
+          throw error;
+        }
       }} />
 
       <Modal
@@ -364,7 +369,7 @@ function ImportModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onImport: (items: Omit<Equipment, "id">[], csv: string) => void;
+  onImport: (items: Omit<Equipment, "id">[], csv: string) => Promise<void>;
 }) {
   const [text, setText] = useState("");
   const parsed = useMemo(() => parseCatalogCsv(text), [text]);
@@ -381,7 +386,14 @@ function ImportModal({
             <IcDatabase size={14} /> Вставить пример
           </Btn>
           <Btn variant="outline" onClick={onClose}>Отмена</Btn>
-          <Btn disabled={parsed.items.length === 0} onClick={() => { onImport(parsed.items, text); setText(""); }}>
+          <Btn disabled={parsed.items.length === 0} onClick={async () => {
+            try {
+              await onImport(parsed.items, text);
+              setText("");
+            } catch {
+              // CSV остаётся в окне для повторной отправки.
+            }
+          }}>
             <IcUpload size={14} /> Импортировать {parsed.items.length > 0 ? `(${parsed.items.length})` : ""}
           </Btn>
         </>

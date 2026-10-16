@@ -189,7 +189,7 @@ interface StoreState {
   upsertEquipment: (e: Equipment) => void;
   deleteEquipment: (id: string) => void;
   restoreEquipment: (id: string) => Promise<void>;
-  importEquipment: (items: Omit<Equipment, "id">[], csv?: string) => number;
+  importEquipment: (items: Omit<Equipment, "id">[], csv?: string) => Promise<number>;
 }
 
 export const useStore = create<StoreState>()(
@@ -1100,11 +1100,12 @@ export const useStore = create<StoreState>()(
         },
 
         /* Импорт прайсов — массовая перезапись цен: только менеджер/админ. */
-        importEquipment: (items, csv) => {
+        importEquipment: async (items, csv) => {
           if (!can(get().user, "catalog.import")) {
             get().toast(denyReason(get().user, "catalog.import"), "err");
             return 0;
           }
+          const catalogBeforeImport = get().catalog;
           let added = 0;
           set((s) => {
             const bySku = new Map(s.catalog.map((e) => [e.sku.toLowerCase(), e] as const));
@@ -1126,7 +1127,16 @@ export const useStore = create<StoreState>()(
             return { catalog: next };
           });
           // сервер сам разбирает CSV: дубликаты по артикулу обновит, новое добавит
-          if (csv) api()?.importCsv(csv).then(syncOk).catch(syncFail);
+          const a = api();
+          if (csv && a) {
+            try {
+              await a.importCsv(csv);
+              syncOk();
+            } catch (error) {
+              set({ catalog: catalogBeforeImport });
+              throw error;
+            }
+          }
           return added;
         },
       };
