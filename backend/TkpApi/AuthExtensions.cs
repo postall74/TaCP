@@ -223,14 +223,30 @@ public static class AuthExtensions
 
         // Правка профиля любого пользователя — только админ (страница «Пользователи»):
         // контактные данные инженеров может актуализировать и руководство.
-        app.MapPut("/api/auth/users/{id}", async (string id, UpdateProfileDto dto, UserManager<AppUser> users) =>
+        app.MapPut("/api/auth/users/{id}", async (string id, AdminUpdateUserDto dto, UserManager<AppUser> users) =>
         {
             var user = await users.FindByIdAsync(id);
             if (user is null) return Results.NotFound();
             if (dto.FullName is not null) user.FullName = dto.FullName.Trim();
             if (dto.Position is not null) user.Position = dto.Position.Trim();
             if (dto.Phone is not null) user.PhoneNumber = dto.Phone.Trim();
-            await users.UpdateAsync(user);
+            if (dto.Email is not null)
+            {
+                var email = dto.Email.Trim();
+                user.Email = email;
+                user.UserName = email;
+            }
+
+            var update = await users.UpdateAsync(user);
+            if (!update.Succeeded)
+            {
+                var errors = update.Errors.ToArray();
+                var response = new { errors = errors.Select(e => AdminUpdateError(e.Code)).ToArray() };
+                return errors.Any(e => e.Code == "ConcurrencyFailure")
+                    ? Results.Conflict(response)
+                    : Results.BadRequest(response);
+            }
+
             return Results.Ok(ToDto(user, await users.GetRolesAsync(user)));
         }).RequireAuthorization("AdminOnly");
 
@@ -306,6 +322,14 @@ public static class AuthExtensions
         _ => code ?? "Не удалось создать пользователя",
     };
 
+    private static string AdminUpdateError(string? code) => code switch
+    {
+        "DuplicateUserName" or "DuplicateEmail" => "Пользователь с таким e-mail уже существует",
+        "InvalidEmail" or "InvalidUserName" => "Некорректный формат e-mail",
+        "ConcurrencyFailure" => "Данные пользователя были изменены другим запросом. Обновите список и повторите попытку",
+        _ => "Не удалось сохранить данные пользователя",
+    };
+
     private static (string Token, DateTime ExpiresAt) IssueToken(AppUser user, IList<string> roles, IConfiguration config)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(GetKey(config)));
@@ -349,3 +373,5 @@ public sealed record RegisterDto(string Email, string Password, string FullName,
 public sealed record ChangeRoleDto(string Role);
 /// <summary>Правка профиля: ФИО, должность, телефон. Пустая строка = очистить поле.</summary>
 public sealed record UpdateProfileDto(string? FullName, string? Position, string? Phone);
+/// <summary>Административная правка профиля и логина. Null сохраняет прежнее значение.</summary>
+public sealed record AdminUpdateUserDto(string? FullName, string? Position, string? Phone, string? Email);
