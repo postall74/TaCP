@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { ApiError, restApi, toCompany, getToken, setToken, type AuthUser, type ProfilePatch, type RestApi } from "./api/client";
+import {
+  ApiError, restApi, toCompany, getToken, setToken,
+  type AdminUpdateUserPatch, type AuthUser, type ProfilePatch, type RestApi,
+} from "./api/client";
 import { CATALOG } from "./data/catalog";
 import { buildTemplateCabinets } from "./data/templates";
 import type {
@@ -151,7 +154,7 @@ interface StoreState {
   /** Смена роли пользователя (сервер: PUT /api/auth/users/{id}/role, локально: сразу). */
   setUserRole: (id: string, role: string) => Promise<void>;
   /** Редактирование профиля любого пользователя (только admin через API). */
-  updateUserProfile: (id: string, patch: { fullName?: string; position?: string; phone?: string; email?: string }) => Promise<void>;
+  updateUserProfile: (id: string, patch: AdminUpdateUserPatch) => Promise<AuthUser>;
 
   createProject: (a: {
     title: string; client: string; contact: string; direction: Direction;
@@ -510,19 +513,30 @@ export const useStore = create<StoreState>()(
 
         updateUserProfile: async (id, patch) => {
           const a = api();
+          const requested = patch.email?.trim();
+          let next: AuthUser;
           if (a) {
             // Серверный эндпоинт для админа: PUT /api/auth/users/:id
-            await a.putUser(id, patch);
+            next = await a.putUser(id, { ...patch, ...(requested !== undefined ? { email: requested } : {}) });
+            if (requested !== undefined && next.email.trim().toLocaleLowerCase() !== requested.toLocaleLowerCase()) {
+              throw new ApiError(
+                409,
+                "Сервер не подтвердил изменение email. Обновите backend и повторите сохранение."
+              );
+            }
             syncOk();
           } else {
             // Локально: обновляем в localStorage
-            localUpdateUserProfile(id, patch);
+            localUpdateUserProfile(id, { ...patch, ...(requested !== undefined ? { email: requested } : {}) });
+            const saved = (await localListUsers()).find((candidate) => candidate.id === id);
+            if (!saved) throw new Error("Пользователь не найден");
+            next = saved;
           }
-          // Если обновили текущего пользователя — синхронизируем в стейте
+          // Текущий пользователь меняется только подтверждённым DTO сервера/локального хранилища.
           if (get().user?.id === id) {
-            const me = get().user;
-            if (me) set({ user: { ...me, ...patch } });
+            set({ user: next });
           }
+          return next;
         },
 
         /* Свой профиль: смена телефона/ФИО — сам пользователь, без админа.

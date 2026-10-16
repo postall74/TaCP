@@ -41,6 +41,7 @@ export default function UsersPage() {
   const [editName, setEditName] = useState("");
   const [editPosition, setEditPosition] = useState("");
   const [editPhone, setEditPhone] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
   useEffect(() => {
     loadUsers();
@@ -117,22 +118,26 @@ export default function UsersPage() {
     setEditName(u.fullName || "");
     setEditPosition(u.position || "");
     setEditPhone(u.phone || "");
+    setEditSaving(false);
   };
   
   const handleSaveEdit = async () => {
-    if (!editingUser) return;
+    if (!editingUser || editSaving) return;
+    setEditSaving(true);
     try {
-      await updateUserProfile(editingUser.id, {
+      const saved = await updateUserProfile(editingUser.id, {
         email: editEmail.trim(),
         fullName: editName.trim(),
         position: editPosition.trim(),
         phone: editPhone.trim(),
       });
-      toast(`Профиль ${editEmail} обновлён`, "ok");
+      setUsers((current) => current.map((candidate) => candidate.id === saved.id ? saved : candidate));
+      toast(`Профиль ${saved.email} обновлён`, "ok");
       setEditingUser(null);
-      await loadUsers();
     } catch (e: any) {
       toast(e.message || "Не удалось обновить профиль", "err");
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -309,14 +314,14 @@ export default function UsersPage() {
       {editingUser && (
         <Modal
           open={!!editingUser}
-          onClose={() => setEditingUser(null)}
+          onClose={() => { if (!editSaving) setEditingUser(null); }}
           title={`Редактирование: ${editingUser.email}`}
           footer={
             <>
-              <button onClick={() => setEditingUser(null)} className="mr-auto text-mute hover:text-ink text-sm font-semibold">
+              <button disabled={editSaving} onClick={() => setEditingUser(null)} className="mr-auto text-mute hover:text-ink text-sm font-semibold disabled:opacity-50">
                 Отмена
               </button>
-              <Btn onClick={handleSaveEdit}>Сохранить</Btn>
+              <Btn disabled={editSaving} onClick={handleSaveEdit}>{editSaving ? "Сохранение…" : "Сохранить"}</Btn>
             </>
           }
         >
