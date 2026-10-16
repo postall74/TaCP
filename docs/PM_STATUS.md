@@ -4,8 +4,16 @@
 
 Контракт `cabinet-door-layout-v1` / NEED-012 partial: Backend сохраняет layout в nullable jsonb и версиях; Frontend сохраняет/редактирует дверцу с подтверждением API и упорядочивает запись перед снимком версии. PM свёл backend `39509390`, backend QA `5abce523`, frontend `54cc21b5`, pointercancel fix `6023c0ea` и frontend QA `bc32ec5e` в локальной ветке `codex/pm/door-001-integration`, SHA `a6cc395`. PM docs/ADR-014 — локальный SHA `525f4e5c`. Main и remote не менялись.
 
-Независимая QA: frontend 93/93, backend 153/153, typecheck и build прошли; первый дефект pointercancel устранён и адресно перепроверен. Результат условный: нет живой PostgreSQL/API и браузерной сессии, поэтому migration apply/up/down, реальный JSONB/HTTP roundtrip, version restore, 400/409 atomicity, 401/403/404 и визуальная матрица не подтверждены. Vite сообщил прежнее предупреждение circular vendor chunks; backend Release дал NU1900 из-за недоступного индекса уязвимостей NuGet. NEED-012 остаётся частичным; инструкция с актуальными скриншотами, CI и отдельный общий вид не приняты. В main не сливать и тег не создавать до полного закрытия потребности или отдельного разрешения пользователя.
+Независимая QA: frontend 93/93, backend 153/153, typecheck и build прошли; первый дефект pointercancel устранён и адресно перепроверен. Результат условный: QA browser smoke в localStorage-режиме подтвердил create/reload/version restore/reload для двух дверец и кириллической подписи; Frontend адресно проверил 1024/1440 px и обе темы без переполнения и ошибок консоли. Нет живой PostgreSQL/API, поэтому migration apply/up/down, реальный JSONB/HTTP roundtrip, version restore через API, 400/409 atomicity и 401/403/404 не подтверждены. Реальные pointercancel/lostpointercapture события не автоматизированы. Vite сообщил прежнее предупреждение circular vendor chunks; backend Release дал NU1900 из-за недоступного индекса уязвимостей NuGet. NEED-012 остаётся частичным; инструкция с актуальными скриншотами, CI и отдельный общий вид не приняты. В main не сливать и тег не создавать до полного закрытия потребности или отдельного разрешения пользователя.
 
+## ADMIN-006 — подтверждённый разрыв редактирования email 2026-10-16
+
+Админский UI отправляет email при правке пользователя, но серверный
+`PUT /api/auth/users/{id}` принимает DTO без email и возвращает 200, оставляя
+старый email/login. Backend предложил узкий обратно совместимый
+`user-admin-v3`; PM зарегистрировал ADMIN-006 с критериями и rollback в
+ROADMAP/ARCHITECTURE. Задача пока blocked до интеграционной базы с
+ADMIN-003/004, SEC-004 и текущим DOOR-кандидатом. NEED-001 остаётся partial.
 ## RATE-001 / OPS-001 — объединённый кандидат 2026-09-30
 
 PM опубликовал feature-ветку `codex/pm/ops-rate-integration` с точным SHA
