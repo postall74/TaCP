@@ -50,24 +50,6 @@ public class TkpDbContext(DbContextOptions<TkpDbContext> options) : IdentityDbCo
             c.ToTable("project_cabinets");
             c.HasMany(x => x.Items).WithOne().OnDelete(DeleteBehavior.Cascade);
             c.HasMany(x => x.Segments).WithOne().OnDelete(DeleteBehavior.Cascade);
-            c.OwnsOne(x => x.DoorLayout, layout =>
-            {
-                layout.ToJson("door_layout");
-                layout.Property(x => x.Schema).HasJsonPropertyName("schema");
-                layout.Property(x => x.DoorCount).HasJsonPropertyName("doorCount");
-                layout.Property(x => x.LabelSide).HasJsonPropertyName("labelSide");
-                layout.OwnsMany(x => x.Elements, element =>
-                {
-                    element.HasJsonPropertyName("elements");
-                    element.Property(x => x.ElementId).HasJsonPropertyName("id");
-                    element.Property(x => x.Kind).HasJsonPropertyName("kind");
-                    element.Property(x => x.Tone).HasJsonPropertyName("tone");
-                    element.Property(x => x.Label).HasJsonPropertyName("label");
-                    element.Property(x => x.Door).HasJsonPropertyName("door");
-                    element.Property(x => x.X).HasJsonPropertyName("x");
-                    element.Property(x => x.Y).HasJsonPropertyName("y");
-                });
-            });
         });
 
         mb.Entity<CabinetSegment>(s =>

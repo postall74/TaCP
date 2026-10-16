@@ -1,4 +1,4 @@
-import type { CabinetDoorLayout, DeletedEquipment, Equipment, Project, ProjectVersion, Rates, Settings } from "../types";
+import type { DeletedEquipment, Equipment, Project, Rates, Settings } from "../types";
 
 /* ============================================================
    REST-КЛИЕНТ для C#-бэкенда (backend/TkpApi, ASP.NET Core).
@@ -147,14 +147,7 @@ export const restApi = (base: string) => ({
   addCabinetsBulk: (pid: string, cabs: Project["cabinets"]) =>
     req<Project["cabinets"]>(base, `/api/projects/${pid}/cabinets`, { method: "POST", body: JSON.stringify(cabs) }),
   saveVersionRemote: (pid: string, label: string) =>
-    req<ProjectVersion[]>(base, `/api/projects/${pid}/versions?label=${encodeURIComponent(label)}`, { method: "POST" }),
-  putCabinetDoorLayout: (pid: string, cid: string, layout: CabinetDoorLayout) =>
-    req<CabinetDoorLayout>(base, `/api/projects/${pid}/cabinets/${cid}/door-layout`, {
-      method: "PUT",
-      body: JSON.stringify(layout),
-    }),
-  deleteCabinetDoorLayout: (pid: string, cid: string) =>
-    req<void>(base, `/api/projects/${pid}/cabinets/${cid}/door-layout`, { method: "DELETE" }),
+    req<unknown>(base, `/api/projects/${pid}/versions?label=${encodeURIComponent(label)}`, { method: "POST" }),
 
   /* справочник */
   catalog: () => req<Equipment[]>(base, "/api/catalog"),
