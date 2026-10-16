@@ -15,6 +15,10 @@
 ROADMAP/ARCHITECTURE. PM собрал чистую интеграционную базу `6b36e210` с ADMIN-003/004, SEC-004
 и DOOR; backend 154/154, frontend 93/93, typecheck/build прошли. Backend ADMIN-006 опубликован как `130afcf9`; независимый QA на изолированном PostgreSQL/HTTP прошёл 42/42, backend suite 154/154 и Release build. QA harness опубликован как `43c40e02`. Frontend ADMIN-007 опубликован как `eb002ff2`; независимый QA прошёл 4/4 адресных и 97/97 полных тестов, typecheck/build и browser smoke на 1024/1440 в обеих темах. QA-тест опубликован как `54ee9b08` (PR #105). NEED-001 остаётся partial.
 
+## Новые проверенные срезы 2026-10-16
+
+AUTH-TYPES-001: frontend `22211832`, независимый QA `bf021abc`; fixture и HTTP PostgreSQL 12/12, frontend 95/95, typecheck/build; CI frontend зелёный. PROJECT-003: backend `96cc38d0`, QA `8ef99a55`; PostgreSQL/HTTP 41/41, backend 100/100, Release build, CI обоих SHA зелёный. CATALOG-007: backend `0b369aaa`, QA с formatting fix `12e395a7`; двухпроцессный PostgreSQL/HTTP 137/137, backend 142/142, Release build, backend CI зелёный. Все ветки опубликованы без force с remote SHA; NEED-001 остаётся partial, main не менялся.
+
 ## RATE-001 / OPS-001 — объединённый кандидат 2026-09-30
 
 PM опубликовал feature-ветку `codex/pm/ops-rate-integration` с точным SHA

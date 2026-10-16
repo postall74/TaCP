@@ -270,7 +270,7 @@ HTTP-сценарии на изолированной БД. Исправлени
 
 ### AUTH-TYPES-001 — синхронизировать TypeScript-типы с auth-v2
 
-Владелец: Frontend. Статус: `ready` после WIZ-UI-001. Приоритет: P2.
+Владелец: Frontend. Статус: `QA/CI passed; integration pending` после WIZ-UI-001. Приоритет: P2.
 Контракт `auth-v2` и HTTP wire format не меняются; backend и миграции не входят.
 
 Подтверждённый аудитом разрыв: login возвращает `expiresAt` как Unix milliseconds
@@ -330,7 +330,7 @@ backend tests и Release build; QA повторяет PostgreSQL HTTP-регре
 Приёмка: exact/case-variant conflicts для A/B дают 409 и сохраняют обе строки; own SKU unchanged, unique rename, unknown unique и repeat PUT дают 200; unknown duplicate даёт 409; проверены Staff-роли и 401, backend tests, Release build и независимый PostgreSQL QA. Полная конкурентная case-insensitive уникальность не входит в срез и требует отдельного DB/locking решения. Задача повышает стабильность каталога, но не закрывает NEED-001 целиком.
 ### PROJECT-003 — применить StatusDecide при создании проекта
 
-Исполнитель: Backend. Статус: ready. Приоритет: P1. Контракт: project-create-status-auth-v1; исправление авторизации, не решение графа ADR-001.
+Исполнитель: Backend. Статус: QA/CI passed; integration pending. Приоритет: P1. Контракт: project-create-status-auth-v1; исправление авторизации, не решение графа ADR-001.
 
 На main 1edff933 engineer создаёт проект сразу со status=won с 201, хотя PUT того же статуса возвращает 403. Это обход уже опубликованного права StatusDecide; семантика переходов, reopening и причины проигрыша не меняются.
 
@@ -764,7 +764,7 @@ PUT /api/catalog/{id} выполняет case-insensitive precheck, mutation и 
 
 ### CATALOG-007 — сделать конкурентный DELETE каталога идемпотентным
 
-Исполнитель: Backend. Статус: ready. Приоритет: P1. Контракт: catalog-delete-race-v1 / обратно совместимое уточнение catalog-recycle-v1; зависит от CATALOG-006; NEED-001: partial.
+Исполнитель: Backend. Статус: QA passed; integration pending. Приоритет: P1. Контракт: catalog-delete-race-v1 / обратно совместимое уточнение catalog-recycle-v1; зависит от CATALOG-006; NEED-001: partial.
 
 Два синхронизированных manager/admin DELETE /api/catalog/{id} одной active позиции через разные API-процессы могут оба прочитать строку и отсутствие tombstone. Winner коммитит, loser получает PK_deleted_equipment либо DbUpdateConcurrencyException и отвечает500, хотя endpoint обещает повторный204. Объём: только DELETE endpoint в backend/TkpApi/Program.cs и при необходимости узкий helper; устранить только ожидаемую same-id delete race, не маскируя unrelated DB failures. Snapshot полей, winner DeletedAt/DeletedBy, retention, роли и последовательная семантика сохраняются. DTO/models/schema/index/migrations/routes/frontend, POST/PUT/import, restore, trimming/case rules не меняются.
 
