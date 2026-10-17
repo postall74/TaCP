@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { DEFAULT_SETTINGS, useStore } from "./store";
+import { useStore } from "./store";
 import type { Settings } from "./types";
 import CatalogPage from "./components/CatalogPage";
 import Dashboard from "./components/Dashboard";
@@ -43,6 +43,8 @@ export default function App() {
   const hydrateFromApi = useStore((s) => s.hydrateFromApi);
   const createProject = useStore((s) => s.createProject);
   const updateSettings = useStore((s) => s.updateSettings);
+  const saveCompanySettings = useStore((s) => s.saveCompanySettings);
+  const resetCompanySettings = useStore((s) => s.resetCompanySettings);
   const checkApi = useStore((s) => s.checkApi);
   const outboxCount = useStore((s) => s.outbox.length);
   const toast = useStore((s) => s.toast);
@@ -289,14 +291,22 @@ export default function App() {
         onClose={() => setSettingsOpen(false)}
         initial={settings}
         canEdit={can(user, "settings.edit")}
-        onSave={(s) => {
-          if (!updateSettings(s)) return;
-          toast("Реквизиты сохранены — шапка документов обновлена");
-          setSettingsOpen(false);
+        onSave={async (s) => {
+          try {
+            if (!await saveCompanySettings(s)) return;
+            toast("Реквизиты сохранены — шапка документов обновлена");
+            setSettingsOpen(false);
+          } catch (error) {
+            toast(error instanceof Error ? error.message : "Не удалось сохранить реквизиты", "err");
+          }
         }}
-        onReset={() => {
-          if (!updateSettings(DEFAULT_SETTINGS)) return;
-          toast("Реквизиты сброшены к значениям по умолчанию", "info");
+        onReset={async () => {
+          try {
+            if (!await resetCompanySettings()) return;
+            toast("Реквизиты сброшены к значениям по умолчанию", "info");
+          } catch (error) {
+            toast(error instanceof Error ? error.message : "Не удалось сбросить реквизиты", "err");
+          }
         }}
       />
       <ToastHost />
@@ -313,8 +323,8 @@ function SettingsModal({
   onClose: () => void;
   initial: Settings;
   canEdit: boolean;
-  onSave: (s: Settings) => void;
-  onReset: () => void;
+  onSave: (s: Settings) => Promise<void>;
+  onReset: () => Promise<void>;
 }) {
   const [f, setF] = useState<Settings>(initial);
   useEffect(() => setF(initial), [open, initial]);
@@ -329,7 +339,7 @@ function SettingsModal({
       footer={
         <>
           {canEdit && (
-            <button onClick={onReset} className="mr-auto flex cursor-pointer items-center gap-1.5 text-[12px] font-semibold text-mute transition-colors hover:text-ink">
+            <button onClick={() => void onReset()} className="mr-auto flex cursor-pointer items-center gap-1.5 text-[12px] font-semibold text-mute transition-colors hover:text-ink">
               <IcRefresh size={13} /> Сбросить
             </button>
           )}
@@ -337,7 +347,7 @@ function SettingsModal({
             {canEdit ? "Отмена" : "Закрыть"}
           </button>
           {canEdit && (
-            <button onClick={() => onSave(f)} className="cursor-pointer rounded-md bg-accent px-4 py-2 text-[13px] font-bold text-white transition-all hover:bg-accent-deep active:scale-95">
+            <button onClick={() => void onSave(f)} className="cursor-pointer rounded-md bg-accent px-4 py-2 text-[13px] font-bold text-white transition-all hover:bg-accent-deep active:scale-95">
               Сохранить
             </button>
           )}

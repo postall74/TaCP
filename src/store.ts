@@ -69,6 +69,18 @@ const COMPANY_SETTING_KEYS = [
   "companyName", "tagline", "address", "phone", "email", "requisites", "manager", "executor",
 ] as const satisfies readonly (keyof Settings)[];
 
+const withCompanySettings = (current: Settings, source: Settings): Settings => ({
+  ...current,
+  companyName: source.companyName,
+  tagline: source.tagline,
+  address: source.address,
+  phone: source.phone,
+  email: source.email,
+  requisites: source.requisites,
+  manager: source.manager,
+  executor: source.executor,
+});
+
 /** Версия с сервера приходит в обёртке { snapshot: { cabinets, calc } },
     а локально хранится плоско { cabinets, calc }. Приводим оба варианта к
     плоскому виду — иначе вкладка «Версии» падает на v.cabinets / v.calc
@@ -134,6 +146,8 @@ interface StoreState {
   dismissToast: (id: string) => void;
   /** false — реквизиты компании отклонены по правам (тост уже показан). */
   updateSettings: (patch: Partial<Settings>) => boolean;
+  saveCompanySettings: (settings: Settings) => Promise<boolean>;
+  resetCompanySettings: () => Promise<boolean>;
 
   pingApi: (url?: string) => Promise<boolean>;
   /** Тихая проверка связи (heartbeat и клик по индикатору): обновляет apiOnline. */
@@ -370,6 +384,32 @@ export const useStore = create<StoreState>()(
           const s = get().settings;
           if (COMPANY_SETTING_KEYS.some((key) => key in patch))
             a.putCompany(toCompany(s)).then(syncOk).catch(syncFail);
+          return true;
+        },
+
+        saveCompanySettings: async (next) => {
+          if (!can(get().user, "settings.edit")) {
+            get().toast(denyReason(get().user, "settings.edit"), "err");
+            return false;
+          }
+          const base = (next.apiBaseUrl ?? "").trim();
+          if (base) await restApi(base).putCompany(toCompany(next));
+          set((s) => ({
+            settings: { ...withCompanySettings(s.settings, next), apiBaseUrl: next.apiBaseUrl },
+          }));
+          return true;
+        },
+
+        resetCompanySettings: async () => {
+          if (!can(get().user, "settings.edit")) {
+            get().toast(denyReason(get().user, "settings.edit"), "err");
+            return false;
+          }
+          const current = get().settings;
+          const reset = withCompanySettings(current, DEFAULT_SETTINGS);
+          const a = api();
+          if (a) await a.putCompany(toCompany(reset));
+          set((s) => ({ settings: withCompanySettings(s.settings, DEFAULT_SETTINGS) }));
           return true;
         },
 
