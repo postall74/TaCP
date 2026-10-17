@@ -62,7 +62,7 @@ describe("SYNC-002: equipment upsert recovery", () => {
     const { useStore, DEFAULT_SETTINGS } = await import("./store");
     useStore.setState({ catalog: [], outbox: [], settings: { ...DEFAULT_SETTINGS, apiBaseUrl: "http://api.test" }, toasts: [] });
 
-    useStore.getState().upsertEquipment(local);
+    await expect(useStore.getState().upsertEquipment(local)).rejects.toThrow("network down");
     await vi.waitFor(() => expect(useStore.getState().outbox).toEqual([
       expect.objectContaining({ kind: "equipment.upsert", eqId: local.id }),
     ]));

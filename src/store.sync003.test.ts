@@ -96,8 +96,8 @@ describe("SYNC-003: pending project deletion during hydration", () => {
 
     await useStore.getState().hydrateFromApi();
     await vi.waitFor(() => expect(deleteMock).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(useStore.getState().outbox).toEqual([]));
 
     expect(useStore.getState().projects).toEqual([]);
-    expect(useStore.getState().outbox).toEqual([]);
   });
 });
