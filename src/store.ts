@@ -148,6 +148,7 @@ interface StoreState {
   updateSettings: (patch: Partial<Settings>) => boolean;
   saveCompanySettings: (settings: Settings) => Promise<boolean>;
   resetCompanySettings: () => Promise<boolean>;
+  saveRates: (rates: Rates) => Promise<boolean>;
 
   pingApi: (url?: string) => Promise<boolean>;
   /** Тихая проверка связи (heartbeat и клик по индикатору): обновляет apiOnline. */
@@ -410,6 +411,17 @@ export const useStore = create<StoreState>()(
           const a = api();
           if (a) await a.putCompany(toCompany(reset));
           set((s) => ({ settings: withCompanySettings(s.settings, DEFAULT_SETTINGS) }));
+          return true;
+        },
+
+        saveRates: async (rates) => {
+          if (!can(get().user, "rates.edit")) {
+            get().toast(denyReason(get().user, "rates.edit"), "err");
+            return false;
+          }
+          const a = api();
+          const confirmed = a ? await a.putRates(rates) : rates;
+          set((s) => ({ settings: { ...s.settings, rates: confirmed } }));
           return true;
         },
 
