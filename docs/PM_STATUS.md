@@ -3,12 +3,12 @@
 ## Интеграционный кандидат R1 — 2026-10-18
 
 Ветка `codex/pm/sync-001-010-integration` опубликована с remote SHA
-`71af6bfa36dcba078e27150625fd883ddf783182`. Общий черновой PR #109 к
+`03e0ac9d88d5c22b27ebc55725b52c480986d07c`. Общий черновой PR #109 к
 `main` включает admin, catalog, projects, door layout и SYNC-001…010, а также
-проверенные исправления CSV-001 и PROJECT-004. GitHub CI run #159 на текущем
-SHA: frontend и backend jobs success. Локально: frontend 162/162,
-typecheck/build PASS; backend 166/166 и Release build PASS. Независимая QA
-CSV-001 прошла 22 проверки PostgreSQL 18/HTTP, PROJECT-004 — 31 проверку.
+проверенные исправления CSV-001/PROJECT-004 и независимый QA SETTINGS-UI-001.
+GitHub CI run #161 на текущем SHA: frontend и backend jobs success. Локально:
+frontend 174/174, typecheck/build PASS; backend 166/166 и Release build PASS.
+Независимая QA CSV-001 прошла 22 проверки PostgreSQL 18/HTTP, PROJECT-004 — 31.
 
 Дополнительно опубликованы QA WIZ-UI-003 `786b6e52`, frontend SETTINGS-UI-001
 `51481855` и QA SETTINGS-UI-001 `e566a2b7`; remote SHA сверены. NEED-001 и
