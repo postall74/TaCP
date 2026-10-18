@@ -233,7 +233,7 @@ browser/API QA. Полный NEED-001 этим срезом не закрыва�
 
 ### WIZ-UI-002 — сделать читаемыми выбранные измерительные приборы
 
-Исполнитель: Frontend. Статус: ready. Приоритет: P1. HTTP/DTO и алгоритмы подбора не меняются; NEED-013: partial.
+Исполнитель: Frontend. Статус: review; реализация и независимая QA в общем кандидате, CI #164 ожидается. Приоритет: P1. HTTP/DTO и алгоритмы подбора не меняются; NEED-013: partial.
 
 Подтверждённый trigger на SHA 55364a55: закрытые списки шага «Измерительные приборы» обрезают выбранные названия WB-MAP3E, WB-MAP12H и «Панельный (Э378 100/5, под ТТ)» на 1024 и 1440 px в обеих темах. Горизонтального переполнения формы и наложений нет; доступное место текста списка около 124 px.
 
@@ -732,7 +732,7 @@ QA: test cases против fixture ──────────────�
 
 ### PROJECT-016 — устранить cartesian expansion при чтении и полном обновлении проекта
 
-Исполнитель: Backend. Статус: ready. Приоритет: P1. Контракт: project-query-split-v1; HTTP wire format полностью совместим; зависит от PROJECT-001/013/014/015 и VERSION-001/002; без самостоятельного закрытия NEED-*.
+Исполнитель: Backend. Статус: review; реализация и независимая QA в общем кандидате, CI #164 ожидается. Приоритет: P1. Контракт: project-query-split-v1; HTTP wire format полностью совместим; зависит от PROJECT-001/013/014/015 и VERSION-001/002; без самостоятельного закрытия NEED-*.
 
 GET /api/projects/{id} и начальная загрузка PUT /api/projects/{id} используют несколько collection Include без AsSplitQuery. EF Core выдаёт MultipleCollectionIncludeWarning/20504 и выполняет single query: для detail объём промежуточных строк растёт как Items×Segments×Versions, для PUT — Items×Segments. Объём: только backend/TkpApi/Program.cs; добавить AsSplitQuery() к загрузочным query этих двух endpoint. Include graph, DTO/models/schema/migrations/routes/roles, filters/order, conflict helpers, update mutation/transaction semantics, frontend и docs не меняются. GET list и POST versions сохраняют текущую split-query реализацию.
 
@@ -764,7 +764,7 @@ PUT /api/catalog/{id} выполняет case-insensitive precheck, mutation и 
 
 ### CATALOG-007 — сделать конкурентный DELETE каталога идемпотентным
 
-Исполнитель: Backend. Статус: QA passed; integration pending. Приоритет: P1. Контракт: catalog-delete-race-v1 / обратно совместимое уточнение catalog-recycle-v1; зависит от CATALOG-006; NEED-001: partial.
+Исполнитель: Backend. Статус: review; реализация и независимая QA уже в общем кандидате, CI #164 ожидается. Приоритет: P1. Контракт: catalog-delete-race-v1 / обратно совместимое уточнение catalog-recycle-v1; зависит от CATALOG-006; NEED-001: partial.
 
 Два синхронизированных manager/admin DELETE /api/catalog/{id} одной active позиции через разные API-процессы могут оба прочитать строку и отсутствие tombstone. Winner коммитит, loser получает PK_deleted_equipment либо DbUpdateConcurrencyException и отвечает500, хотя endpoint обещает повторный204. Объём: только DELETE endpoint в backend/TkpApi/Program.cs и при необходимости узкий helper; устранить только ожидаемую same-id delete race, не маскируя unrelated DB failures. Snapshot полей, winner DeletedAt/DeletedBy, retention, роли и последовательная семантика сохраняются. DTO/models/schema/index/migrations/routes/frontend, POST/PUT/import, restore, trimming/case rules не меняются.
 
