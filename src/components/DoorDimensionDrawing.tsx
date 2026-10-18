@@ -75,11 +75,12 @@ export function DoorDimensionDrawing({ cabinet, layout, geometry, index }: {
           const calloutOffset = markerCalloutOffset(element.x, element.y);
           const calloutX = markerX + calloutOffset.x;
           const calloutY = markerY + calloutOffset.y;
+          const showLeader = element.y > 200;
           return <g key={element.id}>
             <line x1={markerX - 8} y1={markerY} x2={markerX + 8} y2={markerY} stroke="#111" strokeWidth={1} />
             <line x1={markerX} y1={markerY - 8} x2={markerX} y2={markerY + 8} stroke="#111" strokeWidth={1} />
             <circle cx={markerX} cy={markerY} r={4} fill="#fff" stroke="#111" />
-            <line x1={markerX} y1={markerY} x2={calloutX} y2={calloutY} stroke="#777" strokeWidth={0.8} />
+            {showLeader && <line x1={markerX} y1={markerY} x2={calloutX} y2={calloutY} stroke="#777" strokeWidth={0.8} />}
             <circle cx={calloutX} cy={calloutY} r={9} fill="#fff" stroke="#111" />
             <text x={calloutX} y={calloutY + 3} textAnchor="middle" fontSize={8.5} fontWeight={700} fill="#111">{position}</text>
           </g>;
