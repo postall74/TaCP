@@ -1,0 +1,33 @@
+{
+  "schema": "cabinet-door-geometry-v1",
+  "units": "mm",
+  "view": "outside-front",
+  "leaves": [
+    {
+      "door": 0,
+      "originXmm": 0,
+      "originYmm": 0,
+      "widthMm": 800,
+      "heightMm": 1800,
+      "placement": {
+        "leftMm": 50,
+        "topMm": 100,
+        "widthMm": 700,
+        "heightMm": 1600
+      }
+    },
+    {
+      "door": 1,
+      "originXmm": 800,
+      "originYmm": 0,
+      "widthMm": 800,
+      "heightMm": 1800,
+      "placement": {
+        "leftMm": 50,
+        "topMm": 100,
+        "widthMm": 700,
+        "heightMm": 1600
+      }
+    }
+  ]
+}
