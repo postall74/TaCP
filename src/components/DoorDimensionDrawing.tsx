@@ -6,6 +6,11 @@ import { DOOR_KIND_LABEL } from "../utils/doorLayout";
 const cell: CSSProperties = { border: "1px solid #777", padding: "4px 6px", fontSize: 10.5, verticalAlign: "top" };
 const head: CSSProperties = { ...cell, background: "#f1f1f1", fontWeight: 700, textAlign: "left" };
 
+const markerCalloutOffset = (x: number, y: number) => ({
+  x: x >= 800 ? -18 : 18,
+  y: y <= 200 ? 30 : -18,
+});
+
 export function DoorDimensionDrawing({ cabinet, layout, geometry, index }: {
   cabinet: Cabinet;
   layout: CabinetDoorLayout;
@@ -64,13 +69,21 @@ export function DoorDimensionDrawing({ cabinet, layout, geometry, index }: {
           </g>;
         })}
 
-        {centers.map(({ element, position, center }) => <g key={element.id}>
-          <line x1={sx(center.x) - 8} y1={sy(center.y)} x2={sx(center.x) + 8} y2={sy(center.y)} stroke="#111" strokeWidth={1} />
-          <line x1={sx(center.x)} y1={sy(center.y) - 8} x2={sx(center.x)} y2={sy(center.y) + 8} stroke="#111" strokeWidth={1} />
-          <circle cx={sx(center.x)} cy={sy(center.y)} r={4} fill="#fff" stroke="#111" />
-          <circle cx={sx(center.x) + 13} cy={sy(center.y) - 13} r={9} fill="#fff" stroke="#111" />
-          <text x={sx(center.x) + 13} y={sy(center.y) - 10} textAnchor="middle" fontSize={8.5} fontWeight={700} fill="#111">{position}</text>
-        </g>)}
+        {centers.map(({ element, position, center }) => {
+          const markerX = sx(center.x);
+          const markerY = sy(center.y);
+          const calloutOffset = markerCalloutOffset(element.x, element.y);
+          const calloutX = markerX + calloutOffset.x;
+          const calloutY = markerY + calloutOffset.y;
+          return <g key={element.id}>
+            <line x1={markerX - 8} y1={markerY} x2={markerX + 8} y2={markerY} stroke="#111" strokeWidth={1} />
+            <line x1={markerX} y1={markerY - 8} x2={markerX} y2={markerY + 8} stroke="#111" strokeWidth={1} />
+            <circle cx={markerX} cy={markerY} r={4} fill="#fff" stroke="#111" />
+            <line x1={markerX} y1={markerY} x2={calloutX} y2={calloutY} stroke="#777" strokeWidth={0.8} />
+            <circle cx={calloutX} cy={calloutY} r={9} fill="#fff" stroke="#111" />
+            <text x={calloutX} y={calloutY + 3} textAnchor="middle" fontSize={8.5} fontWeight={700} fill="#111">{position}</text>
+          </g>;
+        })}
       </svg>
     </div>
 
