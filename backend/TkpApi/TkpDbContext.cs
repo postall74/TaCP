@@ -50,6 +50,48 @@ public class TkpDbContext(DbContextOptions<TkpDbContext> options) : IdentityDbCo
             c.ToTable("project_cabinets");
             c.HasMany(x => x.Items).WithOne().OnDelete(DeleteBehavior.Cascade);
             c.HasMany(x => x.Segments).WithOne().OnDelete(DeleteBehavior.Cascade);
+            c.OwnsOne(x => x.DoorLayout, layout =>
+            {
+                layout.ToJson("door_layout");
+                layout.Property(x => x.Schema).HasJsonPropertyName("schema");
+                layout.Property(x => x.DoorCount).HasJsonPropertyName("doorCount");
+                layout.Property(x => x.LabelSide).HasJsonPropertyName("labelSide");
+                layout.OwnsMany(x => x.Elements, element =>
+                {
+                    element.HasJsonPropertyName("elements");
+                    element.Property(x => x.ElementId).HasJsonPropertyName("id");
+                    element.Property(x => x.Kind).HasJsonPropertyName("kind");
+                    element.Property(x => x.Tone).HasJsonPropertyName("tone");
+                    element.Property(x => x.Label).HasJsonPropertyName("label");
+                    element.Property(x => x.Door).HasJsonPropertyName("door");
+                    element.Property(x => x.X).HasJsonPropertyName("x");
+                    element.Property(x => x.Y).HasJsonPropertyName("y");
+                });
+            });
+            c.OwnsOne(x => x.DoorGeometry, geometry =>
+            {
+                geometry.ToJson("door_geometry");
+                geometry.Property(x => x.Schema).HasJsonPropertyName("schema");
+                geometry.Property(x => x.Units).HasJsonPropertyName("units");
+                geometry.Property(x => x.View).HasJsonPropertyName("view");
+                geometry.OwnsMany(x => x.Leaves, leaf =>
+                {
+                    leaf.HasJsonPropertyName("leaves");
+                    leaf.Property(x => x.Door).HasJsonPropertyName("door");
+                    leaf.Property(x => x.OriginXmm).HasJsonPropertyName("originXmm");
+                    leaf.Property(x => x.OriginYmm).HasJsonPropertyName("originYmm");
+                    leaf.Property(x => x.WidthMm).HasJsonPropertyName("widthMm");
+                    leaf.Property(x => x.HeightMm).HasJsonPropertyName("heightMm");
+                    leaf.OwnsOne(x => x.Placement, placement =>
+                    {
+                        placement.HasJsonPropertyName("placement");
+                        placement.Property(x => x.LeftMm).HasJsonPropertyName("leftMm");
+                        placement.Property(x => x.TopMm).HasJsonPropertyName("topMm");
+                        placement.Property(x => x.WidthMm).HasJsonPropertyName("widthMm");
+                        placement.Property(x => x.HeightMm).HasJsonPropertyName("heightMm");
+                    });
+                });
+            });
         });
 
         mb.Entity<CabinetSegment>(s =>

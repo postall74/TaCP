@@ -36,6 +36,8 @@ public static class AuthExtensions
 {
     /// <summary>Секция конфигурации: Jwt:Key, Jwt:Issuer, Jwt:Audience, Jwt:ExpireMinutes.</summary>
     public const string Section = "Jwt";
+    public const string RoleAssignmentFailureDetail =
+        "Не удалось назначить роль пользователю. Повторите попытку позже";
 
     /* ---------------- ① регистрация сервисов ---------------- */
 
@@ -102,8 +104,11 @@ public static class AuthExtensions
         // auth-v2: создание пользователей только администратором во всех окружениях.
         // Ошибки Identity переводим на русский — фронтенд показывает их как есть
         // (раньше клиент видел безликий «HTTP 400 Bad Request»).
-        g.MapPost("/register", async (RegisterDto dto, UserManager<AppUser> users) =>
+        g.MapPost("/register", async (RegisterDto dto, UserManager<AppUser> users,
+                                      TkpDbContext db, ILoggerFactory loggerFactory) =>
         {
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            var logger = loggerFactory.CreateLogger("AuthRegistration");
             var user = new AppUser
             {
                 UserName = dto.Email, Email = dto.Email,
@@ -114,7 +119,28 @@ public static class AuthExtensions
             if (!res.Succeeded)
                 return Results.BadRequest(new { errors = res.Errors.Select(e => RuError(e.Code)) });
 
-            await users.AddToRoleAsync(user, NormalizeRole(dto.Role));
+            try
+            {
+                var roleResult = await users.AddToRoleAsync(user, NormalizeRole(dto.Role));
+                if (!roleResult.Succeeded)
+                {
+                    logger.LogError("User role assignment failed: {Codes}",
+                        string.Join(",", roleResult.Errors.Select(error => error.Code)));
+                    return RoleAssignmentFailure();
+                }
+
+                await transaction.CommitAsync();
+            }
+            catch (InvalidOperationException error)
+            {
+                logger.LogError(error, "User role assignment failed");
+                return RoleAssignmentFailure();
+            }
+            catch (DbUpdateException error)
+            {
+                logger.LogError(error, "User role assignment failed");
+                return RoleAssignmentFailure();
+            }
             return Results.Ok(new { user.Id, user.Email, user.FullName, role = NormalizeRole(dto.Role) });
         }).RequireAuthorization("AdminOnly");
 
@@ -155,15 +181,16 @@ public static class AuthExtensions
         // Важно: роль в уже выданном JWT обновится при следующем входе пользователя.
         // Защита: последнего администратора разжаловать нельзя (иначе система
         // останется без управления — именно так теряли доступ к admin@tkp.local).
-        app.MapPut("/api/auth/users/{id}/role", async (string id, ChangeRoleDto dto, UserManager<AppUser> users) =>
+        app.MapPut("/api/auth/users/{id}/role", async (string id, ChangeRoleDto dto, UserManager<AppUser> users, TkpDbContext db, CancellationToken ct) =>
         {
+            await using var transaction = await TkpApi.Services.AdminInvariantTransaction.BeginAsync(db, ct);
             var user = await users.FindByIdAsync(id);
             if (user is null) return Results.NotFound();
             var old = await users.GetRolesAsync(user);
 
             var adminCount = (await users.GetUsersInRoleAsync(Roles.Admin)).Count;
             var (ok, reason) = Rights.CanChangeRole(old, NormalizeRole(dto.Role), adminCount);
-            if (!ok) return Results.BadRequest(new { errors = new[] { reason } });
+            if (!ok) return Results.Conflict(new { errors = new[] { reason } });
 
             var remove = await users.RemoveFromRolesAsync(user, old);
             if (!remove.Succeeded)
@@ -171,8 +198,13 @@ public static class AuthExtensions
             var add = await users.AddToRoleAsync(user, NormalizeRole(dto.Role));
             if (!add.Succeeded)
                 return Results.BadRequest(new { errors = add.Errors.Select(e => e.Description) });
-            return Results.Ok(ToDto(user, await users.GetRolesAsync(user)));
+            var result = ToDto(user, await users.GetRolesAsync(user));
+            await transaction.CommitAsync(ct);
+            return Results.Ok(result);
         }).RequireAuthorization("AdminOnly");
+
+        app.MapDelete("/api/auth/users/{id}", TkpApi.Services.UserDeleteService.DeleteAsync)
+            .RequireAuthorization("AdminOnly");
 
         // Свой профиль (любой сотрудник): ФИО, должность, телефон — сам сервис
         // «у инженера сменился мобильный» закрывается без участия администратора.
@@ -191,14 +223,30 @@ public static class AuthExtensions
 
         // Правка профиля любого пользователя — только админ (страница «Пользователи»):
         // контактные данные инженеров может актуализировать и руководство.
-        app.MapPut("/api/auth/users/{id}", async (string id, UpdateProfileDto dto, UserManager<AppUser> users) =>
+        app.MapPut("/api/auth/users/{id}", async (string id, AdminUpdateUserDto dto, UserManager<AppUser> users) =>
         {
             var user = await users.FindByIdAsync(id);
             if (user is null) return Results.NotFound();
             if (dto.FullName is not null) user.FullName = dto.FullName.Trim();
             if (dto.Position is not null) user.Position = dto.Position.Trim();
             if (dto.Phone is not null) user.PhoneNumber = dto.Phone.Trim();
-            await users.UpdateAsync(user);
+            if (dto.Email is not null)
+            {
+                var email = dto.Email.Trim();
+                user.Email = email;
+                user.UserName = email;
+            }
+
+            var update = await users.UpdateAsync(user);
+            if (!update.Succeeded)
+            {
+                var errors = update.Errors.ToArray();
+                var response = new { errors = errors.Select(e => AdminUpdateError(e.Code)).ToArray() };
+                return errors.Any(e => e.Code == "ConcurrencyFailure")
+                    ? Results.Conflict(response)
+                    : Results.BadRequest(response);
+            }
+
             return Results.Ok(ToDto(user, await users.GetRolesAsync(user)));
         }).RequireAuthorization("AdminOnly");
 
@@ -250,6 +298,11 @@ public static class AuthExtensions
         config[$"{Section}:Key"] ?? throw new InvalidOperationException(
             "Добавьте в appsettings.json секцию Jwt:Key (секрет ≥ 32 символов).");
 
+    private static IResult RoleAssignmentFailure() => Results.Problem(
+        statusCode: StatusCodes.Status500InternalServerError,
+        title: "User role assignment failed",
+        detail: RoleAssignmentFailureDetail);
+
     private static string NormalizeRole(string? role) => (role ?? Roles.Engineer).ToLowerInvariant() switch
     {
         Roles.Admin or Roles.Manager or Roles.Engineer => (role ?? Roles.Engineer).ToLowerInvariant(),
@@ -267,6 +320,14 @@ public static class AuthExtensions
         "DuplicateUserName" or "DuplicateEmail" => "Пользователь с таким e-mail уже существует",
         "InvalidEmail" or "InvalidUserName" => "Некорректный формат e-mail",
         _ => code ?? "Не удалось создать пользователя",
+    };
+
+    private static string AdminUpdateError(string? code) => code switch
+    {
+        "DuplicateUserName" or "DuplicateEmail" => "Пользователь с таким e-mail уже существует",
+        "InvalidEmail" or "InvalidUserName" => "Некорректный формат e-mail",
+        "ConcurrencyFailure" => "Данные пользователя были изменены другим запросом. Обновите список и повторите попытку",
+        _ => "Не удалось сохранить данные пользователя",
     };
 
     private static (string Token, DateTime ExpiresAt) IssueToken(AppUser user, IList<string> roles, IConfiguration config)
@@ -312,3 +373,5 @@ public sealed record RegisterDto(string Email, string Password, string FullName,
 public sealed record ChangeRoleDto(string Role);
 /// <summary>Правка профиля: ФИО, должность, телефон. Пустая строка = очистить поле.</summary>
 public sealed record UpdateProfileDto(string? FullName, string? Position, string? Phone);
+/// <summary>Административная правка профиля и логина. Null сохраняет прежнее значение.</summary>
+public sealed record AdminUpdateUserDto(string? FullName, string? Position, string? Phone, string? Email);

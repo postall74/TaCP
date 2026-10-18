@@ -211,7 +211,7 @@ export default function CatalogPage() {
         </div>
       </div>
 
-      <EquipmentModal target={editTarget} onClose={() => setEditTarget(null)} onSave={(e) => {
+      <EquipmentModal target={editTarget} onClose={() => setEditTarget(null)} onSave={async (e) => {
         const isNew = editTarget === "new";
         if (isNew) {
           const dup = findDuplicate(e);
@@ -222,15 +222,25 @@ export default function CatalogPage() {
             return;
           }
         }
-        upsertEquipment(e);
-        toast(isNew ? `Позиция «${e.sku}» добавлена` : "Позиция обновлена");
-        setEditTarget(null);
+        try {
+          await upsertEquipment(e);
+          toast(isNew ? `Позиция «${e.sku}» добавлена` : "Позиция обновлена");
+          setEditTarget(null);
+        } catch (error) {
+          toast(error instanceof Error ? error.message : "Не удалось сохранить позицию", "err");
+          throw error;
+        }
       }} />
 
-      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} onImport={(items, csv) => {
-        const n = importEquipment(items, csv);
-        toast(`Импортировано ${n} ${plural(n, "позиция", "позиции", "позиций")}`);
-        setImportOpen(false);
+      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} onImport={async (items, csv) => {
+        try {
+          const n = await importEquipment(items, csv);
+          toast(`Импортировано ${n} ${plural(n, "позиция", "позиции", "позиций")}`);
+          setImportOpen(false);
+        } catch (error) {
+          toast(error instanceof Error ? error.message : "Не удалось импортировать справочник", "err");
+          throw error;
+        }
       }} />
 
       <Modal
@@ -271,7 +281,7 @@ function EquipmentModal({
 }: {
   target: Equipment | "new" | null;
   onClose: () => void;
-  onSave: (e: Equipment) => void;
+  onSave: (e: Equipment) => Promise<void>;
 }) {
   const toast = useStore((s) => s.toast);
   const isNew = target === "new";
@@ -303,12 +313,16 @@ function EquipmentModal({
           <Btn variant="outline" onClick={onClose}>Отмена</Btn>
           <Btn
             disabled={!valid}
-            onClick={() => {
+            onClick={async () => {
               if (!valid) {
                 toast("Заполните артикул, название и закупочную цену", "err");
                 return;
               }
-              onSave({ ...f, attrs: f.attrs?.trim() || undefined });
+              try {
+                await onSave({ ...f, attrs: f.attrs?.trim() || undefined });
+              } catch {
+                // Форма остаётся открытой с введёнными значениями для повтора.
+              }
             }}
           >
             {isNew ? <IcPlus size={14} /> : <IcPencil size={14} />} {isNew ? "Добавить" : "Сохранить"}
@@ -364,7 +378,7 @@ function ImportModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onImport: (items: Omit<Equipment, "id">[], csv: string) => void;
+  onImport: (items: Omit<Equipment, "id">[], csv: string) => Promise<void>;
 }) {
   const [text, setText] = useState("");
   const parsed = useMemo(() => parseCatalogCsv(text), [text]);
@@ -381,7 +395,14 @@ function ImportModal({
             <IcDatabase size={14} /> Вставить пример
           </Btn>
           <Btn variant="outline" onClick={onClose}>Отмена</Btn>
-          <Btn disabled={parsed.items.length === 0} onClick={() => { onImport(parsed.items, text); setText(""); }}>
+          <Btn disabled={parsed.items.length === 0} onClick={async () => {
+            try {
+              await onImport(parsed.items, text);
+              setText("");
+            } catch {
+              // CSV остаётся в окне для повторной отправки.
+            }
+          }}>
             <IcUpload size={14} /> Импортировать {parsed.items.length > 0 ? `(${parsed.items.length})` : ""}
           </Btn>
         </>

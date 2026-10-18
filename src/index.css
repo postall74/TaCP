@@ -216,6 +216,22 @@ input[type="number"] {
   line-height: 1.45;
 }
 
+.door-drawing-sheet {
+  break-before: page;
+  page-break-before: always;
+  padding-top: 2mm;
+}
+
+.door-drawing-figure,
+.door-drawing-table tr {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.door-drawing-table thead {
+  display: table-header-group;
+}
+
 /* ---- печать ---- */
 @media print {
   @page {

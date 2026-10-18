@@ -1,4 +1,4 @@
-import type { DeletedEquipment, Equipment, Project, Rates, Settings } from "../types";
+import type { CabinetDoorGeometry, CabinetDoorLayout, DeletedEquipment, Equipment, Project, ProjectVersion, Rates, Settings } from "../types";
 
 /* ============================================================
    REST-КЛИЕНТ для C#-бэкенда (backend/TkpApi, ASP.NET Core).
@@ -31,11 +31,25 @@ export interface AuthUser {
   roles: string[];
 }
 
+/** Краткий ответ POST /api/auth/register по контракту auth-v2. */
+export interface RegisterResponse {
+  id: string;
+  email: string;
+  fullName: string;
+  role: string;
+}
+
 /** Правка профиля (своего — PUT /api/auth/me, чужого — PUT /api/auth/users/{id}). */
 export interface ProfilePatch {
   fullName?: string;
   position?: string;
   phone?: string;
+}
+
+/** Административная правка пользователя по user-admin-v3. Email доступен
+    только этому DTO; собственный профиль по-прежнему не меняет логин. */
+export interface AdminUpdateUserPatch extends ProfilePatch {
+  email?: string;
 }
 
 /** Причина ошибки из тела ответа: { errors: [] } (регистрация), { detail } / { title }
@@ -114,12 +128,12 @@ export const restApi = (base: string) => ({
 
   /* аутентификация (JWT) */
   login: (email: string, password: string) =>
-    req<{ token: string; expiresAt: string; user: AuthUser }>(base, "/api/auth/login", {
+    req<{ token: string; expiresAt: number; user: AuthUser }>(base, "/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
   register: (email: string, password: string, fullName: string, role: string) =>
-    req<AuthUser>(base, "/api/auth/register", {
+    req<RegisterResponse>(base, "/api/auth/register", {
       method: "POST",
       body: JSON.stringify({ email, password, fullName, position: "", role }),
     }),
@@ -128,11 +142,12 @@ export const restApi = (base: string) => ({
   updateProfile: (p: ProfilePatch) =>
     req<AuthUser>(base, "/api/auth/me", { method: "PUT", body: JSON.stringify(p) }),
   /* правка профиля любого пользователя — админ на странице «Пользователи» */
-  putUser: (id: string, p: ProfilePatch) =>
+  putUser: (id: string, p: AdminUpdateUserPatch) =>
     req<AuthUser>(base, `/api/auth/users/${id}`, { method: "PUT", body: JSON.stringify(p) }),
 
   /* пользователи (только админ) */
   users: () => req<AuthUser[]>(base, "/api/auth/users"),
+  deleteUser: (id: string) => req<void>(base, `/api/auth/users/${encodeURIComponent(id)}`, { method: "DELETE" }),
   setUserRole: (id: string, role: string) =>
     req<AuthUser>(base, `/api/auth/users/${id}/role`, {
       method: "PUT",
@@ -147,7 +162,21 @@ export const restApi = (base: string) => ({
   addCabinetsBulk: (pid: string, cabs: Project["cabinets"]) =>
     req<Project["cabinets"]>(base, `/api/projects/${pid}/cabinets`, { method: "POST", body: JSON.stringify(cabs) }),
   saveVersionRemote: (pid: string, label: string) =>
-    req<unknown>(base, `/api/projects/${pid}/versions?label=${encodeURIComponent(label)}`, { method: "POST" }),
+    req<ProjectVersion[]>(base, `/api/projects/${pid}/versions?label=${encodeURIComponent(label)}`, { method: "POST" }),
+  putCabinetDoorLayout: (pid: string, cid: string, layout: CabinetDoorLayout) =>
+    req<CabinetDoorLayout>(base, `/api/projects/${pid}/cabinets/${cid}/door-layout`, {
+      method: "PUT",
+      body: JSON.stringify(layout),
+    }),
+  deleteCabinetDoorLayout: (pid: string, cid: string) =>
+    req<void>(base, `/api/projects/${pid}/cabinets/${cid}/door-layout`, { method: "DELETE" }),
+  putCabinetDoorGeometry: (pid: string, cid: string, geometry: CabinetDoorGeometry) =>
+    req<CabinetDoorGeometry>(base, `/api/projects/${pid}/cabinets/${cid}/door-geometry`, {
+      method: "PUT",
+      body: JSON.stringify(geometry),
+    }),
+  deleteCabinetDoorGeometry: (pid: string, cid: string) =>
+    req<void>(base, `/api/projects/${pid}/cabinets/${cid}/door-geometry`, { method: "DELETE" }),
 
   /* справочник */
   catalog: () => req<Equipment[]>(base, "/api/catalog"),

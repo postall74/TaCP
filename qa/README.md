@@ -1,5 +1,9 @@
 # QA: журнал проверок и передача PM
 
+ADMIN-002: [независимый QA catalog-recycle-v1](ADMIN-002.md), backend snapshot
+от base `1edff933`: 100 .NET tests, clean Release build и 56 PostgreSQL/HTTP
+assertions прошли. Новых дефектов нет; NEED-001 остаётся partial.
+
 SEC-001: [независимый QA auth-v2](SEC-001.md), production `b1bb51eb`:
 96 .NET tests и 21 адресная HTTP/DB проверка прошли. Новых дефектов защиты
 registration не найдено. Git-операции оставлены PM.
@@ -140,6 +144,15 @@ Frontend: расчёты, CSV, форматирование, роли, сост�
 Отчёт передавать PM, который назначает исправление Frontend/Backend.
 ROADMAP, архитектуру и продуктовые решения редактирует PM.
 
+### WIZ-UI-002 (интегрированное состояние)
+
+`e53f56d40ed5297b4ad7dafb539f228a98817826` относительно принятого
+`55364a556880fbb2b22eeec89ca579f05238a7ff` независимо проверен: typecheck,
+85/85 frontend-тестов и build прошли. Chrome-матрица 1024/1440 в обеих темах,
+состояния `0/0/0/0` и `2/3/1/4`, длинные WB-MAP3E/WB-MAP12H/Э378, переходы,
+сводка и сохранение проекта прошли без дефектов. Подробности:
+`qa/WIZ-UI-002-INTEGRATED.md`.
+
 ### SEC-003
 
 `db1036c5ddcb2779e7d205bcdbbb60eb7bd56134` проверен независимо: 80 frontend
@@ -163,3 +176,33 @@ PM опубликовал auth-v2 в своём checkout `.worktrees/pm-core-004
 изолированный PostgreSQL harness. До исполняемых integration tests получить fixture,
 схему ошибки и согласовать с backend запуск изолированной PostgreSQL. Не заменять HTTP-тест
 проверкой текста RequireAuthorization: это не проверит реальное middleware.
+
+### SETTINGS-UI-001
+
+Target `51481855bcab93937ee2f7b92b4d316d836a5a75` относительно parent
+`1ab8cb836a14e14bf087d6b0e021c242b57be634` независимо проверен: typecheck,
+97/97 frontend-тестов и build прошли. Engineer получает восемь read-only
+реквизитных полей без Save/Reset; store guard отклоняет прямые реквизитные
+мутации без изменения данных и с ролевым тостом. Theme/API остаются доступны;
+manager/admin/local сохраняют edit/save/reset. Матрица 1024/1440 light/dark
+прошла. Подробности: `qa/SETTINGS-UI-001.md`; QA-регрессия:
+`src/store.settings.test.ts`.
+
+### ADMIN-005
+
+Frontend target `6c60705b831d4557eb479c78d94c24e10850c5ce` проверен
+независимо: исторические `item.brand`/`item.purchase`, нулевая цена, 22
+производителя при отдельном TOP-20, пустые данные и CSV покрыты компонентными
+сценариями. Адресно 3/3, полный frontend gate 88/88, typecheck и build прошли;
+обе темы проверены в браузере. NEED-001 остаётся partial. Подробности:
+`qa/ADMIN-005.md`.
+
+### PROJECT-016
+
+Target `99ea0d3a1df89062e35e9360aa15f3c12e9f534f` относительно parent
+`ab69abe8e927ee10c3784f72ff043a0c9db031d9` независимо проверен: backend
+142/142, Release build и одноразовый PostgreSQL HTTP/SQL probe 107/107 прошли.
+Large graph 3/63/12/11→12 прочитан и обновлён без дублей; EF20504 и cartesian
+items/segments JOIN отсутствуют. PROJECT-013/014/015, VERSION-001/002,
+авторизация, malformed/missing, races, conflicts и rollback прошли. Подробности:
+`qa/PROJECT-016.md`; исполняемый сценарий: `qa/PROJECT-016.probe.ps1`.

@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Identity;
 
 namespace TkpApi;
@@ -80,6 +81,97 @@ public class CabinetSegment
     public int Partitions { get; set; }
 }
 
+/// <summary>Сохраняемый пользовательский эскиз дверцы (cabinet-door-layout-v1).
+/// Координаты нормализованы внутри конкретной дверцы и не являются физическими размерами.</summary>
+public class CabinetDoorLayout
+{
+    [JsonRequired]
+    public string Schema { get; set; } = "";
+    [JsonRequired]
+    public int DoorCount { get; set; }
+    [JsonRequired]
+    public string LabelSide { get; set; } = "";
+    [JsonRequired]
+    public List<CabinetDoorElement> Elements { get; set; } = new();
+
+    // Keeps unknown wire fields intact. EF does not write them for v1; writes of a
+    // persisted non-v1 schema are blocked before SaveChanges.
+    [NotMapped, JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+}
+
+public class CabinetDoorElement
+{
+    [JsonPropertyName("id"), JsonRequired]
+    public string ElementId { get; set; } = "";
+    [JsonRequired]
+    public string Kind { get; set; } = "";
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Tone { get; set; }
+    [JsonRequired]
+    public string Label { get; set; } = "";
+    [JsonRequired]
+    public int Door { get; set; }
+    [JsonRequired]
+    public int X { get; set; }
+    [JsonRequired]
+    public int Y { get; set; }
+
+    [NotMapped, JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+}
+
+/// <summary>Физическая геометрия дверцы для размерного общего вида
+/// (cabinet-door-geometry-v1). Все размеры задаются целыми миллиметрами.</summary>
+public class CabinetDoorGeometry
+{
+    [JsonRequired]
+    public string Schema { get; set; } = "";
+    [JsonRequired]
+    public string Units { get; set; } = "";
+    [JsonRequired]
+    public string View { get; set; } = "";
+    [JsonRequired]
+    public List<CabinetDoorLeaf> Leaves { get; set; } = new();
+
+    [NotMapped, JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+}
+
+public class CabinetDoorLeaf
+{
+    [JsonRequired]
+    public int Door { get; set; }
+    [JsonRequired]
+    public int OriginXmm { get; set; }
+    [JsonRequired]
+    public int OriginYmm { get; set; }
+    [JsonRequired]
+    public int WidthMm { get; set; }
+    [JsonRequired]
+    public int HeightMm { get; set; }
+    [JsonRequired]
+    public CabinetDoorPlacement Placement { get; set; } = new();
+
+    [NotMapped, JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+}
+
+public class CabinetDoorPlacement
+{
+    [JsonRequired]
+    public int LeftMm { get; set; }
+    [JsonRequired]
+    public int TopMm { get; set; }
+    [JsonRequired]
+    public int WidthMm { get; set; }
+    [JsonRequired]
+    public int HeightMm { get; set; }
+
+    [NotMapped, JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+}
+
 /// <summary>Шкаф / секция / линейка (project_cabinets).</summary>
 public class Cabinet
 {
@@ -98,6 +190,12 @@ public class Cabinet
 
     /// <summary>Форма внутреннего разделения: "1"…"4b" (ГОСТ IEC 61439-2).</summary>
     public string? Form { get; set; }
+
+    /// <summary>Nullable UI-компоновка дверцы. Хранится одной jsonb колонкой.</summary>
+    public CabinetDoorLayout? DoorLayout { get; set; }
+
+    /// <summary>Nullable физическая геометрия дверцы. Хранится отдельной jsonb колонкой.</summary>
+    public CabinetDoorGeometry? DoorGeometry { get; set; }
 }
 
 /// <summary>Проект ТКП (projects) — мета-данные + вся экономика.</summary>

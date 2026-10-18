@@ -1,16 +1,19 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { ApiError, restApi, toCompany, getToken, setToken, type AuthUser, type ProfilePatch, type RestApi } from "./api/client";
+import {
+  ApiError, restApi, toCompany, getToken, setToken,
+  type AdminUpdateUserPatch, type AuthUser, type ProfilePatch, type RestApi,
+} from "./api/client";
 import { CATALOG } from "./data/catalog";
 import { buildTemplateCabinets } from "./data/templates";
 import type {
-  Cabinet, DeletedEquipment, Direction, Equipment, LineItem, Project, ProjectStatus, ProjectVersion, Rates, Settings,
+  Cabinet, CabinetDoorGeometry, CabinetDoorLayout, DeletedEquipment, Direction, Equipment, LineItem, Project, ProjectStatus, ProjectVersion, Rates, Settings,
 } from "./types";
 import { calcProject, genId } from "./utils";
 import { can, denyReason, type Role } from "./utils/roles";
 import {
   ensureLocalAdmin, localListUsers, localLogin, localLogout, localMe, localRegister, localSetUserRole,
-  localUpdateProfile, localUpdateUserProfile,
+  localUpdateProfile, localUpdateUserProfile, localDeleteUser,
 } from "./utils/localAuth";
 
 /* ============================================================
@@ -61,6 +64,22 @@ export const DEFAULT_SETTINGS: Settings = {
   apiBaseUrl: "",
   apiOnline: null,
 };
+
+const COMPANY_SETTING_KEYS = [
+  "companyName", "tagline", "address", "phone", "email", "requisites", "manager", "executor",
+] as const satisfies readonly (keyof Settings)[];
+
+const withCompanySettings = (current: Settings, source: Settings): Settings => ({
+  ...current,
+  companyName: source.companyName,
+  tagline: source.tagline,
+  address: source.address,
+  phone: source.phone,
+  email: source.email,
+  requisites: source.requisites,
+  manager: source.manager,
+  executor: source.executor,
+});
 
 /** Версия с сервера приходит в обёртке { snapshot: { cabinets, calc } },
     а локально хранится плоско { cabinets, calc }. Приводим оба варианта к
@@ -125,7 +144,11 @@ interface StoreState {
 
   toast: (text: string, kind?: ToastKind) => void;
   dismissToast: (id: string) => void;
-  updateSettings: (patch: Partial<Settings>) => void;
+  /** false — реквизиты компании отклонены по правам (тост уже показан). */
+  updateSettings: (patch: Partial<Settings>) => boolean;
+  saveCompanySettings: (settings: Settings) => Promise<boolean>;
+  resetCompanySettings: () => Promise<boolean>;
+  saveRates: (rates: Rates) => Promise<boolean>;
 
   pingApi: (url?: string) => Promise<boolean>;
   /** Тихая проверка связи (heartbeat и клик по индикатору): обновляет apiOnline. */
@@ -147,10 +170,11 @@ interface StoreState {
   initAuth: () => Promise<void>;
   /** Список пользователей: сервер (admin) или локальное хранилище. */
   listUsers: () => Promise<AuthUser[]>;
+  deleteUser: (id: string) => Promise<void>;
   /** Смена роли пользователя (сервер: PUT /api/auth/users/{id}/role, локально: сразу). */
   setUserRole: (id: string, role: string) => Promise<void>;
   /** Редактирование профиля любого пользователя (только admin через API). */
-  updateUserProfile: (id: string, patch: { fullName?: string; position?: string; phone?: string; email?: string }) => Promise<void>;
+  updateUserProfile: (id: string, patch: AdminUpdateUserPatch) => Promise<AuthUser>;
 
   createProject: (a: {
     title: string; client: string; contact: string; direction: Direction;
@@ -164,22 +188,24 @@ interface StoreState {
   setStatus: (id: string, status: ProjectStatus) => boolean;
 
   addCabinet: (pid: string, kind: string, name: string) => string;
-  addCabinetsBulk: (pid: string, cabs: Cabinet[]) => void;
+  addCabinetsBulk: (pid: string, cabs: Cabinet[]) => Promise<boolean>;
   updateCabinet: (pid: string, cid: string, patch: Partial<Cabinet>) => void;
+  saveCabinetDoorLayout: (pid: string, cid: string, layout: CabinetDoorLayout | null) => Promise<boolean>;
+  saveCabinetDoorGeometry: (pid: string, cid: string, geometry: CabinetDoorGeometry | null) => Promise<boolean>;
   removeCabinet: (pid: string, cid: string) => void;
 
   addEquipment: (pid: string, cid: string, eq: Equipment, qty?: number) => "added" | "incremented";
   updateItem: (pid: string, cid: string, iid: string, patch: Partial<LineItem>) => void;
   removeItem: (pid: string, cid: string, iid: string) => void;
 
-  saveVersion: (pid: string, label: string) => void;
-  restoreVersion: (pid: string, vid: string) => void;
+  saveVersion: (pid: string, label: string) => Promise<boolean>;
+  restoreVersion: (pid: string, vid: string) => Promise<boolean>;
   deleteVersion: (pid: string, vid: string) => void;
 
-  upsertEquipment: (e: Equipment) => void;
+  upsertEquipment: (e: Equipment) => Promise<void>;
   deleteEquipment: (id: string) => void;
   restoreEquipment: (id: string) => Promise<void>;
-  importEquipment: (items: Omit<Equipment, "id">[], csv?: string) => number;
+  importEquipment: (items: Omit<Equipment, "id">[], csv?: string) => Promise<number>;
 }
 
 export const useStore = create<StoreState>()(
@@ -251,7 +277,12 @@ export const useStore = create<StoreState>()(
           : `${o.kind}:${o.eqId}`;
       const enqueue = (op: OutboxOp) =>
         set((s) => {
-          const rest = s.outbox.filter((x) => opKey(x) !== opKey(op));
+          let rest = s.outbox.filter((x) => opKey(x) !== opKey(op));
+          if (op.kind === "project.delete") {
+            rest = rest.filter((x) => !(x.kind === "project.upsert" && x.id === op.id));
+          } else if (op.kind === "equipment.delete") {
+            rest = rest.filter((x) => !(x.kind === "equipment.upsert" && x.eqId === op.eqId));
+          }
           return { outbox: [...rest, op] };
         });
       const dequeue = (op: OutboxOp) =>
@@ -270,14 +301,27 @@ export const useStore = create<StoreState>()(
       };
 
       const syncTimers = new Map<string, number>();
-      /** Дебаунс-отправка проекта на сервер после каждой локальной мутации.
-          При сетевом сбое операция остаётся в очереди и уйдёт позже. */
-      const syncProject = (pid: string) => {
+      const syncChains = new Map<string, Promise<void>>();
+
+      const queueProjectOperation = <T>(pid: string, operation: () => Promise<T>): Promise<T> => {
+        const previous = syncChains.get(pid) ?? Promise.resolve();
+        const task = previous.catch(() => undefined).then(operation);
+        const barrier = task.then(() => undefined);
+        syncChains.set(pid, barrier);
+        const cleanup = () => {
+          if (syncChains.get(pid) === barrier) syncChains.delete(pid);
+        };
+        barrier.then(cleanup, cleanup);
+        return task;
+      };
+
+      /** Ставит отправку проекта в последовательную очередь. Это не даёт
+          отложенному PUT обогнать адресное сохранение layout или снимок версии. */
+      const pushLatestProject = (pid: string): Promise<void> => {
         const a = api();
-        if (!a) return;
-        window.clearTimeout(syncTimers.get(pid));
-        syncTimers.set(pid, window.setTimeout(async () => {
-          const p = get().projects.find((x) => x.id === pid);
+        if (!a) return Promise.resolve();
+        return queueProjectOperation(pid, async () => {
+          const p = get().projects.find((project) => project.id === pid);
           if (!p) return;
           const op: OutboxOp = { kind: "project.upsert", id: pid, ts: Date.now() };
           enqueue(op);
@@ -285,10 +329,29 @@ export const useStore = create<StoreState>()(
             await sendProject(a, p);
             dequeue(op);
             syncOk();
-          } catch (e) {
-            if (e instanceof ApiError) { dequeue(op); syncFail(e); } // сервер ответил — не повторяем
-            else syncFail(e);                                         // сеть — операция в очереди
+          } catch (error) {
+            if (error instanceof ApiError) dequeue(op);
+            syncFail(error);
+            throw error;
           }
+        });
+      };
+
+      const flushProjectSync = async (pid: string) => {
+        window.clearTimeout(syncTimers.get(pid));
+        syncTimers.delete(pid);
+        await pushLatestProject(pid);
+      };
+
+      /** Дебаунс-отправка проекта на сервер после каждой локальной мутации.
+          При сетевом сбое операция остаётся в очереди и уйдёт позже. */
+      const syncProject = (pid: string) => {
+        const a = api();
+        if (!a) return;
+        window.clearTimeout(syncTimers.get(pid));
+        syncTimers.set(pid, window.setTimeout(() => {
+          syncTimers.delete(pid);
+          void pushLatestProject(pid).catch(() => undefined);
         }, 700));
       };
 
@@ -311,14 +374,56 @@ export const useStore = create<StoreState>()(
         dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
         updateSettings: (patch) => {
+          if (COMPANY_SETTING_KEYS.some((key) => key in patch) && !can(get().user, "settings.edit")) {
+            get().toast(denyReason(get().user, "settings.edit"), "err");
+            return false;
+          }
           set((s) => ({ settings: { ...s.settings, ...patch } }));
           const a = api();
-          if (!a) return;
+          if (!a) return true;
           // зеркалируем на сервер то, что там хранится
           if (patch.rates) a.putRates(patch.rates).then(syncOk).catch(syncFail);
           const s = get().settings;
-          if (["companyName", "tagline", "address", "phone", "email", "requisites", "manager", "executor"].some((k) => k in patch))
+          if (COMPANY_SETTING_KEYS.some((key) => key in patch))
             a.putCompany(toCompany(s)).then(syncOk).catch(syncFail);
+          return true;
+        },
+
+        saveCompanySettings: async (next) => {
+          if (!can(get().user, "settings.edit")) {
+            get().toast(denyReason(get().user, "settings.edit"), "err");
+            return false;
+          }
+          const base = (next.apiBaseUrl ?? "").trim();
+          if (base) await restApi(base).putCompany(toCompany(next));
+          set((s) => ({
+            settings: { ...withCompanySettings(s.settings, next), apiBaseUrl: next.apiBaseUrl },
+          }));
+          return true;
+        },
+
+        resetCompanySettings: async () => {
+          if (!can(get().user, "settings.edit")) {
+            get().toast(denyReason(get().user, "settings.edit"), "err");
+            return false;
+          }
+          const current = get().settings;
+          const reset = withCompanySettings(current, DEFAULT_SETTINGS);
+          const a = api();
+          if (a) await a.putCompany(toCompany(reset));
+          set((s) => ({ settings: withCompanySettings(s.settings, DEFAULT_SETTINGS) }));
+          return true;
+        },
+
+        saveRates: async (rates) => {
+          if (!can(get().user, "rates.edit")) {
+            get().toast(denyReason(get().user, "rates.edit"), "err");
+            return false;
+          }
+          const a = api();
+          const confirmed = a ? await a.putRates(rates) : rates;
+          set((s) => ({ settings: { ...s.settings, rates: confirmed } }));
+          return true;
         },
 
         pingApi: async (url) => {
@@ -386,16 +491,34 @@ export const useStore = create<StoreState>()(
           const a = api();
           if (!a) return;
           const queue = [...get().outbox];
-          for (const op of queue) {
+          for (let index = 0; index < queue.length; index += 1) {
+            const op = queue[index];
             try {
               if (op.kind === "project.upsert") {
                 const p = get().projects.find((x) => x.id === op.id);
-                if (p) await sendProject(a, p);
+                // Без локального payload отправлять нечего: сохраняем операцию,
+                // чтобы не отмечать потерянный проект как синхронизированный.
+                if (!p) {
+                  const supersededByDelete = queue.slice(index + 1).some(
+                    (candidate) => candidate.kind === "project.delete" && candidate.id === op.id,
+                  );
+                  // Совместимость со старой persisted-очередью: delete уже
+                  // заменил отсутствующий payload, поэтому upsert можно снять.
+                  if (supersededByDelete) {
+                    dequeue(op);
+                    continue;
+                  }
+                  return;
+                }
+                await sendProject(a, p);
               } else if (op.kind === "project.delete") {
                 await a.deleteProject(op.id);
               } else if (op.kind === "equipment.upsert") {
                 const eq = get().catalog.find((x) => x.id === op.eqId);
-                if (eq) await a.putEquipment(eq);
+                // Без локального payload отправлять нечего: сохраняем операцию,
+                // чтобы не отмечать потерянную позицию как синхронизированную.
+                if (!eq) return;
+                await a.putEquipment(eq);
               } else {
                 await a.deleteEquipment(op.eqId);
               }
@@ -419,13 +542,64 @@ export const useStore = create<StoreState>()(
               a.projects(), a.catalog(), a.company(), a.rates(),
               a.deletedEquipment().catch(() => [] as DeletedEquipment[]),
             ]);
-            set((s) => ({
-              projects: projects.map(normalizeProject),
-              catalog,
-              deletedCatalog,
-              remoteLoading: false,
-              settings: { ...s.settings, ...company, rates, apiOnline: true },
-            }));
+            const remoteProjects = projects.map(normalizeProject);
+            set((s) => {
+              const pendingIds = new Set(
+                s.outbox
+                  .filter((op): op is Extract<OutboxOp, { kind: "project.upsert" }> => op.kind === "project.upsert")
+                  .map((op) => op.id),
+              );
+              const pendingDeletedProjectIds = new Set(
+                s.outbox
+                  .filter((op): op is Extract<OutboxOp, { kind: "project.delete" }> => op.kind === "project.delete")
+                  .map((op) => op.id),
+              );
+              const pendingProjects = s.projects.filter(
+                (project) => pendingIds.has(project.id) && !pendingDeletedProjectIds.has(project.id),
+              );
+              const preservedIds = new Set(pendingProjects.map((project) => project.id));
+              const pendingEquipmentIds = new Set(
+                s.outbox
+                  .filter((op): op is Extract<OutboxOp, { kind: "equipment.upsert" }> => op.kind === "equipment.upsert")
+                  .map((op) => op.eqId),
+              );
+              const pendingDeletedEquipmentIds = new Set(
+                s.outbox
+                  .filter((op): op is Extract<OutboxOp, { kind: "equipment.delete" }> => op.kind === "equipment.delete")
+                  .map((op) => op.eqId),
+              );
+              const pendingEquipment = s.catalog.filter(
+                (equipment) => pendingEquipmentIds.has(equipment.id) && !pendingDeletedEquipmentIds.has(equipment.id),
+              );
+              const preservedEquipmentIds = new Set(pendingEquipment.map((equipment) => equipment.id));
+              const pendingDeletedEquipment = s.deletedCatalog.filter((equipment) =>
+                pendingDeletedEquipmentIds.has(equipment.id),
+              );
+              const preservedDeletedEquipmentIds = new Set(pendingDeletedEquipment.map((equipment) => equipment.id));
+              return {
+                // Сервер ещё может не знать о локальных изменениях. Пока upsert
+                // находится в outbox, его payload остаётся источником для flush.
+                projects: [
+                  ...pendingProjects,
+                  ...remoteProjects.filter(
+                    (project) => !preservedIds.has(project.id) && !pendingDeletedProjectIds.has(project.id),
+                  ),
+                ],
+                catalog: [
+                  ...pendingEquipment,
+                  ...catalog.filter(
+                    (equipment) =>
+                      !preservedEquipmentIds.has(equipment.id) && !pendingDeletedEquipmentIds.has(equipment.id),
+                  ),
+                ],
+                deletedCatalog: [
+                  ...pendingDeletedEquipment,
+                  ...deletedCatalog.filter((equipment) => !preservedDeletedEquipmentIds.has(equipment.id)),
+                ],
+                remoteLoading: false,
+                settings: { ...s.settings, ...company, rates, apiOnline: true },
+              };
+            });
             get().toast("Данные загружены с сервера C#", "info");
             if (get().outbox.length > 0) void get().flushOutbox();
           } catch {
@@ -487,6 +661,15 @@ export const useStore = create<StoreState>()(
           return a ? a.users() : localListUsers();
         },
 
+        deleteUser: async (id) => {
+          const me = get().user;
+          if (!me || !can(me, "users.manage")) throw new ApiError(403, "Удаление доступно только администратору");
+          if (id === me.id) throw new ApiError(409, "Нельзя удалить текущего пользователя");
+          const a = api();
+          if (a) await a.deleteUser(id);
+          else localDeleteUser(id);
+        },
+
         setUserRole: async (id, role) => {
           const a = api();
           if (a) await a.setUserRole(id, role);
@@ -500,19 +683,30 @@ export const useStore = create<StoreState>()(
 
         updateUserProfile: async (id, patch) => {
           const a = api();
+          const requested = patch.email?.trim();
+          let next: AuthUser;
           if (a) {
             // Серверный эндпоинт для админа: PUT /api/auth/users/:id
-            await a.putUser(id, patch);
+            next = await a.putUser(id, { ...patch, ...(requested !== undefined ? { email: requested } : {}) });
+            if (requested !== undefined && next.email.trim().toLocaleLowerCase() !== requested.toLocaleLowerCase()) {
+              throw new ApiError(
+                409,
+                "Сервер не подтвердил изменение email. Обновите backend и повторите сохранение."
+              );
+            }
             syncOk();
           } else {
             // Локально: обновляем в localStorage
-            localUpdateUserProfile(id, patch);
+            localUpdateUserProfile(id, { ...patch, ...(requested !== undefined ? { email: requested } : {}) });
+            const saved = (await localListUsers()).find((candidate) => candidate.id === id);
+            if (!saved) throw new Error("Пользователь не найден");
+            next = saved;
           }
-          // Если обновили текущего пользователя — синхронизируем в стейте
+          // Текущий пользователь меняется только подтверждённым DTO сервера/локального хранилища.
           if (get().user?.id === id) {
-            const me = get().user;
-            if (me) set({ user: { ...me, ...patch } });
+            set({ user: next });
           }
+          return next;
         },
 
         /* Свой профиль: смена телефона/ФИО — сам пользователь, без админа.
@@ -600,7 +794,14 @@ export const useStore = create<StoreState>()(
             versions: [],
           };
           set((s) => ({ projects: [copy, ...s.projects] }));
-          api()?.createProject(copy).then(syncOk).catch(syncFail);
+          const a = api();
+          if (a) {
+            const op: OutboxOp = { kind: "project.upsert", id: nid, ts: Date.now() };
+            enqueue(op);
+            a.createProject(copy)
+              .then(() => { dequeue(op); syncOk(); })
+              .catch((e) => { if (e instanceof ApiError) { dequeue(op); syncFail(e); } else syncFail(e); });
+          }
           return nid;
         },
 
@@ -628,13 +829,28 @@ export const useStore = create<StoreState>()(
           return cid;
         },
 
-        addCabinetsBulk: (pid, cabs) => {
-          set((s) => ({
-            projects: s.projects.map((p) =>
-              p.id === pid ? { ...p, updatedAt: Date.now(), cabinets: [...p.cabinets, ...cabs] } : p
-            ),
-          }));
-          syncProject(pid);
+        addCabinetsBulk: async (pid, cabs) => {
+          const a = api();
+          if (!a) {
+            set((s) => ({
+              projects: s.projects.map((p) =>
+                p.id === pid ? { ...p, updatedAt: Date.now(), cabinets: [...p.cabinets, ...cabs] } : p
+              ),
+            }));
+            return true;
+          }
+          try {
+            await flushProjectSync(pid);
+            const cabinets = await queueProjectOperation(pid, () => a.addCabinetsBulk(pid, cabs));
+            set((s) => ({
+              projects: s.projects.map((p) => p.id === pid ? { ...p, updatedAt: Date.now(), cabinets } : p),
+            }));
+            syncOk();
+            return true;
+          } catch (error) {
+            syncFail(error);
+            return false;
+          }
         },
 
         updateCabinet: (pid, cid, patch) => {
@@ -646,6 +862,74 @@ export const useStore = create<StoreState>()(
             ),
           }));
           syncProject(pid);
+        },
+
+        saveCabinetDoorLayout: async (pid, cid, layout) => {
+          const applyConfirmed = (confirmed: CabinetDoorLayout | undefined) =>
+            set((s) => ({
+              projects: s.projects.map((p) => p.id === pid ? {
+                ...p,
+                updatedAt: Date.now(),
+                cabinets: p.cabinets.map((cabinet) =>
+                  cabinet.id === cid ? { ...cabinet, doorLayout: confirmed } : cabinet
+                ),
+              } : p),
+            }));
+
+          const a = api();
+          if (!a) {
+            applyConfirmed(layout ?? undefined);
+            return true;
+          }
+          try {
+            await flushProjectSync(pid);
+            if (layout) {
+              const confirmed = await queueProjectOperation(pid, () => a.putCabinetDoorLayout(pid, cid, layout));
+              applyConfirmed(confirmed);
+            } else {
+              await queueProjectOperation(pid, () => a.deleteCabinetDoorLayout(pid, cid));
+              applyConfirmed(undefined);
+            }
+            syncOk();
+            return true;
+          } catch (error) {
+            syncFail(error);
+            return false;
+          }
+        },
+
+        saveCabinetDoorGeometry: async (pid, cid, geometry) => {
+          const applyConfirmed = (confirmed: CabinetDoorGeometry | undefined) =>
+            set((s) => ({
+              projects: s.projects.map((p) => p.id === pid ? {
+                ...p,
+                updatedAt: Date.now(),
+                cabinets: p.cabinets.map((cabinet) =>
+                  cabinet.id === cid ? { ...cabinet, doorGeometry: confirmed } : cabinet
+                ),
+              } : p),
+            }));
+
+          const a = api();
+          if (!a) {
+            applyConfirmed(geometry ?? undefined);
+            return true;
+          }
+          try {
+            await flushProjectSync(pid);
+            if (geometry) {
+              const confirmed = await queueProjectOperation(pid, () => a.putCabinetDoorGeometry(pid, cid, geometry));
+              applyConfirmed(confirmed);
+            } else {
+              await queueProjectOperation(pid, () => a.deleteCabinetDoorGeometry(pid, cid));
+              applyConfirmed(undefined);
+            }
+            syncOk();
+            return true;
+          } catch (error) {
+            syncFail(error);
+            return false;
+          }
         },
 
         removeCabinet: (pid, cid) => {
@@ -724,33 +1008,90 @@ export const useStore = create<StoreState>()(
 
         /* ---------- версии ---------- */
 
-        saveVersion: (pid, label) => {
-          set((s) => ({
-            projects: s.projects.map((p) => {
-              if (p.id !== pid) return p;
-              const c = calcProject(p, get().settings.rates);
-              const v: ProjectVersion = {
-                id: genId("ver"), ts: Date.now(),
-                label: label || `Версия ${p.versions.length + 1}`,
-                cabinets: JSON.parse(JSON.stringify(p.cabinets)),
-                calc: { eqBase: Math.round(c.eqBase), total: Math.round(c.total) },
-              };
-              return { ...p, versions: [v, ...p.versions] };
-            }),
-          }));
-          syncProject(pid);
-          api()?.saveVersionRemote(pid, label).catch(syncFail);
+        saveVersion: async (pid, label) => {
+          const current = get().projects.find((project) => project.id === pid);
+          if (!current) return false;
+          const a = api();
+          if (!a) {
+            const calculation = calcProject(current, get().settings.rates);
+            const version: ProjectVersion = {
+              id: genId("ver"), ts: Date.now(),
+              label: label || `Версия ${current.versions.length + 1}`,
+              cabinets: JSON.parse(JSON.stringify(current.cabinets)),
+              calc: { eqBase: Math.round(calculation.eqBase), total: Math.round(calculation.total) },
+            };
+            set((s) => ({
+              projects: s.projects.map((project) =>
+                project.id === pid ? { ...project, versions: [version, ...project.versions] } : project
+              ),
+            }));
+            return true;
+          }
+          try {
+            await flushProjectSync(pid);
+            const versions = await queueProjectOperation(pid, () => a.saveVersionRemote(pid, label));
+            set((s) => ({
+              projects: s.projects.map((project) => project.id === pid ? {
+                ...project,
+                versions: versions.map((version) => normalizeVersion(version as RawVersion)),
+              } : project),
+            }));
+            syncOk();
+            return true;
+          } catch (error) {
+            syncFail(error);
+            return false;
+          }
         },
 
-        restoreVersion: (pid, vid) => {
-          set((s) => ({
-            projects: s.projects.map((p) => {
-              if (p.id !== pid) return p;
-              const v = p.versions.find((x) => x.id === vid);
-              return v ? { ...p, cabinets: JSON.parse(JSON.stringify(v.cabinets ?? [])), updatedAt: Date.now() } : p;
-            }),
-          }));
-          syncProject(pid);
+        restoreVersion: async (pid, vid) => {
+          const current = get().projects.find((project) => project.id === pid);
+          const version = current?.versions.find((candidate) => candidate.id === vid);
+          if (!current || !version) return false;
+          const cabinets: Cabinet[] = JSON.parse(JSON.stringify(version.cabinets ?? []));
+          const a = api();
+          if (!a) {
+            set((s) => ({
+              projects: s.projects.map((project) =>
+                project.id === pid ? { ...project, cabinets, updatedAt: Date.now() } : project
+              ),
+            }));
+            return true;
+          }
+          try {
+            await flushProjectSync(pid);
+            const confirmed = await queueProjectOperation(pid, async () => {
+              const restored = await a.putProject({ ...current, cabinets, updatedAt: Date.now() });
+              for (const cabinet of cabinets.filter((candidate) => candidate.doorLayout === undefined))
+                await a.deleteCabinetDoorLayout(pid, cabinet.id);
+              for (const cabinet of cabinets.filter((candidate) => candidate.doorGeometry === undefined))
+                await a.deleteCabinetDoorGeometry(pid, cabinet.id);
+              return restored;
+            });
+            set((s) => ({
+              projects: s.projects.map((project) => project.id === pid ? {
+                ...project,
+                ...confirmed,
+                cabinets: confirmed.cabinets.map((cabinet) =>
+                  ({
+                    ...cabinet,
+                    ...(cabinets.some((candidate) => candidate.id === cabinet.id && candidate.doorLayout === undefined)
+                      ? { doorLayout: undefined }
+                      : {}),
+                    ...(cabinets.some((candidate) => candidate.id === cabinet.id && candidate.doorGeometry === undefined)
+                      ? { doorGeometry: undefined }
+                      : {}),
+                  })
+                ),
+                versions: project.versions,
+              } : project),
+            }));
+            syncOk();
+            return true;
+          } catch (error) {
+            syncFail(error);
+            return false;
+          }
         },
 
         deleteVersion: (pid, vid) => {
@@ -764,8 +1105,8 @@ export const useStore = create<StoreState>()(
 
         /* ---------- справочник ---------- */
 
-        upsertEquipment: (e) => {
-          const isNew = !get().catalog.some((x) => x.id === e.id);
+        upsertEquipment: async (e) => {
+          const previous = get().catalog.find((x) => x.id === e.id);
           set((s) => {
             const ex = s.catalog.some((x) => x.id === e.id);
             return { catalog: ex ? s.catalog.map((x) => (x.id === e.id ? e : x)) : [...s.catalog, e] };
@@ -776,16 +1117,23 @@ export const useStore = create<StoreState>()(
                идемпотентен и безопасен для повторной отправки из офлайн-очереди */
             const op: OutboxOp = { kind: "equipment.upsert", eqId: e.id, ts: Date.now() };
             enqueue(op);
-            a.putEquipment(e).then(() => { dequeue(op); syncOk(); }).catch((err) => {
-              if (err instanceof ApiError && err.status === 409) {
-                dequeue(op); // сервер доступен — дубль не добавлен, не повторяем
-                if (isNew) set((s) => ({ catalog: s.catalog.filter((x) => x.id !== e.id) }));
-                get().toast("Такая позиция уже есть в общем справочнике — дубль не добавлен", "err");
-                return;
+            try {
+              await a.putEquipment(e);
+              dequeue(op);
+              syncOk();
+            } catch (error) {
+              if (error instanceof ApiError) {
+                dequeue(op);
+                set((s) => ({
+                  catalog: previous
+                    ? s.catalog.map((item) => item.id === e.id ? previous : item)
+                    : s.catalog.filter((item) => item.id !== e.id),
+                }));
+              } else {
+                syncFail(error); // сетевой сбой — optimistic запись и операция остаются в очереди
               }
-              if (err instanceof ApiError) { dequeue(op); syncFail(err); }
-              else syncFail(err); // сетевой сбой — операция осталась в очереди
-            });
+              throw error;
+            }
           }
         },
 
@@ -842,7 +1190,11 @@ export const useStore = create<StoreState>()(
               await a.restoreEquipment(id);
               get().toast(`"${deletedItem.name}" восстановлен`, "ok");
             } catch (e) {
-              get().toast("Ошибка восстановления на сервере (требуется бэкенд)", "err");
+              set((s) => ({
+                catalog: s.catalog.filter((item) => item.id !== id),
+                deletedCatalog: [deletedItem, ...s.deletedCatalog.filter((item) => item.id !== id)],
+              }));
+              throw e;
             }
           } else {
             get().toast(`"${deletedItem.name}" восстановлен локально`, "ok");
@@ -850,11 +1202,12 @@ export const useStore = create<StoreState>()(
         },
 
         /* Импорт прайсов — массовая перезапись цен: только менеджер/админ. */
-        importEquipment: (items, csv) => {
+        importEquipment: async (items, csv) => {
           if (!can(get().user, "catalog.import")) {
             get().toast(denyReason(get().user, "catalog.import"), "err");
             return 0;
           }
+          const catalogBeforeImport = get().catalog;
           let added = 0;
           set((s) => {
             const bySku = new Map(s.catalog.map((e) => [e.sku.toLowerCase(), e] as const));
@@ -876,7 +1229,16 @@ export const useStore = create<StoreState>()(
             return { catalog: next };
           });
           // сервер сам разбирает CSV: дубликаты по артикулу обновит, новое добавит
-          if (csv) api()?.importCsv(csv).then(syncOk).catch(syncFail);
+          const a = api();
+          if (csv && a) {
+            try {
+              await a.importCsv(csv);
+              syncOk();
+            } catch (error) {
+              set({ catalog: catalogBeforeImport });
+              throw error;
+            }
+          }
           return added;
         },
       };

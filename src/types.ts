@@ -62,6 +62,75 @@ export interface CabinetSegment {
 /** Форма внутреннего разделения по ГОСТ IEC 61439-2. */
 export type SeparationForm = "1" | "2a" | "2b" | "3a" | "3b" | "4a" | "4b";
 
+export type CabinetDoorElementKind =
+  | "lamp"
+  | "button"
+  | "selector"
+  | "start-stop-pair"
+  | "emergency-stop";
+export type CabinetDoorLampTone = "green" | "amber" | "red" | "neutral";
+export type CabinetDoorLabelSide = "above" | "below";
+
+export interface CabinetDoorElement {
+  id: string;
+  kind: CabinetDoorElementKind;
+  tone?: CabinetDoorLampTone;
+  label: string;
+  /** Индекс дверцы: 0..doorCount-1. */
+  door: number;
+  /** Нормализованная координата внутри дверцы: целое число 0..1000. */
+  x: number;
+  /** Нормализованная координата внутри дверцы: целое число 0..1000. */
+  y: number;
+}
+
+/** cabinet-door-layout-v1: пользовательский эскиз, не физический чертёж. */
+export interface CabinetDoorLayout {
+  schema: "cabinet-door-layout-v1";
+  doorCount: 1 | 2;
+  labelSide: CabinetDoorLabelSide;
+  elements: CabinetDoorElement[];
+}
+
+/** Будущая схема читается как opaque-данные и не должна перезаписываться v1-клиентом. */
+export interface UnsupportedCabinetDoorLayout {
+  schema: string;
+  [key: string]: unknown;
+}
+
+export interface CabinetDoorPlacementGeometry {
+  leftMm: number;
+  topMm: number;
+  widthMm: number;
+  heightMm: number;
+}
+
+export interface CabinetDoorLeafGeometry {
+  /** Индекс полотна, совпадает с door в cabinet-door-layout-v1. */
+  door: number;
+  /** Положение полотна в общей фронтальной системе координат, мм. */
+  originXmm: number;
+  originYmm: number;
+  widthMm: number;
+  heightMm: number;
+  /** Область, которой соответствуют нормализованные координаты layout 0..1000. */
+  placement: CabinetDoorPlacementGeometry;
+}
+
+/** cabinet-door-geometry-v1: введённая инженером физическая геометрия дверцы. */
+export interface CabinetDoorGeometry {
+  schema: "cabinet-door-geometry-v1";
+  units: "mm";
+  view: "outside-front";
+  leaves: CabinetDoorLeafGeometry[];
+}
+
+/** Будущая схема читается как opaque-данные и не перезаписывается v1-клиентом. */
+export interface UnsupportedCabinetDoorGeometry {
+  schema: string;
+  [key: string]: unknown;
+}
+
 /** Шкаф / секция / линейка (ProjectStructure). hours — сборка (производство). */
 export interface Cabinet {
   id: string;
@@ -76,6 +145,10 @@ export interface Cabinet {
   segments?: CabinetSegment[];
   /** Заявленная форма разделения (выводится в документ и на структурную схему). */
   form?: SeparationForm;
+  /** Сохраняемый пользовательский эскиз дверцы. У legacy-шкафов отсутствует. */
+  doorLayout?: CabinetDoorLayout | UnsupportedCabinetDoorLayout;
+  /** Физическая геометрия полотен для размерного вида. У legacy-шкафов отсутствует. */
+  doorGeometry?: CabinetDoorGeometry | UnsupportedCabinetDoorGeometry;
 }
 
 /** Снимок версии ТКП. */

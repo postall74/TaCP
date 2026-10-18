@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { DEFAULT_SETTINGS, useStore } from "./store";
+import { useStore } from "./store";
 import type { Settings } from "./types";
 import CatalogPage from "./components/CatalogPage";
 import Dashboard from "./components/Dashboard";
@@ -7,7 +7,7 @@ import Editor from "./components/Editor";
 import LoginGate from "./components/LoginGate";
 import AdminRouter from "./admin/AdminRouter";
 import RatesPage from "./components/RatesPage";
-import UsersPage from "./components/UsersPage";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import CabinetDraftsPage from "./components/CabinetDraftsPage";
 import { Field, Input, Modal, Textarea, ToastHost, cx } from "./components/ui";
 import {
@@ -21,7 +21,7 @@ import { can, currentRole, ROLE_LABEL } from "./utils/roles";
    к C#-бэкенду, JWT-вход. Тосты — глобальные.
    ============================================================ */
 
-type Route = "board" | "editor" | "catalog" | "rates" | "users" | "admin" | "drafts";
+type Route = "board" | "editor" | "catalog" | "rates" | "drafts";
 
 const NAV: { key: Route; label: string; hint: string; icon: (p: { size?: number }) => ReactNode; adminOnly?: boolean }[] = [
   { key: "board", label: "Дашборд", hint: "проекты и статусы", icon: IcFolder },
@@ -29,11 +29,11 @@ const NAV: { key: Route; label: string; hint: string; icon: (p: { size?: number 
   { key: "catalog", label: "Справочник", hint: "оборудование", icon: IcBox },
   { key: "drafts", label: "Чертежи", hint: "эскизы шкафов", icon: IcBox },
   { key: "rates", label: "Тарифы", hint: "нормо-часы", icon: IcClock },
-  { key: "users", label: "Пользователи", hint: "роли и доступ", icon: IcUser, adminOnly: true },
-  { key: "admin", label: "Админ-панель", hint: "управление системой", icon: IcGear, adminOnly: true },
 ];
 
 export default function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const projects = useStore((s) => s.projects);
   const settings = useStore((s) => s.settings);
   const user = useStore((s) => s.user);
@@ -43,6 +43,8 @@ export default function App() {
   const hydrateFromApi = useStore((s) => s.hydrateFromApi);
   const createProject = useStore((s) => s.createProject);
   const updateSettings = useStore((s) => s.updateSettings);
+  const saveCompanySettings = useStore((s) => s.saveCompanySettings);
+  const resetCompanySettings = useStore((s) => s.resetCompanySettings);
   const checkApi = useStore((s) => s.checkApi);
   const outboxCount = useStore((s) => s.outbox.length);
   const toast = useStore((s) => s.toast);
@@ -69,8 +71,6 @@ export default function App() {
   /* пользователи — только админ; редактор — только при открытом проекте */
   const activeRoute: Route =
     route === "editor" ? (editorProject ? "editor" : "board")
-    : route === "users" ? (can(user, "users.manage") ? "users" : "board")
-    : route === "admin" ? (currentRole(user) === "admin" ? "admin" : "board")
     : route;
 
   /* тема: класс на <html> переключает все CSS-переменные токенов */
@@ -120,6 +120,10 @@ export default function App() {
     );
   }
 
+  if (location.pathname === "/admin" || location.pathname.startsWith("/admin/")) {
+    return <><AdminRouter onBack={() => navigate("/")} /><ToastHost /></>;
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-paper">
       {/* ---------------- сайдбар ---------------- */}
@@ -163,7 +167,12 @@ export default function App() {
               </button>
             );
           })}
-</nav>
+          {currentRole(user) === "admin" && (
+            <Link to="/admin/users" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-bold text-darkmute hover:bg-dark2 hover:text-white">
+              <IcGear size={17} /> Админ-панель
+            </Link>
+          )}
+        </nav>
 
         {/* профиль (если авторизован) */}
         {user && (
@@ -272,9 +281,7 @@ export default function App() {
             )}
             {activeRoute === "catalog" && <CatalogPage />}
             {activeRoute === "rates" && <RatesPage />}
-            {activeRoute === "users" && <UsersPage />}
             {activeRoute === "drafts" && <CabinetDraftsPage />}
-            {activeRoute === "admin" && <AdminRouter onBack={() => setRoute("board")} />}
           </div>
         </div>
       </main>
@@ -283,14 +290,23 @@ export default function App() {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         initial={settings}
-        onSave={(s) => {
-          updateSettings(s);
-          toast("Реквизиты сохранены — шапка документов обновлена");
-          setSettingsOpen(false);
+        canEdit={can(user, "settings.edit")}
+        onSave={async (s) => {
+          try {
+            if (!await saveCompanySettings(s)) return;
+            toast("Реквизиты сохранены — шапка документов обновлена");
+            setSettingsOpen(false);
+          } catch (error) {
+            toast(error instanceof Error ? error.message : "Не удалось сохранить реквизиты", "err");
+          }
         }}
-        onReset={() => {
-          updateSettings(DEFAULT_SETTINGS);
-          toast("Реквизиты сброшены к значениям по умолчанию", "info");
+        onReset={async () => {
+          try {
+            if (!await resetCompanySettings()) return;
+            toast("Реквизиты сброшены к значениям по умолчанию", "info");
+          } catch (error) {
+            toast(error instanceof Error ? error.message : "Не удалось сбросить реквизиты", "err");
+          }
         }}
       />
       <ToastHost />
@@ -301,13 +317,14 @@ export default function App() {
 /* ---------------- реквизиты компании + подключение к API ---------------- */
 
 function SettingsModal({
-  open, onClose, initial, onSave, onReset,
+  open, onClose, initial, canEdit, onSave, onReset,
 }: {
   open: boolean;
   onClose: () => void;
   initial: Settings;
-  onSave: (s: Settings) => void;
-  onReset: () => void;
+  canEdit: boolean;
+  onSave: (s: Settings) => Promise<void>;
+  onReset: () => Promise<void>;
 }) {
   const [f, setF] = useState<Settings>(initial);
   useEffect(() => setF(initial), [open, initial]);
@@ -321,15 +338,19 @@ function SettingsModal({
       w="max-w-2xl"
       footer={
         <>
-          <button onClick={onReset} className="mr-auto flex cursor-pointer items-center gap-1.5 text-[12px] font-semibold text-mute transition-colors hover:text-ink">
-            <IcRefresh size={13} /> Сбросить
+          {canEdit && (
+            <button onClick={() => void onReset()} className="mr-auto flex cursor-pointer items-center gap-1.5 text-[12px] font-semibold text-mute transition-colors hover:text-ink">
+              <IcRefresh size={13} /> Сбросить
+            </button>
+          )}
+          <button onClick={onClose} className={cx("cursor-pointer rounded-md border border-line px-3.5 py-2 text-[13px] font-bold text-ink2 transition-colors hover:bg-paper", !canEdit && "ml-auto")}>
+            {canEdit ? "Отмена" : "Закрыть"}
           </button>
-          <button onClick={onClose} className="cursor-pointer rounded-md border border-line px-3.5 py-2 text-[13px] font-bold text-ink2 transition-colors hover:bg-paper">
-            Отмена
-          </button>
-          <button onClick={() => onSave(f)} className="cursor-pointer rounded-md bg-accent px-4 py-2 text-[13px] font-bold text-white transition-all hover:bg-accent-deep active:scale-95">
-            Сохранить
-          </button>
+          {canEdit && (
+            <button onClick={() => void onSave(f)} className="cursor-pointer rounded-md bg-accent px-4 py-2 text-[13px] font-bold text-white transition-all hover:bg-accent-deep active:scale-95">
+              Сохранить
+            </button>
+          )}
         </>
       }
     >
@@ -337,35 +358,62 @@ function SettingsModal({
         Эти данные попадают в шапку и подпись каждого документа ТКП (PDF/Word). Ставки нормо-часов — на странице{" "}
         <b className="text-ink2">«Тарифы»</b>.
       </p>
+      {!canEdit && (
+        <p className="mb-3 rounded-lg border border-line bg-paper/60 px-3 py-2 text-[11.5px] leading-relaxed text-mute">
+          Реквизиты доступны только для чтения. Изменять их могут менеджер и администратор.
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Название компании">
-          <Input value={f.companyName} onChange={(v) => set({ companyName: v })} />
+          <CompanyInput value={f.companyName} canEdit={canEdit} onChange={(v) => set({ companyName: v })} />
         </Field>
         <Field label="Слоган / профиль">
-          <Input value={f.tagline} onChange={(v) => set({ tagline: v })} />
+          <CompanyInput value={f.tagline} canEdit={canEdit} onChange={(v) => set({ tagline: v })} />
         </Field>
         <Field label="Телефон">
-          <Input value={f.phone} onChange={(v) => set({ phone: v })} />
+          <CompanyInput value={f.phone} canEdit={canEdit} onChange={(v) => set({ phone: v })} />
         </Field>
         <Field label="E-mail">
-          <Input value={f.email} onChange={(v) => set({ email: v })} />
+          <CompanyInput value={f.email} canEdit={canEdit} onChange={(v) => set({ email: v })} />
         </Field>
         <Field label="Адрес" className="col-span-2">
-          <Input value={f.address} onChange={(v) => set({ address: v })} />
+          <CompanyInput value={f.address} canEdit={canEdit} onChange={(v) => set({ address: v })} />
         </Field>
         <Field label="Банковские реквизиты (ИНН, счёт…)" className="col-span-2">
-          <Textarea rows={2} value={f.requisites} onChange={(v) => set({ requisites: v })} />
+          {canEdit ? (
+            <Textarea rows={2} value={f.requisites} onChange={(v) => set({ requisites: v })} />
+          ) : (
+            <textarea
+              readOnly
+              aria-readonly="true"
+              rows={2}
+              value={f.requisites}
+              className="w-full resize-y rounded-md border border-line bg-line/20 px-3 py-2 text-[13px] font-medium text-mute outline-none"
+            />
+          )}
         </Field>
         <Field label="Менеджер (подписант)">
-          <Input value={f.manager} onChange={(v) => set({ manager: v })} />
+          <CompanyInput value={f.manager} canEdit={canEdit} onChange={(v) => set({ manager: v })} />
         </Field>
         <Field label="Исполнитель (инженер)">
-          <Input value={f.executor} onChange={(v) => set({ executor: v })} />
+          <CompanyInput value={f.executor} canEdit={canEdit} onChange={(v) => set({ executor: v })} />
         </Field>
       </div>
 
       <ApiBlock f={f} set={set} />
     </Modal>
+  );
+}
+
+function CompanyInput({ value, canEdit, onChange }: { value: string; canEdit: boolean; onChange: (value: string) => void }) {
+  if (canEdit) return <Input value={value} onChange={onChange} />;
+  return (
+    <input
+      readOnly
+      aria-readonly="true"
+      value={value}
+      className="h-9 w-full rounded-md border border-line bg-line/20 px-3 text-[13px] font-medium text-mute outline-none"
+    />
   );
 }
 

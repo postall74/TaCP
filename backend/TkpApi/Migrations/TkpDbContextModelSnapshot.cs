@@ -663,6 +663,199 @@ namespace TkpApi.Migrations
                         .WithMany("Cabinets")
                         .HasForeignKey("ProjectId")
                         .OnDelete(DeleteBehavior.Cascade);
+
+                    b.OwnsOne("TkpApi.CabinetDoorGeometry", "DoorGeometry", b1 =>
+                        {
+                            b1.Property<string>("CabinetId")
+                                .HasColumnType("text");
+
+                            b1.Property<string>("Schema")
+                                .IsRequired()
+                                .HasColumnType("text")
+                                .HasAnnotation("Relational:JsonPropertyName", "schema");
+
+                            b1.Property<string>("Units")
+                                .IsRequired()
+                                .HasColumnType("text")
+                                .HasAnnotation("Relational:JsonPropertyName", "units");
+
+                            b1.Property<string>("View")
+                                .IsRequired()
+                                .HasColumnType("text")
+                                .HasAnnotation("Relational:JsonPropertyName", "view");
+
+                            b1.HasKey("CabinetId");
+
+                            b1.ToTable("project_cabinets");
+
+                            b1.ToJson("door_geometry");
+
+                            b1.WithOwner()
+                                .HasForeignKey("CabinetId");
+
+                            b1.OwnsMany("TkpApi.CabinetDoorLeaf", "Leaves", b2 =>
+                                {
+                                    b2.Property<string>("CabinetDoorGeometryCabinetId")
+                                        .HasColumnType("text");
+
+                                    b2.Property<int>("Id")
+                                        .ValueGeneratedOnAdd()
+                                        .HasColumnType("integer");
+
+                                    b2.Property<int>("Door")
+                                        .HasColumnType("integer")
+                                        .HasAnnotation("Relational:JsonPropertyName", "door");
+
+                                    b2.Property<int>("HeightMm")
+                                        .HasColumnType("integer")
+                                        .HasAnnotation("Relational:JsonPropertyName", "heightMm");
+
+                                    b2.Property<int>("OriginXmm")
+                                        .HasColumnType("integer")
+                                        .HasAnnotation("Relational:JsonPropertyName", "originXmm");
+
+                                    b2.Property<int>("OriginYmm")
+                                        .HasColumnType("integer")
+                                        .HasAnnotation("Relational:JsonPropertyName", "originYmm");
+
+                                    b2.Property<int>("WidthMm")
+                                        .HasColumnType("integer")
+                                        .HasAnnotation("Relational:JsonPropertyName", "widthMm");
+
+                                    b2.HasKey("CabinetDoorGeometryCabinetId", "Id");
+
+                                    b2.ToTable("project_cabinets");
+
+                                    b2.HasAnnotation("Relational:JsonPropertyName", "leaves");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("CabinetDoorGeometryCabinetId");
+
+                                    b2.OwnsOne("TkpApi.CabinetDoorPlacement", "Placement", b3 =>
+                                        {
+                                            b3.Property<string>("CabinetDoorLeafCabinetDoorGeometryCabinetId")
+                                                .HasColumnType("text");
+
+                                            b3.Property<int>("CabinetDoorLeafId")
+                                                .HasColumnType("integer");
+
+                                            b3.Property<int>("HeightMm")
+                                                .HasColumnType("integer")
+                                                .HasAnnotation("Relational:JsonPropertyName", "heightMm");
+
+                                            b3.Property<int>("LeftMm")
+                                                .HasColumnType("integer")
+                                                .HasAnnotation("Relational:JsonPropertyName", "leftMm");
+
+                                            b3.Property<int>("TopMm")
+                                                .HasColumnType("integer")
+                                                .HasAnnotation("Relational:JsonPropertyName", "topMm");
+
+                                            b3.Property<int>("WidthMm")
+                                                .HasColumnType("integer")
+                                                .HasAnnotation("Relational:JsonPropertyName", "widthMm");
+
+                                            b3.HasKey("CabinetDoorLeafCabinetDoorGeometryCabinetId", "CabinetDoorLeafId");
+
+                                            b3.ToTable("project_cabinets");
+
+                                            b3.HasAnnotation("Relational:JsonPropertyName", "placement");
+
+                                            b3.WithOwner()
+                                                .HasForeignKey("CabinetDoorLeafCabinetDoorGeometryCabinetId", "CabinetDoorLeafId");
+                                        });
+
+                                    b2.Navigation("Placement")
+                                        .IsRequired();
+                                });
+
+                            b1.Navigation("Leaves");
+                        });
+
+                    b.OwnsOne("TkpApi.CabinetDoorLayout", "DoorLayout", b1 =>
+                        {
+                            b1.Property<string>("CabinetId")
+                                .HasColumnType("text");
+
+                            b1.Property<int>("DoorCount")
+                                .HasColumnType("integer")
+                                .HasAnnotation("Relational:JsonPropertyName", "doorCount");
+
+                            b1.Property<string>("LabelSide")
+                                .IsRequired()
+                                .HasColumnType("text")
+                                .HasAnnotation("Relational:JsonPropertyName", "labelSide");
+
+                            b1.Property<string>("Schema")
+                                .IsRequired()
+                                .HasColumnType("text")
+                                .HasAnnotation("Relational:JsonPropertyName", "schema");
+
+                            b1.HasKey("CabinetId");
+
+                            b1.ToTable("project_cabinets");
+
+                            b1.ToJson("door_layout");
+
+                            b1.WithOwner()
+                                .HasForeignKey("CabinetId");
+
+                            b1.OwnsMany("TkpApi.CabinetDoorElement", "Elements", b2 =>
+                                {
+                                    b2.Property<string>("CabinetDoorLayoutCabinetId")
+                                        .HasColumnType("text");
+
+                                    b2.Property<int>("Id")
+                                        .ValueGeneratedOnAdd()
+                                        .HasColumnType("integer");
+
+                                    b2.Property<int>("Door")
+                                        .HasColumnType("integer")
+                                        .HasAnnotation("Relational:JsonPropertyName", "door");
+
+                                    b2.Property<string>("ElementId")
+                                        .IsRequired()
+                                        .HasColumnType("text")
+                                        .HasAnnotation("Relational:JsonPropertyName", "id");
+
+                                    b2.Property<string>("Kind")
+                                        .IsRequired()
+                                        .HasColumnType("text")
+                                        .HasAnnotation("Relational:JsonPropertyName", "kind");
+
+                                    b2.Property<string>("Label")
+                                        .IsRequired()
+                                        .HasColumnType("text")
+                                        .HasAnnotation("Relational:JsonPropertyName", "label");
+
+                                    b2.Property<string>("Tone")
+                                        .HasColumnType("text")
+                                        .HasAnnotation("Relational:JsonPropertyName", "tone");
+
+                                    b2.Property<int>("X")
+                                        .HasColumnType("integer")
+                                        .HasAnnotation("Relational:JsonPropertyName", "x");
+
+                                    b2.Property<int>("Y")
+                                        .HasColumnType("integer")
+                                        .HasAnnotation("Relational:JsonPropertyName", "y");
+
+                                    b2.HasKey("CabinetDoorLayoutCabinetId", "Id");
+
+                                    b2.ToTable("project_cabinets");
+
+                                    b2.HasAnnotation("Relational:JsonPropertyName", "elements");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("CabinetDoorLayoutCabinetId");
+                                });
+
+                            b1.Navigation("Elements");
+                        });
+
+                    b.Navigation("DoorGeometry");
+
+                    b.Navigation("DoorLayout");
                 });
 
             modelBuilder.Entity("TkpApi.CabinetSegment", b =>
