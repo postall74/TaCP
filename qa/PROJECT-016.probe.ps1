@@ -271,5 +271,3 @@ finally {
   Remove-Item Env:ConnectionStrings__Tkp,Env:Jwt__Key,Env:Jwt__Issuer,Env:Jwt__Audience,Env:Jwt__ExpireMinutes,Env:Cors__AllowedOrigins__0,Env:AllowedHosts,Env:Admin__Enabled,Env:Admin__Email,Env:Admin__Password,Env:ASPNETCORE_URLS,Env:ASPNETCORE_ENVIRONMENT,Env:Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command -ErrorAction SilentlyContinue
   Start-Sleep -Milliseconds 200;if(Test-Path $root){Remove-Item -LiteralPath $root -Recurse -Force}
 }
-
-
