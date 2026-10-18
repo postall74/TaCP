@@ -68,6 +68,30 @@ public class TkpDbContext(DbContextOptions<TkpDbContext> options) : IdentityDbCo
                     element.Property(x => x.Y).HasJsonPropertyName("y");
                 });
             });
+            c.OwnsOne(x => x.DoorGeometry, geometry =>
+            {
+                geometry.ToJson("door_geometry");
+                geometry.Property(x => x.Schema).HasJsonPropertyName("schema");
+                geometry.Property(x => x.Units).HasJsonPropertyName("units");
+                geometry.Property(x => x.View).HasJsonPropertyName("view");
+                geometry.OwnsMany(x => x.Leaves, leaf =>
+                {
+                    leaf.HasJsonPropertyName("leaves");
+                    leaf.Property(x => x.Door).HasJsonPropertyName("door");
+                    leaf.Property(x => x.OriginXmm).HasJsonPropertyName("originXmm");
+                    leaf.Property(x => x.OriginYmm).HasJsonPropertyName("originYmm");
+                    leaf.Property(x => x.WidthMm).HasJsonPropertyName("widthMm");
+                    leaf.Property(x => x.HeightMm).HasJsonPropertyName("heightMm");
+                    leaf.OwnsOne(x => x.Placement, placement =>
+                    {
+                        placement.HasJsonPropertyName("placement");
+                        placement.Property(x => x.LeftMm).HasJsonPropertyName("leftMm");
+                        placement.Property(x => x.TopMm).HasJsonPropertyName("topMm");
+                        placement.Property(x => x.WidthMm).HasJsonPropertyName("widthMm");
+                        placement.Property(x => x.HeightMm).HasJsonPropertyName("heightMm");
+                    });
+                });
+            });
         });
 
         mb.Entity<CabinetSegment>(s =>

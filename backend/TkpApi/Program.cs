@@ -176,6 +176,8 @@ app.MapPost("/api/projects", async (Project p, TkpDbContext db, ClaimsPrincipal 
 
     var layoutError = (p.Cabinets ?? []).Select(CabinetDoorLayouts.Validate).FirstOrDefault(error => error is not null);
     if (layoutError is not null) return Results.BadRequest(layoutError);
+    var geometryError = (p.Cabinets ?? []).Select(CabinetDoorGeometries.Validate).FirstOrDefault(error => error is not null);
+    if (geometryError is not null) return Results.BadRequest(geometryError);
 
     if (string.IsNullOrEmpty(p.Id)) p.Id = Guid.NewGuid().ToString();
     else if (await db.Projects.AnyAsync(existing => existing.Id == p.Id))
@@ -269,9 +271,9 @@ app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext d
     var schemaConflict = p.Cabinets.Select(CabinetDoorLayouts.UnsupportedPersistedSchema)
         .FirstOrDefault(conflict => conflict is not null);
     if (schemaConflict is not null) return Results.Conflict(schemaConflict);
-
-    var layoutError = (patch.Cabinets ?? []).Select(CabinetDoorLayouts.Validate).FirstOrDefault(error => error is not null);
-    if (layoutError is not null) return Results.BadRequest(layoutError);
+    var geometrySchemaConflict = p.Cabinets.Select(CabinetDoorGeometries.UnsupportedPersistedSchema)
+        .FirstOrDefault(conflict => conflict is not null);
+    if (geometrySchemaConflict is not null) return Results.Conflict(geometrySchemaConflict);
 
     if (await db.Projects.AnyAsync(x => x.Id != id && x.Number == patch.Number))
         return ProjectNumberConflict.Result();
@@ -315,13 +317,25 @@ app.MapPut("/api/projects/{id}", async (string id, Project patch, TkpDbContext d
     var existingLayouts = p.Cabinets
         .Where(cabinet => cabinet.DoorLayout is not null)
         .ToDictionary(cabinet => cabinet.Id, cabinet => CabinetDoorLayouts.Clone(cabinet.DoorLayout!), StringComparer.Ordinal);
+    var existingGeometries = p.Cabinets
+        .Where(cabinet => cabinet.DoorGeometry is not null)
+        .ToDictionary(cabinet => cabinet.Id, cabinet => CabinetDoorGeometries.Clone(cabinet.DoorGeometry!), StringComparer.Ordinal);
     foreach (var cabinet in patch.Cabinets ?? [])
     {
         // A legacy full-project payload has no doorLayout. Preserve the last confirmed
         // layout; explicit clearing is the addressed DELETE endpoint below.
         if (cabinet.DoorLayout is null && existingLayouts.TryGetValue(cabinet.Id, out var existingLayout))
             cabinet.DoorLayout = existingLayout;
+        // doorGeometry follows the same omission rule. Explicit clearing is available
+        // only through the addressed DELETE endpoint.
+        if (cabinet.DoorGeometry is null && existingGeometries.TryGetValue(cabinet.Id, out var existingGeometry))
+            cabinet.DoorGeometry = existingGeometry;
     }
+
+    var layoutError = (patch.Cabinets ?? []).Select(CabinetDoorLayouts.Validate).FirstOrDefault(error => error is not null);
+    if (layoutError is not null) return Results.BadRequest(layoutError);
+    var geometryError = (patch.Cabinets ?? []).Select(CabinetDoorGeometries.Validate).FirstOrDefault(error => error is not null);
+    if (geometryError is not null) return Results.BadRequest(geometryError);
 
     var created = p.CreatedAt;
     patch.Id = id;
@@ -375,6 +389,8 @@ app.MapPost("/api/projects/{id}/cabinets", async (string id, List<Cabinet> cabs,
 {
     var layoutError = cabs.Select(CabinetDoorLayouts.Validate).FirstOrDefault(error => error is not null);
     if (layoutError is not null) return Results.BadRequest(layoutError);
+    var geometryError = cabs.Select(CabinetDoorGeometries.Validate).FirstOrDefault(error => error is not null);
+    if (geometryError is not null) return Results.BadRequest(geometryError);
 
     var p = await db.Projects.Include(x => x.Cabinets).ThenInclude(c => c.Items)
                              .FirstOrDefaultAsync(x => x.Id == id);
@@ -433,13 +449,59 @@ app.MapPut("/api/projects/{projectId}/cabinets/{cabinetId}/door-layout",
     if (cabinet is null) return Results.NotFound();
     var schemaConflict = CabinetDoorLayouts.UnsupportedPersistedSchema(cabinet);
     if (schemaConflict is not null) return Results.Conflict(schemaConflict);
+    var geometrySchemaConflict = CabinetDoorGeometries.UnsupportedPersistedSchema(cabinet);
+    if (geometrySchemaConflict is not null) return Results.Conflict(geometrySchemaConflict);
     var layoutError = CabinetDoorLayouts.Validate(cabinetId, layout);
     if (layoutError is not null) return Results.BadRequest(layoutError);
+    var geometryError = CabinetDoorGeometries.Validate(cabinetId, cabinet.DoorGeometry, layout);
+    if (geometryError is not null) return Results.BadRequest(geometryError);
 
     cabinet.DoorLayout = layout;
     project.UpdatedAt = DateTime.UtcNow;
     await db.SaveChangesAsync();
     return Results.Ok(cabinet.DoorLayout);
+}).RequireAuthorization("Staff");
+
+app.MapPut("/api/projects/{projectId}/cabinets/{cabinetId}/door-geometry",
+    async (string projectId, string cabinetId, CabinetDoorGeometry? geometry, TkpDbContext db) =>
+{
+    if (geometry is null)
+        return Results.BadRequest(new CabinetDoorGeometryError(
+            "Для очистки геометрии используйте DELETE", cabinetId));
+
+    var project = await db.Projects.Include(p => p.Cabinets)
+        .FirstOrDefaultAsync(p => p.Id == projectId);
+    if (project is null) return Results.NotFound();
+    var cabinet = project.Cabinets.FirstOrDefault(c => c.Id == cabinetId);
+    if (cabinet is null) return Results.NotFound();
+    var schemaConflict = CabinetDoorGeometries.UnsupportedPersistedSchema(cabinet);
+    if (schemaConflict is not null) return Results.Conflict(schemaConflict);
+    var layoutSchemaConflict = CabinetDoorLayouts.UnsupportedPersistedSchema(cabinet);
+    if (layoutSchemaConflict is not null) return Results.Conflict(layoutSchemaConflict);
+    var geometryError = CabinetDoorGeometries.Validate(cabinetId, geometry, cabinet.DoorLayout);
+    if (geometryError is not null) return Results.BadRequest(geometryError);
+
+    cabinet.DoorGeometry = geometry;
+    project.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+    return Results.Ok(cabinet.DoorGeometry);
+}).RequireAuthorization("Staff");
+
+app.MapDelete("/api/projects/{projectId}/cabinets/{cabinetId}/door-geometry",
+    async (string projectId, string cabinetId, TkpDbContext db) =>
+{
+    var project = await db.Projects.Include(p => p.Cabinets)
+        .FirstOrDefaultAsync(p => p.Id == projectId);
+    if (project is null) return Results.NotFound();
+    var cabinet = project.Cabinets.FirstOrDefault(c => c.Id == cabinetId);
+    if (cabinet is null) return Results.NotFound();
+    var schemaConflict = CabinetDoorGeometries.UnsupportedPersistedSchema(cabinet);
+    if (schemaConflict is not null) return Results.Conflict(schemaConflict);
+
+    cabinet.DoorGeometry = null;
+    project.UpdatedAt = DateTime.UtcNow;
+    await db.SaveChangesAsync();
+    return Results.NoContent();
 }).RequireAuthorization("Staff");
 
 app.MapDelete("/api/projects/{projectId}/cabinets/{cabinetId}/door-layout",
