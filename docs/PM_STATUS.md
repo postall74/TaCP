@@ -1,5 +1,22 @@
 # Доска PM
 
+## Интеграционный кандидат R1 — 2026-10-18
+
+Ветка `codex/pm/sync-001-010-integration` опубликована с remote SHA
+`ca7798a351bf8dae4de0a32aae660595ee053c75`. Черновой PR #109 к `main`
+охватывает 73 коммита и 72 файла: admin, catalog, projects, door layout и
+SYNC-001…010. GitHub CI run #157: frontend typecheck/tests/build и backend
+tests/Release build — оба job success. Локально: frontend 162/162, backend
+154/154, typecheck/build PASS. Финальный QA diff исправил только два теста;
+исторический SYNC-003 дефект закрыт SYNC-005.
+
+Дополнительно опубликованы QA WIZ-UI-003 `786b6e52`, frontend SETTINGS-UI-001
+`51481855` и QA SETTINGS-UI-001 `e566a2b7`; remote SHA сверены. NEED-001 и
+NEED-012 частичны; PR #109 не сливать и не тегировать до release gates либо
+отдельного явного разрешения пользователя. Read-only аудит Frontend и Backend
+не нашёл новой действительно не реализованной ready-задачи; ROADMAP содержит
+устаревшие статусы, отдельные ветки требуют PM-сверки без повторной разработки.
+
 ## DOOR-001/002/003 — опубликованный кандидат и откат преждевременного merge 2026-10-16
 
 Контракт `cabinet-door-layout-v1` / NEED-012 partial: Backend сохраняет layout в nullable jsonb и версиях; Frontend сохраняет/редактирует дверцу с подтверждением API и упорядочивает запись перед снимком версии. PM свёл backend `39509390`, backend QA `5abce523`, frontend `54cc21b5`, pointercancel fix `6023c0ea` и frontend QA `bc32ec5e` в локальной ветке `codex/pm/door-001-integration`, SHA `a6cc395`. PM docs/ADR-014 — локальный SHA `525f4e5c`. Ветка опубликована на GitHub с SHA `a6cc395`. PR #99 был слит пользователем в `main` до завершения NEED-012 gates; по его условию PM выполнил точный revert через PR #100. Текущий remote `main` — `48b336c1`, его дерево равно pre-merge `1edff933`; кандидат сохранён в feature-ветке.
