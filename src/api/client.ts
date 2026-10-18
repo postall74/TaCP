@@ -1,4 +1,4 @@
-import type { CabinetDoorLayout, DeletedEquipment, Equipment, Project, ProjectVersion, Rates, Settings } from "../types";
+import type { CabinetDoorGeometry, CabinetDoorLayout, DeletedEquipment, Equipment, Project, ProjectVersion, Rates, Settings } from "../types";
 
 /* ============================================================
    REST-КЛИЕНТ для C#-бэкенда (backend/TkpApi, ASP.NET Core).
@@ -170,6 +170,13 @@ export const restApi = (base: string) => ({
     }),
   deleteCabinetDoorLayout: (pid: string, cid: string) =>
     req<void>(base, `/api/projects/${pid}/cabinets/${cid}/door-layout`, { method: "DELETE" }),
+  putCabinetDoorGeometry: (pid: string, cid: string, geometry: CabinetDoorGeometry) =>
+    req<CabinetDoorGeometry>(base, `/api/projects/${pid}/cabinets/${cid}/door-geometry`, {
+      method: "PUT",
+      body: JSON.stringify(geometry),
+    }),
+  deleteCabinetDoorGeometry: (pid: string, cid: string) =>
+    req<void>(base, `/api/projects/${pid}/cabinets/${cid}/door-geometry`, { method: "DELETE" }),
 
   /* справочник */
   catalog: () => req<Equipment[]>(base, "/api/catalog"),

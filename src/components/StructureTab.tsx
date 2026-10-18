@@ -4,6 +4,7 @@ import type { Cabinet, CabinetSegment, Direction, Equipment, LineItem, Project, 
 import { DIRECTIONS } from "../types";
 import { calcProject, fmtMoney, genId, plural } from "../utils";
 import { isDoorLayoutV1 } from "../utils/doorLayout";
+import { isDoorGeometryV1 } from "../utils/doorGeometry";
 import {
   DEFAULT_CABINET_HEIGHT, FORM_META, SEGMENT_PRESETS, buildSegmentLines, mergeSegmentItems,
 } from "../utils/segments";
@@ -11,8 +12,9 @@ import {
   SEVERITY_META, summarize, validateCabinet, validateProject, type Issue, type ValidateCtx,
 } from "../utils/rules";
 import { Badge, Btn, EmptyState, Field, IconBtn, Input, Modal, NumInput, Select, Stepper, cx } from "./ui";
-import { IcAlert, IcCheck, IcChevronDown, IcLayers, IcPencil, IcPlus, IcSearch, IcTrash, IcWand } from "./icons";
+import { IcAlert, IcCheck, IcChevronDown, IcLayers, IcPencil, IcPlus, IcSearch, IcTable, IcTrash, IcWand } from "./icons";
 import { DoorLayoutModal } from "./DoorLayoutEditor";
+import { DoorGeometryModal } from "./DoorGeometryEditor";
 
 /* ============================================================
    ВКЛАДКА «СТРУКТУРА»: дерево шкафов (аккордеон), inline-правка
@@ -37,6 +39,7 @@ export default function StructureTab({ project, onOpenWizard }: { project: Proje
   const [lastAdded, setLastAdded] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [doorTarget, setDoorTarget] = useState<string | null>(null);
+  const [geometryTarget, setGeometryTarget] = useState<string | null>(null);
 
   // проверка совместимости: контекст + замечания по всему проекту
   const catalog = useStore((s) => s.catalog);
@@ -173,9 +176,15 @@ export default function StructureTab({ project, onOpenWizard }: { project: Proje
                 {c.doorLayout && <Badge cls="bg-accent-soft text-accent-deep">
                   {isDoorLayoutV1(c.doorLayout) ? `Дверца · ${c.doorLayout.doorCount}` : "Дверца · новая версия"}
                 </Badge>}
+                {c.doorGeometry && <Badge cls="bg-steel-soft text-steel">
+                  {isDoorGeometryV1(c.doorGeometry) ? `Размеры · ${c.doorGeometry.leaves.length}` : "Размеры · новая версия"}
+                </Badge>}
                 <span className="min-w-[110px] text-right font-mono text-[13.5px] font-bold text-ink tabular-nums">{fmtMoney(cc.total)}</span>
                 <IconBtn title="Редактировать компоновку дверцы" onClick={() => setDoorTarget(c.id)}>
                   <IcPencil size={15} />
+                </IconBtn>
+                <IconBtn title="Ввести размеры дверцы" onClick={() => setGeometryTarget(c.id)}>
+                  <IcTable size={15} />
                 </IconBtn>
                 <IconBtn
                   title="Удалить шкаф"
@@ -305,6 +314,13 @@ export default function StructureTab({ project, onOpenWizard }: { project: Proje
           projectId={project.id}
           cabinet={project.cabinets.find((cabinet) => cabinet.id === doorTarget)!}
           onClose={() => setDoorTarget(null)}
+        />
+      )}
+      {geometryTarget && project.cabinets.find((cabinet) => cabinet.id === geometryTarget) && (
+        <DoorGeometryModal
+          projectId={project.id}
+          cabinet={project.cabinets.find((cabinet) => cabinet.id === geometryTarget)!}
+          onClose={() => setGeometryTarget(null)}
         />
       )}
     </div>

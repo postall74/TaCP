@@ -7,7 +7,7 @@ import {
 import { CATALOG } from "./data/catalog";
 import { buildTemplateCabinets } from "./data/templates";
 import type {
-  Cabinet, CabinetDoorLayout, DeletedEquipment, Direction, Equipment, LineItem, Project, ProjectStatus, ProjectVersion, Rates, Settings,
+  Cabinet, CabinetDoorGeometry, CabinetDoorLayout, DeletedEquipment, Direction, Equipment, LineItem, Project, ProjectStatus, ProjectVersion, Rates, Settings,
 } from "./types";
 import { calcProject, genId } from "./utils";
 import { can, denyReason, type Role } from "./utils/roles";
@@ -191,6 +191,7 @@ interface StoreState {
   addCabinetsBulk: (pid: string, cabs: Cabinet[]) => Promise<boolean>;
   updateCabinet: (pid: string, cid: string, patch: Partial<Cabinet>) => void;
   saveCabinetDoorLayout: (pid: string, cid: string, layout: CabinetDoorLayout | null) => Promise<boolean>;
+  saveCabinetDoorGeometry: (pid: string, cid: string, geometry: CabinetDoorGeometry | null) => Promise<boolean>;
   removeCabinet: (pid: string, cid: string) => void;
 
   addEquipment: (pid: string, cid: string, eq: Equipment, qty?: number) => "added" | "incremented";
@@ -897,6 +898,40 @@ export const useStore = create<StoreState>()(
           }
         },
 
+        saveCabinetDoorGeometry: async (pid, cid, geometry) => {
+          const applyConfirmed = (confirmed: CabinetDoorGeometry | undefined) =>
+            set((s) => ({
+              projects: s.projects.map((p) => p.id === pid ? {
+                ...p,
+                updatedAt: Date.now(),
+                cabinets: p.cabinets.map((cabinet) =>
+                  cabinet.id === cid ? { ...cabinet, doorGeometry: confirmed } : cabinet
+                ),
+              } : p),
+            }));
+
+          const a = api();
+          if (!a) {
+            applyConfirmed(geometry ?? undefined);
+            return true;
+          }
+          try {
+            await flushProjectSync(pid);
+            if (geometry) {
+              const confirmed = await queueProjectOperation(pid, () => a.putCabinetDoorGeometry(pid, cid, geometry));
+              applyConfirmed(confirmed);
+            } else {
+              await queueProjectOperation(pid, () => a.deleteCabinetDoorGeometry(pid, cid));
+              applyConfirmed(undefined);
+            }
+            syncOk();
+            return true;
+          } catch (error) {
+            syncFail(error);
+            return false;
+          }
+        },
+
         removeCabinet: (pid, cid) => {
           set((s) => ({
             projects: s.projects.map((p) =>
@@ -1029,6 +1064,8 @@ export const useStore = create<StoreState>()(
               const restored = await a.putProject({ ...current, cabinets, updatedAt: Date.now() });
               for (const cabinet of cabinets.filter((candidate) => candidate.doorLayout === undefined))
                 await a.deleteCabinetDoorLayout(pid, cabinet.id);
+              for (const cabinet of cabinets.filter((candidate) => candidate.doorGeometry === undefined))
+                await a.deleteCabinetDoorGeometry(pid, cabinet.id);
               return restored;
             });
             set((s) => ({
@@ -1036,9 +1073,15 @@ export const useStore = create<StoreState>()(
                 ...project,
                 ...confirmed,
                 cabinets: confirmed.cabinets.map((cabinet) =>
-                  cabinets.some((candidate) => candidate.id === cabinet.id && candidate.doorLayout === undefined)
-                    ? { ...cabinet, doorLayout: undefined }
-                    : cabinet
+                  ({
+                    ...cabinet,
+                    ...(cabinets.some((candidate) => candidate.id === cabinet.id && candidate.doorLayout === undefined)
+                      ? { doorLayout: undefined }
+                      : {}),
+                    ...(cabinets.some((candidate) => candidate.id === cabinet.id && candidate.doorGeometry === undefined)
+                      ? { doorGeometry: undefined }
+                      : {}),
+                  })
                 ),
                 versions: project.versions,
               } : project),
