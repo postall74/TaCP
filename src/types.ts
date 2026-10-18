@@ -98,6 +98,39 @@ export interface UnsupportedCabinetDoorLayout {
   [key: string]: unknown;
 }
 
+export interface CabinetDoorPlacementGeometry {
+  leftMm: number;
+  topMm: number;
+  widthMm: number;
+  heightMm: number;
+}
+
+export interface CabinetDoorLeafGeometry {
+  /** Индекс полотна, совпадает с door в cabinet-door-layout-v1. */
+  door: number;
+  /** Положение полотна в общей фронтальной системе координат, мм. */
+  originXmm: number;
+  originYmm: number;
+  widthMm: number;
+  heightMm: number;
+  /** Область, которой соответствуют нормализованные координаты layout 0..1000. */
+  placement: CabinetDoorPlacementGeometry;
+}
+
+/** cabinet-door-geometry-v1: введённая инженером физическая геометрия дверцы. */
+export interface CabinetDoorGeometry {
+  schema: "cabinet-door-geometry-v1";
+  units: "mm";
+  view: "outside-front";
+  leaves: CabinetDoorLeafGeometry[];
+}
+
+/** Будущая схема читается как opaque-данные и не перезаписывается v1-клиентом. */
+export interface UnsupportedCabinetDoorGeometry {
+  schema: string;
+  [key: string]: unknown;
+}
+
 /** Шкаф / секция / линейка (ProjectStructure). hours — сборка (производство). */
 export interface Cabinet {
   id: string;
@@ -114,6 +147,8 @@ export interface Cabinet {
   form?: SeparationForm;
   /** Сохраняемый пользовательский эскиз дверцы. У legacy-шкафов отсутствует. */
   doorLayout?: CabinetDoorLayout | UnsupportedCabinetDoorLayout;
+  /** Физическая геометрия полотен для размерного вида. У legacy-шкафов отсутствует. */
+  doorGeometry?: CabinetDoorGeometry | UnsupportedCabinetDoorGeometry;
 }
 
 /** Снимок версии ТКП. */

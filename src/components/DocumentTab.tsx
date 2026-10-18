@@ -4,8 +4,11 @@ import type { Project } from "../types";
 import { DIRECTIONS } from "../types";
 import { calcProject, downloadText, fmtDate, fmtMoney, fmtNum } from "../utils";
 import { FORM_META } from "../utils/segments";
+import { isDoorGeometryV1, validateDoorGeometry } from "../utils/doorGeometry";
+import { isDoorLayoutV1 } from "../utils/doorLayout";
 import { Btn, Toggle } from "./ui";
 import { IcBolt, IcDownload, IcPrinter } from "./icons";
+import { DoorDimensionDrawing } from "./DoorDimensionDrawing";
 
 /* ============================================================
    ВКЛАДКА «ДОКУМЕНТ»: предпросмотр листа А4 (шрифт PT Serif),
@@ -46,6 +49,43 @@ export default function DocumentTab({ project }: { project: Project }) {
   const hasPlc = autoItems.length > 0;
   const [appSignals, setAppSignals] = useState(true);
   const [appScheme, setAppScheme] = useState(true);
+  const [appDoorDrawings, setAppDoorDrawings] = useState(false);
+
+  const doorDrawingPreflight = useMemo(() => {
+    const drawings: Array<{
+      cabinet: Project["cabinets"][number];
+      layout: NonNullable<Parameters<typeof DoorDimensionDrawing>[0]["layout"]>;
+      geometry: NonNullable<Parameters<typeof DoorDimensionDrawing>[0]["geometry"]>;
+    }> = [];
+    const issues: string[] = [];
+    for (const cabinet of project.cabinets) {
+      if (!cabinet.doorLayout && !cabinet.doorGeometry) continue;
+      if (!cabinet.doorLayout) {
+        issues.push(`${cabinet.name}: отсутствует doorLayout.`);
+        continue;
+      }
+      if (!isDoorLayoutV1(cabinet.doorLayout)) {
+        issues.push(`${cabinet.name}: схема doorLayout «${cabinet.doorLayout.schema}» не поддерживается.`);
+        continue;
+      }
+      if (!cabinet.doorGeometry) {
+        issues.push(`${cabinet.name}: отсутствует doorGeometry.`);
+        continue;
+      }
+      if (!isDoorGeometryV1(cabinet.doorGeometry)) {
+        issues.push(`${cabinet.name}: схема или поля doorGeometry не поддерживаются.`);
+        continue;
+      }
+      const validationError = validateDoorGeometry(cabinet.doorGeometry, cabinet.doorLayout);
+      if (validationError) {
+        issues.push(`${cabinet.name}: ${validationError}`);
+        continue;
+      }
+      drawings.push({ cabinet, layout: cabinet.doorLayout, geometry: cabinet.doorGeometry });
+    }
+    return { drawings, issues };
+  }, [project.cabinets]);
+  const canPrintDoorDrawings = doorDrawingPreflight.drawings.length > 0 && doorDrawingPreflight.issues.length === 0;
 
   const exportWord = () => {
     const inner = document.getElementById("doc-print-area")?.innerHTML ?? "";
@@ -67,13 +107,22 @@ h1{font-size:19px}h3{font-size:13.5px}</style></head><body>${inner}</body></html
           <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1.5">
             <Toggle on={appSignals} onChange={setAppSignals} label="Приложение А · перечень автоматизации" />
             <Toggle on={appScheme && hasPlc} onChange={(v) => hasPlc && setAppScheme(v)} label={hasPlc ? "Приложение Б · структурная схема" : "Структурная схема (нет ПЛК)"} />
+            {canPrintDoorDrawings && <Toggle on={appDoorDrawings} onChange={setAppDoorDrawings} label="Приложение В · размерные виды дверей" />}
           </div>
+          {doorDrawingPreflight.issues.length > 0 && <div className="mt-2 rounded-md border border-warn/40 bg-warn-soft px-3 py-2 text-[11px] leading-relaxed text-ink2">
+            <div className="font-bold">Размерные виды недоступны:</div>
+            {doorDrawingPreflight.issues.map((issue) => <div key={issue}>• {issue}</div>)}
+          </div>}
+          {!canPrintDoorDrawings && doorDrawingPreflight.issues.length === 0 && <div className="mt-2 text-[11px] text-mute">
+            Для размерного вида нужны сохранённые компоновка и физическая геометрия дверцы.
+          </div>}
+          {appDoorDrawings && <div className="mt-2 text-[11px] text-mute">Размерные листы проверяются через браузерную печать/PDF; экспорт Word для них пока недоступен.</div>}
         </div>
         <div className="flex shrink-0 gap-2">
-          <Btn variant="outline" size="sm" onClick={exportWord}>
+          <Btn variant="outline" size="sm" onClick={exportWord} disabled={appDoorDrawings} title={appDoorDrawings ? "Word для размерных листов ещё не проверен" : undefined}>
             <IcDownload size={14} /> Word (.doc)
           </Btn>
-          <Btn size="sm" onClick={() => window.print()}>
+          <Btn size="sm" onClick={() => window.print()} disabled={appDoorDrawings && !canPrintDoorDrawings}>
             <IcPrinter size={14} /> Печать / PDF
           </Btn>
         </div>
@@ -331,6 +380,14 @@ h1{font-size:19px}h3{font-size:13.5px}</style></head><body>${inner}</body></html
               </p>
             </>
           )}
+
+          {appDoorDrawings && canPrintDoorDrawings && doorDrawingPreflight.drawings.map((drawing, index) => <DoorDimensionDrawing
+            key={drawing.cabinet.id}
+            cabinet={drawing.cabinet}
+            layout={drawing.layout}
+            geometry={drawing.geometry}
+            index={index}
+          />)}
         </div>
       </div>
     </div>
