@@ -20,7 +20,7 @@ ADR-003/CAB-001 остаётся открытым; подготовительн�
 и WIZ-UI-002 в тот же черновой PR #109. Новый remote SHA
 `d34c83d56ef7990a1ca462d82993a3f3fee7eee3` сверен; изменение после
 `f9aec228` ограничено QA-сценарием и отчётами. PowerShell-синтаксис probe
-проверен без ошибок; CI #164 на новом SHA на момент записи queued. Полный
+проверен без ошибок; CI #164 на новом SHA завершился success. Полный
 набор локальных тестов без изменения production-кода повторно не запускался.
 
 Ветка `codex/pm/sync-001-010-integration` опубликована с remote SHA
@@ -28,7 +28,7 @@ ADR-003/CAB-001 остаётся открытым; подготовительн�
 `main` включает admin, catalog, projects, door layout и SYNC-001…010, а также
 проверенные CSV-001/PROJECT-004, SETTINGS-UI-001 и ADMIN-005 с независимой QA.
 GitHub CI #163 на production-базе `f9aec228`: frontend и backend jobs success;
-CI #164 на текущем SHA с добавленными QA-файлами ожидается. Локально:
+CI #164 на текущем SHA с добавленными QA-файлами завершился success. Локально:
 frontend 177/177, typecheck/build PASS; backend 166/166 и Release build PASS.
 DOOR-003 на объединённой базе прошёл 32/32 PostgreSQL 18/HTTP проверки,
 включая миграцию, JSONB, версии, ошибки и атомарность. Независимая QA CSV-001
