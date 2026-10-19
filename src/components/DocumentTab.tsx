@@ -6,6 +6,7 @@ import { calcProject, downloadText, fmtDate, fmtMoney, fmtNum } from "../utils";
 import { FORM_META } from "../utils/segments";
 import { isDoorGeometryV1, validateDoorGeometry } from "../utils/doorGeometry";
 import { isDoorLayoutV1 } from "../utils/doorLayout";
+import { buildWordDocumentWithDoorDrawings } from "../utils/wordDocument";
 import { Btn, Toggle } from "./ui";
 import { IcBolt, IcDownload, IcPrinter } from "./icons";
 import { DoorDimensionDrawing } from "./DoorDimensionDrawing";
@@ -50,6 +51,7 @@ export default function DocumentTab({ project }: { project: Project }) {
   const [appSignals, setAppSignals] = useState(true);
   const [appScheme, setAppScheme] = useState(true);
   const [appDoorDrawings, setAppDoorDrawings] = useState(false);
+  const [wordExporting, setWordExporting] = useState(false);
 
   const doorDrawingPreflight = useMemo(() => {
     const drawings: Array<{
@@ -87,14 +89,29 @@ export default function DocumentTab({ project }: { project: Project }) {
   }, [project.cabinets]);
   const canPrintDoorDrawings = doorDrawingPreflight.drawings.length > 0 && doorDrawingPreflight.issues.length === 0;
 
-  const exportWord = () => {
-    const inner = document.getElementById("doc-print-area")?.innerHTML ?? "";
+  const exportWord = async () => {
+    const root = document.getElementById("doc-print-area");
+    if (!root) {
+      toast("Не удалось подготовить документ Word", "err");
+      return;
+    }
+    const inner = root.innerHTML;
     const full = `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>${project.number} — ${project.title}</title>
 <style>body{font-family:'Times New Roman',Times,serif;font-size:12.5px;color:#171717;line-height:1.45;margin:24px}
 table{border-collapse:collapse;width:100%}td,th{border:1px solid #8a8a8a;padding:5px 8px;font-size:12px}
 h1{font-size:19px}h3{font-size:13.5px}</style></head><body>${inner}</body></html>`;
-    downloadText(`${project.number} — ${project.title}.doc`, full, "application/msword");
-    toast("Файл Word (.doc) сформирован");
+    try {
+      setWordExporting(true);
+      const content = appDoorDrawings
+        ? await buildWordDocumentWithDoorDrawings(root, `${project.number} — ${project.title}`)
+        : full;
+      downloadText(`${project.number} — ${project.title}.doc`, content, "application/msword");
+      toast("Файл Word (.doc) сформирован");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Не удалось сформировать документ Word", "err");
+    } finally {
+      setWordExporting(false);
+    }
   };
 
   return (
@@ -116,11 +133,11 @@ h1{font-size:19px}h3{font-size:13.5px}</style></head><body>${inner}</body></html
           {!canPrintDoorDrawings && doorDrawingPreflight.issues.length === 0 && <div className="mt-2 text-[11px] text-mute">
             Для размерного вида нужны сохранённые компоновка и физическая геометрия дверцы.
           </div>}
-          {appDoorDrawings && <div className="mt-2 text-[11px] text-mute">Размерные листы проверяются через браузерную печать/PDF; экспорт Word для них пока недоступен.</div>}
+          {appDoorDrawings && <div className="mt-2 text-[11px] text-mute">Размерные листы будут включены в Word вместе с таблицей координат и предупреждением об ограничениях.</div>}
         </div>
         <div className="flex shrink-0 gap-2">
-          <Btn variant="outline" size="sm" onClick={exportWord} disabled={appDoorDrawings} title={appDoorDrawings ? "Word для размерных листов ещё не проверен" : undefined}>
-            <IcDownload size={14} /> Word (.doc)
+          <Btn variant="outline" size="sm" onClick={exportWord} disabled={wordExporting || (appDoorDrawings && !canPrintDoorDrawings)}>
+            <IcDownload size={14} /> {wordExporting ? "Формируется…" : "Word (.doc)"}
           </Btn>
           <Btn size="sm" onClick={() => window.print()} disabled={appDoorDrawings && !canPrintDoorDrawings}>
             <IcPrinter size={14} /> Печать / PDF
