@@ -1,5 +1,9 @@
 # QA: журнал проверок и передача PM
 
+ADMIN-002: [независимый QA catalog-recycle-v1](ADMIN-002.md), backend snapshot
+от base `1edff933`: 100 .NET tests, clean Release build и 56 PostgreSQL/HTTP
+assertions прошли. Новых дефектов нет; NEED-001 остаётся partial.
+
 SEC-001: [независимый QA auth-v2](SEC-001.md), production `b1bb51eb`:
 96 .NET tests и 21 адресная HTTP/DB проверка прошли. Новых дефектов защиты
 registration не найдено. Git-операции оставлены PM.
@@ -163,3 +167,11 @@ PM опубликовал auth-v2 в своём checkout `.worktrees/pm-core-004
 изолированный PostgreSQL harness. До исполняемых integration tests получить fixture,
 схему ошибки и согласовать с backend запуск изолированной PostgreSQL. Не заменять HTTP-тест
 проверкой текста RequireAuthorization: это не проверит реальное middleware.
+### ADMIN-005
+
+Frontend target `6c60705b831d4557eb479c78d94c24e10850c5ce` проверен
+независимо: исторические `item.brand`/`item.purchase`, нулевая цена, 22
+производителя при отдельном TOP-20, пустые данные и CSV покрыты компонентными
+сценариями. Адресно 3/3, полный frontend gate 88/88, typecheck и build прошли;
+обе темы проверены в браузере. NEED-001 остаётся partial. Подробности:
+`qa/ADMIN-005.md`.

@@ -358,6 +358,9 @@ app.MapDelete("/api/catalog/{id}", async (string id, TkpDbContext db, ClaimsPrin
 /* «Корзина» справочника: удалённые позиции с датой удаления (unix-мс) и автором.
    Клиент помечает ими позиции в ТКП («удалено из справочника, осталось N дней»)
    и предлагает замену из аналогов той же категории. */
+app.MapPost("/api/catalog/{id}/restore", CatalogRestoreService.RestoreAsync)
+   .RequireAuthorization("AdminOnly");
+
 app.MapGet("/api/catalog/deleted", async (TkpDbContext db) =>
     (await db.DeletedEquipment.OrderByDescending(x => x.DeletedAt).ToListAsync())
         .Select(x => new

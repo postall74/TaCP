@@ -1,0 +1,20 @@
+{
+  "contract": "user-admin-v1",
+  "method": "DELETE",
+  "path": "/api/auth/users/{id}",
+  "policy": "AdminOnly",
+  "requestBody": null,
+  "cases": [
+    { "scenario": "anonymous", "status": 401, "writes": false },
+    { "scenario": "manager or engineer", "status": 403, "writes": false },
+    { "scenario": "admin deletes another engineer or manager", "status": 204, "body": "empty" },
+    { "scenario": "unknown ID or already deleted ID", "status": 404, "writes": false },
+    { "scenario": "admin deletes self", "status": 409, "writes": false },
+    { "scenario": "delete last remaining admin using an earlier admin JWT", "status": 409, "writes": false },
+    { "scenario": "admin A deletes admin B; A remains", "status": 204, "adminsAfter": 1 },
+    { "scenario": "A and B concurrently delete each other", "statusesSorted": [204, 409], "adminsAfter": 1 }
+  ],
+  "preserved": ["projects including OwnerId", "catalog", "unrelated users and role memberships", "current actor JWT"],
+  "existingIdentityCascades": ["AspNetUserRoles", "AspNetUserClaims", "AspNetUserLogins", "AspNetUserTokens"],
+  "limitations": ["Existing JWTs are not immediately revoked", "Concurrent PUT role is a separate known race; see CONTRACT.md"]
+}

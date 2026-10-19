@@ -38,6 +38,12 @@ export interface ProfilePatch {
   phone?: string;
 }
 
+/** Административная правка пользователя по user-admin-v3. Email доступен
+    только этому DTO; собственный профиль по-прежнему не меняет логин. */
+export interface AdminUpdateUserPatch extends ProfilePatch {
+  email?: string;
+}
+
 /** Причина ошибки из тела ответа: { errors: [] } (регистрация), { detail } / { title }
     (RFC 7807 — отказы матрицы прав), массив строк, plain-text. Иначе — статус. */
 async function errorOf(res: Response): Promise<string> {
@@ -128,11 +134,12 @@ export const restApi = (base: string) => ({
   updateProfile: (p: ProfilePatch) =>
     req<AuthUser>(base, "/api/auth/me", { method: "PUT", body: JSON.stringify(p) }),
   /* правка профиля любого пользователя — админ на странице «Пользователи» */
-  putUser: (id: string, p: ProfilePatch) =>
+  putUser: (id: string, p: AdminUpdateUserPatch) =>
     req<AuthUser>(base, `/api/auth/users/${id}`, { method: "PUT", body: JSON.stringify(p) }),
 
   /* пользователи (только админ) */
   users: () => req<AuthUser[]>(base, "/api/auth/users"),
+  deleteUser: (id: string) => req<void>(base, `/api/auth/users/${encodeURIComponent(id)}`, { method: "DELETE" }),
   setUserRole: (id: string, role: string) =>
     req<AuthUser>(base, `/api/auth/users/${id}/role`, {
       method: "PUT",
