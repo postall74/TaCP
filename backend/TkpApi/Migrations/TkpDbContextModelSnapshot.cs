@@ -606,6 +606,45 @@ namespace TkpApi.Migrations
                     b.ToTable("project_versions", (string)null);
                 });
 
+            modelBuilder.Entity("TkpApi.RatesRow", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Design")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("Pnr")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("Production")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("Smr")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("Software")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("rate_cards", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_rate_cards_singleton", "\"Id\" = 1");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Design = 1800m,
+                            Pnr = 1800m,
+                            Production = 1800m,
+                            Smr = 1800m,
+                            Software = 2200m
+                        });
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
