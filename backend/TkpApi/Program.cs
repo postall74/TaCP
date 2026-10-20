@@ -401,9 +401,29 @@ app.MapPost("/api/kits/calculate", (KitInput input) =>
     return Results.Ok(new { lines, hours, total });
 });
 
-var rates = new Rates();
-app.MapGet("/api/rates", () => rates).RequireAuthorization("Staff");
-app.MapPut("/api/rates", (Rates r) => { rates = r; return Results.Ok(rates); }).RequireAuthorization("AdminOnly");
+app.MapGet("/api/rates", async (TkpDbContext db, CancellationToken ct) =>
+    await db.RateCards.AsNoTracking().Where(x => x.Id == 1).Select(x => new Rates
+    {
+        Design = x.Design,
+        Production = x.Production,
+        Software = x.Software,
+        Smr = x.Smr,
+        Pnr = x.Pnr,
+    }).SingleAsync(ct)).RequireAuthorization("Staff");
+
+app.MapPut("/api/rates", async (Rates rates, TkpDbContext db, CancellationToken ct) =>
+{
+    // A single SQL UPDATE replaces the full DTO, so readers never observe a mixed set.
+    var updated = await db.RateCards.Where(x => x.Id == 1).ExecuteUpdateAsync(setters => setters
+        .SetProperty(x => x.Design, rates.Design)
+        .SetProperty(x => x.Production, rates.Production)
+        .SetProperty(x => x.Software, rates.Software)
+        .SetProperty(x => x.Smr, rates.Smr)
+        .SetProperty(x => x.Pnr, rates.Pnr), ct);
+    if (updated != 1)
+        throw new InvalidOperationException("The tenant rates row is missing. Check database migrations.");
+    return Results.Ok(rates);
+}).RequireAuthorization("AdminOnly");
 
 /* Реквизиты компании ПРИВЯЗАНЫ К УЧЁТНОЙ ЗАПИСИ и хранятся в БД (company_settings):
    у каждого пользователя свой исполнитель/контакты в документах. Строки нет —
@@ -529,7 +549,7 @@ static void PurgeDeleted(TkpDbContext db)
 /// Применяет EF-миграции. Три случая:
 ///  1. Файлов миграций ещё нет (чистый клон) — создаём схему EnsureCreated (dev-режим);
 ///  2. БД уже содержит таблицы от EnsureCreated, но нет журнала миграций —
-///     помечаем ВСЕ текущие миграции как применённые (baseline), чтобы не пересоздавать данные;
+///     помечаем исходную миграцию как применённую и выполняем последующие миграции;
 ///  3. Обычный режим — накатываем ожидающие миграции.
 /// Команды для генерации миграций — в backend/MIGRATIONS.md.
 /// </summary>
@@ -548,15 +568,14 @@ static void EnsureSchema(TkpDbContext db, ILogger logger)
 
     if (applied.Count == 0 && db.Database.CanConnect() && HasAnyTable(db))
     {
-        // Существующая БД от EnsureCreated: baseline — помечаем все миграции применёнными.
+        // Legacy baseline covers only the initial schema, never subsequent migrations.
         // Имя таблицы — константа (не интерполяция), поэтому EF1002 (SQL-injection) не срабатывает.
         db.Database.ExecuteSqlRaw(
             "CREATE TABLE IF NOT EXISTS \"__EFMigrationsHistory\" (\"MigrationId\" varchar(150) NOT NULL PRIMARY KEY, \"ProductVersion\" varchar(32) NOT NULL)");
-        foreach (var m in pending)
+        foreach (var m in pending.Where(x => x == "20260906110630_AddCabinetSegmentsPersistence"))
             db.Database.ExecuteSqlRaw(
                 "INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES (@p0, @p1)", m, "8.0.8");
-        logger.LogInformation("Baseline: {Count} миграций помечены как применённые (схема уже существовала)", pending.Count);
-        return;
+        logger.LogInformation("Legacy baseline recorded; subsequent migrations will now run");
     }
 
     db.Database.Migrate();
