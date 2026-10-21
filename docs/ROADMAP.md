@@ -71,7 +71,7 @@ ADR-003 и ADR-004 остаются `proposed`; `cabinet-v1` и `normative-v1` �
 | DEV-001 | in progress | F5 запускает backend из VS Code после однократной безопасной настройки User Secrets | PM; QA проверяет | `runtime-config-v1`; секреты не попадают в репозиторий/терминал; отсутствие конфигурации даёт инструкцию; build и запуск с отдельной локальной PostgreSQL подтверждены |
 | NORM-FE-001 | done | Убрать из UI неподтверждённые нормативные обещания, сохранив инженерные данные и предварительный подбор | Frontend | В `main` с `962c6876`; DTO и расчёты сохранены, предварительные формулировки и обе темы проверены в `qa/NORM-QA-001-frontend-962c687.md` |
 | NORM-BE-001 | done | Убрать из backend неподтверждённые ссылки 8.4.2/8.4.3 и ограничение двух корпусов из результата прототипа | Backend | В `main` с `a38a4688`; `cabinet-assembly-claims-v1`; публичные имена/типы DTO и миграции не менялись, `ConnectionStandard` теперь предупреждение; 2+ корпуса, unit/Release build проверены |
-| NORM-QA-001 | in review | Проверить отсутствие нормативного green-state и прослеживаемость ограничений первой волны | QA | Независимый QA PASS на PM candidate `6181ace1`: negative fixtures missing input/wrong scope и 4/4 адресных теста; draft PR #117 ждёт CI и разрешения на merge; нормативное соответствие и `NEED-*` остаются открытыми |
+| NORM-QA-001 | in review | Проверить отсутствие нормативного green-state и прослеживаемость ограничений первой волны | QA | Независимый QA PASS на PM candidate `6181ace1`: negative fixtures missing input/wrong scope и 4/4 адресных теста; CI #183 зелёный, draft PR #117 ждёт разрешения на merge; нормативное соответствие и `NEED-*` остаются открытыми |
 
 ### P2 — после R1 и P1-срезов
 
