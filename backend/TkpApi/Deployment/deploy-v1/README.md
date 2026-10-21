@@ -105,6 +105,14 @@ files volume нет. Пользовательские файлы/экспорт�
 учёта по TEN-001. Логи stdout/stderr раздельны по контейнерам, Docker local
 driver ограничен 3 × 10 MB; это не долговременный архив/backup.
 
+CPU, RAM и число процессов ограничены отдельно для API и PostgreSQL через
+`API_CPUS`/`API_MEMORY_LIMIT`/`API_PIDS_LIMIT` и
+`DB_CPUS`/`DB_MEMORY_LIMIT`/`DB_PIDS_LIMIT`. Примеры задают стартовые значения
+для локального gate; перед production их нужно подобрать по измерениям и снова
+проверить миграции, импорт и резервное копирование. Лимит размера named volume
+Compose local driver не задаёт: свободное место хоста требует отдельного
+мониторинга и политики хранения.
+
 DB healthcheck проверяет TCP PostgreSQL, чтобы не принять временный socket-only
 сервер initdb за готовый. API healthcheck отправляет правильный Host.
 `/api/health` — liveness, он не проверяет доступность БД после старта API.
@@ -116,8 +124,9 @@ DB healthcheck проверяет TCP PostgreSQL, чтобы не принять
 
 После команд запуска выше сохранить digest и вывод `compose ps` для обоих env.
 Проверить inspect контейнеров, что сети и mounts A/B различны, DB Ports пусты,
-API непривилегирован, без bootstrap admin secret в обычном режиме. Проверить
-роль приложения в каждом DB: `rolsuper`, `rolcreatedb`, `rolcreaterole` false.
+API непривилегирован, без bootstrap admin secret в обычном режиме, а фактические
+CPU/RAM/PID limits совпадают с tenant env. Проверить роль приложения в каждом
+DB: `rolsuper`, `rolcreatedb`, `rolcreaterole` false.
 
 QA создаёт через существующие HTTP DTO отдельные проекты/каталог/цены/пользователей
 в A и B и сохраняет их ID/значения (включая разные цены одинакового SKU).

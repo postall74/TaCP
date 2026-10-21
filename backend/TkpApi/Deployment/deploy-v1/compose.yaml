@@ -2,6 +2,9 @@
 services:
   db:
     image: ${POSTGRES_IMAGE:?Set a reviewed PostgreSQL 17 image tag or digest}
+    cpus: ${DB_CPUS:-1.0}
+    mem_limit: ${DB_MEMORY_LIMIT:-1g}
+    pids_limit: ${DB_PIDS_LIMIT:-256}
     environment:
       POSTGRES_USER: postgres
       POSTGRES_DB: ${TKP_DB_NAME:?Set database name}
@@ -27,6 +30,9 @@ services:
       options: {max-size: 10m, max-file: '3'}
   api:
     image: ${API_IMAGE:?Set API image tag or digest}
+    cpus: ${API_CPUS:-1.0}
+    mem_limit: ${API_MEMORY_LIMIT:-512m}
+    pids_limit: ${API_PIDS_LIMIT:-256}
     build:
       context: ../..
       dockerfile: Dockerfile
