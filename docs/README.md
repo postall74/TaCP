@@ -11,6 +11,7 @@
 | [ROADMAP.md](ROADMAP.md) | Приоритетный план с владельцами, зависимостями и критериями приёмки |
 | [TEAM_PROTOCOL.md](TEAM_PROTOCOL.md) | Как четыре агента работают параллельно без конфликтов |
 | [DECISIONS.md](DECISIONS.md) | Решения, которые нельзя принимать молча в feature-ветке |
+| [VERSIONING.md](VERSIONING.md) | Правило номера версии и создания тегов проекта |
 | [agents/FRONTEND.md](agents/FRONTEND.md) | Зона ответственности и первые задачи frontend-агента |
 | [agents/BACKEND.md](agents/BACKEND.md) | Зона ответственности и первые задачи backend-агента |
 | [agents/QA.md](agents/QA.md) | Зона ответственности и первые задачи QA-агента |
