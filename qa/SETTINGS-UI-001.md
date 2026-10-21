@@ -2,11 +2,11 @@
 
 ## Candidate and result
 
-- PM integration SHA: `392dbc6113605b6626b5b4ebbe2cc6ef45dbf5ec`.
+- PM integration SHA: `b6ceb7fccdeb9f54f74b8f099d71c00b24112e45`.
 - Base SHA: `7b426d10d1dda76ffe811bec4a4021b2aceb90a6`.
 - Production diff: `src/App.tsx`, `src/store.ts` only (65 insertions, 22 deletions).
 - QA checkout: `E:/dev/TaCP/.worktrees/qa-settings-ui-001`, detached exact SHA.
-- Functional result: **PASS**. Exact 1024/1440 responsive smoke has an environment limitation described below.
+- Result: **PASS**, including exact 1024/1440 responsive smoke.
 
 ## Browser checks
 
@@ -46,15 +46,25 @@ Targeted result: **12/12 PASS** across the new test and `roles.test.ts`.
 The first sandboxed Vitest start failed with `spawn EPERM` from esbuild; the
 approved run outside the sandbox passed. This is an environment limitation.
 
-## Responsive-width limitation
+## Exact responsive viewport retest
 
-The connected Chrome provider advertises a viewport override capability, but
-both `set({width:1024,height:768})` and a newly created tab continued to report
-`window.innerWidth === 1920` (new tab `1920×1024`). Therefore exact 1024 and
-1440 viewport evidence could not be produced in this environment, and this
-report does not claim those two exact widths as executed. At the available
-1920 width there was no clipping in either theme. No browser access barrier was
-bypassed.
+The remaining responsive criterion was repeated independently with the IAB
+viewport capability and every effective size was read back from
+`window.innerWidth` rather than inferred from the requested override.
+
+- Effective `1024×768`: light and dark themes PASS. Eight company inputs were
+  read-only, Save/Reset counts were zero, and Close remained enabled/reachable.
+  The modal stayed horizontally inside the viewport (`left≈171`, `right≈843`).
+  Its taller content uses the existing overlay `overflow-y:auto`, so the footer
+  is reachable without content being cut off.
+- Effective `1440×900`: light and dark themes PASS. Eight read-only inputs,
+  zero Save/Reset controls, visible Close button, and the complete modal/footer
+  fit in the viewport without horizontal or vertical clipping.
+- The effective widths were obtained with calibrated IAB overrides and then
+  verified directly: override 1096 produced `innerWidth=1024`; override 1541
+  produced `innerWidth=1440`. These override numbers were not accepted without
+  the direct measurements.
+- The viewport override was reset after the checks.
 
 ## QA-owned file
 
