@@ -65,6 +65,10 @@ export const DEFAULT_SETTINGS: Settings = {
   apiOnline: null,
 };
 
+const COMPANY_SETTING_KEYS = [
+  "companyName", "tagline", "address", "phone", "email", "requisites", "manager", "executor",
+] as const satisfies readonly (keyof Settings)[];
+
 /** Версия с сервера приходит в обёртке { snapshot: { cabinets, calc } },
     а локально хранится плоско { cabinets, calc }. Приводим оба варианта к
     плоскому виду — иначе вкладка «Версии» падает на v.cabinets / v.calc
@@ -128,7 +132,8 @@ interface StoreState {
 
   toast: (text: string, kind?: ToastKind) => void;
   dismissToast: (id: string) => void;
-  updateSettings: (patch: Partial<Settings>) => void;
+  /** false — реквизиты компании отклонены по правам (тост уже показан). */
+  updateSettings: (patch: Partial<Settings>) => boolean;
 
   pingApi: (url?: string) => Promise<boolean>;
   /** Тихая проверка связи (heartbeat и клик по индикатору): обновляет apiOnline. */
@@ -315,14 +320,19 @@ export const useStore = create<StoreState>()(
         dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
         updateSettings: (patch) => {
+          if (COMPANY_SETTING_KEYS.some((key) => key in patch) && !can(get().user, "settings.edit")) {
+            get().toast(denyReason(get().user, "settings.edit"), "err");
+            return false;
+          }
           set((s) => ({ settings: { ...s.settings, ...patch } }));
           const a = api();
-          if (!a) return;
+          if (!a) return true;
           // зеркалируем на сервер то, что там хранится
           if (patch.rates) a.putRates(patch.rates).then(syncOk).catch(syncFail);
           const s = get().settings;
-          if (["companyName", "tagline", "address", "phone", "email", "requisites", "manager", "executor"].some((k) => k in patch))
+          if (COMPANY_SETTING_KEYS.some((key) => key in patch))
             a.putCompany(toCompany(s)).then(syncOk).catch(syncFail);
+          return true;
         },
 
         pingApi: async (url) => {
