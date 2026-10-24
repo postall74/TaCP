@@ -55,8 +55,14 @@ umask 077
 install -d -m 700 "$testRoot/tenant-a/secrets" "$testRoot/tenant-b/secrets"
 install -m 600 backend/TkpApi/Deployment/deploy-v1/tenant-a.example.env "$testRoot/tenant-a/tenant-a.env"
 install -m 600 backend/TkpApi/Deployment/deploy-v1/tenant-b.example.env "$testRoot/tenant-b/tenant-b.env"
-sed -i "s|/srv/tkp/tenant-a/secrets|$testRoot/tenant-a/secrets|g" "$testRoot/tenant-a/tenant-a.env"
-sed -i "s|/srv/tkp/tenant-b/secrets|$testRoot/tenant-b/secrets|g" "$testRoot/tenant-b/tenant-b.env"
+for tenant in tenant-a tenant-b; do
+  envFile="$testRoot/$tenant/$tenant.env"
+  sed -i "s|/srv/tkp/$tenant/secrets|$testRoot/$tenant/secrets|g" "$envFile"
+  if grep -q '/srv/tkp/' "$envFile"; then
+    echo "Unreplaced secret path in $envFile" >&2
+    exit 1
+  fi
+done
 ```
 
 В примерах env ниже `<docker-user>` заменяется на фактическое имя текущего
