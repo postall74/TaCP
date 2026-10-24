@@ -9,6 +9,7 @@
 | [CURRENT_STATE.md](CURRENT_STATE.md) | Что есть в репозитории и что реально прошло проверку на 22.09.2026 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Границы модулей, контракты и технические инварианты |
 | [ROADMAP.md](ROADMAP.md) | Приоритетный план с владельцами, зависимостями и критериями приёмки |
+| [LOCAL_TWO_TENANT_TEST.md](LOCAL_TWO_TENANT_TEST.md) | Тестовый Docker/WSL запуск двух tenant для QA-gate OPS-001; не production-инструкция |
 | [TEAM_PROTOCOL.md](TEAM_PROTOCOL.md) | Как четыре агента работают параллельно без конфликтов |
 | [DECISIONS.md](DECISIONS.md) | Решения, которые нельзя принимать молча в feature-ветке |
 | [agents/FRONTEND.md](agents/FRONTEND.md) | Зона ответственности и первые задачи frontend-агента |
