@@ -65,11 +65,10 @@ for tenant in tenant-a tenant-b; do
 done
 ```
 
-В примерах env ниже `<docker-user>` заменяется на фактическое имя текущего
-Linux/WSL-пользователя; используйте абсолютное значение `$testRoot`.
-Команды `sed` заменяют в каждом env **все четыре** пути из example
-(`/srv/tkp/...`) на созданный `testRoot`; проверьте их и добавьте параметры
-web-слоя. Не меняйте
+Пути секретов в обоих скопированных env автоматически заменяются на созданный
+`testRoot`; цикл завершится ошибкой, если в env останется путь `/srv/tkp/`.
+Примеры ниже показывают итоговые абсолютные пути: замените `<docker-user>` на
+фактическое имя Linux/WSL-пользователя. Добавьте параметры web-слоя и не меняйте
 уникальность уже заданных `COMPOSE_PROJECT_NAME`, `TKP_DB_NAME`, `TKP_DB_USER`,
 `API_PORT`, `TENANT_HOST`, `JWT_ISSUER` и `JWT_AUDIENCE`:
 
@@ -272,3 +271,4 @@ docker compose --env-file "$testRoot/tenant-b/tenant-b.env" \
 Технические детали backend-кандидата находятся в
 `backend/TkpApi/Deployment/deploy-v1/README.md`; границы tenant-модели — в
 `backend/TkpApi/Deployment/tenant-deploy-v1/CONTRACT.md`.
+
