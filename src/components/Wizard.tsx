@@ -999,7 +999,13 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                 return (
                   <div className="max-w-2xl">
                     {/* строки нормо-часов с живым расчётом стоимости */}
-                    <div className="rounded-lg border border-line bg-card px-4">
+                    <div className="rounded-lg border border-line bg-card px-4 sm:grid sm:grid-cols-[minmax(0,1fr)_90px_100px_110px] sm:gap-x-3">
+                      <div className="hidden border-b border-line py-2 text-[10.5px] font-semibold text-mute sm:col-span-4 sm:grid sm:grid-cols-subgrid sm:items-center">
+                        <span>Вид работ</span>
+                        <span className="text-right">Часы</span>
+                        <span className="text-right">Ставка, ₽/ч</span>
+                        <span className="text-right">Стоимость, ₽</span>
+                      </div>
                       <WorkRow
                         label="Сборка (производство)"
                         hint="Монтаж оборудования, ошиновка, маркировка — ставка «Производство»"
@@ -1024,12 +1030,12 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                     </div>
 
                     {/* итог по работам */}
-                    <div className="mt-3 flex items-center justify-between rounded-lg border border-accent/30 bg-accent-soft/50 px-4 py-2.5">
+                    <div className="mt-3 grid gap-2 rounded-lg border border-accent/30 bg-accent-soft/50 px-4 py-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4">
                       <div className="text-[12px] font-semibold text-ink2">
                         Итого трудозатраты:{" "}
                         <span className="font-mono text-ink">{d.hours + d.designHours + d.softwareHours} ч</span>
                       </div>
-                      <div className="text-right">
+                      <div className="text-left sm:text-right">
                         <div className="font-mono text-[14px] font-bold tabular-nums text-accent-deep">{fmtMoney(Math.round(totalCost))}</div>
                         <div className="text-[9.5px] text-mute">в продаже — с наценкой на работы {project.workMarkup} %</div>
                       </div>
@@ -1037,7 +1043,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
 
                     {/* автозаполнение из ориентиров */}
                     {guideAssembly > 0 && (
-                      <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-dashed border-line2 bg-card/60 px-4 py-2.5">
+                      <div className="mt-3 flex flex-col items-stretch gap-3 rounded-md border border-dashed border-line2 bg-card/60 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
                         <div className="text-[11.5px] leading-snug text-mute">
                           Ориентир сборки: комплект корпуса {kitH > 0 && <b className="text-ink2">{kitH} ч</b>}
                           {kitH > 0 && segH > 0 && " + "}
@@ -1045,7 +1051,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                         </div>
                         <button
                           onClick={() => set({ hours: guideAssembly })}
-                          className="shrink-0 cursor-pointer rounded-md border border-accent px-2.5 py-1.5 text-[11px] font-bold text-accent-deep transition-colors hover:bg-accent hover:text-white"
+                          className="w-full cursor-pointer rounded-md border border-accent px-2.5 py-1.5 text-center text-[11px] font-bold text-accent-deep transition-colors hover:bg-accent hover:text-white sm:w-auto sm:shrink-0"
                         >
                           Подставить в «Сборку»
                         </button>
@@ -1452,19 +1458,20 @@ function WorkRow({ label, hint, hours, rate, onChange }: {
 }) {
   const cost = Math.round(hours * rate);
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-line/50 py-2">
-      <div className="min-w-0">
+    <div className="grid min-w-0 grid-cols-2 gap-x-3 gap-y-2 border-b border-line/50 py-3 last:border-b-0 sm:col-span-4 sm:grid-cols-subgrid sm:items-center sm:gap-y-0">
+      <div className="col-span-2 min-w-0 sm:col-span-1">
         <div className="text-[12.5px] font-semibold text-ink">{label}</div>
         <div className="text-[10.5px] leading-snug text-mute">{hint}</div>
       </div>
-      <div className="flex shrink-0 items-center gap-3">
-        <div className="w-[90px]">
-          <NumInput value={hours} step={1} onChange={onChange} />
-        </div>
-        <div className="w-[110px] text-right">
-          <div className="font-mono text-[12.5px] font-bold tabular-nums text-ink">{fmtMoney(cost)}</div>
-          <div className="text-[9.5px] text-mute">× {fmtMoney(rate)}/ч</div>
-        </div>
+      <label className="min-w-0">
+        <span className="mb-1 block text-[9.5px] font-semibold text-mute sm:sr-only">Часы</span>
+        <NumInput className="min-w-0 px-2 sm:px-3" value={hours} step={1} onChange={onChange} />
+      </label>
+      <div className="hidden text-right font-mono text-[11px] tabular-nums text-mute sm:block">{fmtMoney(rate)}</div>
+      <div className="min-w-0 text-right">
+        <div className="mb-1 text-left text-[9.5px] font-semibold text-mute sm:hidden">Стоимость</div>
+        <div className="font-mono text-[12.5px] font-bold tabular-nums text-ink">{fmtMoney(cost)}</div>
+        <div className="text-[9.5px] text-mute sm:hidden">× {fmtMoney(rate)}/ч</div>
       </div>
     </div>
   );
