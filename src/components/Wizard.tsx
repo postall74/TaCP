@@ -993,7 +993,8 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
               {meta.id === "work" && (() => {
                 const kitH = d.cabMode === "kit" && !d.customDim ? kitAssemblyHours(kitInput) : 0;
                 const segH = segBuild?.hours ?? 0;
-                const guideAssembly = kitH + segH;
+                const baseAssemblyGuide = kitH;
+                const guideAssembly = baseAssemblyGuide + segH;
                 const totalCost =
                   d.hours * rates.production + d.designHours * rates.design + d.softwareHours * rates.software;
                 return (
@@ -1050,7 +1051,7 @@ export default function Wizard({ project, onClose }: { project: Project; onClose
                           {segH > 0 && <>секционирование <b className="text-ink2">{segH} ч</b></>}
                         </div>
                         <button
-                          onClick={() => set({ hours: guideAssembly })}
+                          onClick={() => set({ hours: baseAssemblyGuide })}
                           className="w-full cursor-pointer rounded-md border border-accent px-2.5 py-1.5 text-center text-[11px] font-bold text-accent-deep transition-colors hover:bg-accent hover:text-white sm:w-auto sm:shrink-0"
                         >
                           Подставить в «Сборку»
